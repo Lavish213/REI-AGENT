@@ -1,0 +1,97 @@
+import os
+import time
+import schedule
+from datetime import datetime, timezone
+from dotenv import load_dotenv
+from loguru import logger
+
+load_dotenv()
+
+from backend.lib.db import (
+    upsert_property,
+    get_new_properties_since,
+    insert_lead,
+    get_lead_by_property,
+)
+from backend.scout.parser import parse_csv
+from backend.scout.scorer import score_properties
+from backend.alerts.formatter import format_lead_alert
+from backend.alerts.sms import send_sms
+
+
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "data")
+MIN_ALERT_SCORE = int(os.environ.get("MIN_DISTRESS_SCORE_FOR_ALERT", 75))
+ALERT_PHONE = os.environ.get("ALERT_PHONE", "")
+INTERVAL_HOURS = int(os.environ.get("SCOUT_CRON_INTERVAL_HOURS", 6))
+
+
+def _get_latest_csv() -> str | None:
+    if not os.path.exists(DATA_DIR):
+        logger.warning("data dir not found: {}", DATA_DIR)
+        return None
+    csvs = [
+        f for f in os.listdir(DATA_DIR)
+        if f.endswith(".csv")
+    ]
+    if not csvs:
+        logger.warning("no CSV files found in {}", DATA_DIR)
+        return None
+    csvs.sort(reverse=True)
+    return os.path.join(DATA_DIR, csvs[0])
+
+
+def run_scout() -> None:
+    logger.info("scout run started at {}", datetime.now(timezone.utc).isoformat())
+
+    csv_path = _get_latest_csv()
+    if not csv_path:
+        logger.error("no CSV to process — drop a Propwire export into scripts/data/")
+        return
+
+    logger.info("processing CSV: {}", csv_path)
+    properties = parse_csv(csv_path)
+
+    if not properties:
+        logger.warning("parser returned 0 properties")
+        return
+
+    scored = score_properties(properties)
+
+    upserted = 0
+    leads_created = 0
+    alerts_sent = 0
+
+    for prop in scored:
+        upsert_property(prop)
+        upserted += 1
+
+        if prop["distress_score"] >= MIN_ALERT_SCORE:
+            existing_lead = get_lead_by_property(prop.get("id", ""))
+            if not existing_lead and prop.get("id"):
+                lead_id = insert_lead(prop["id"])
+                leads_created += 1
+
+                if ALERT_PHONE:
+                    message = format_lead_alert(prop)
+                    send_sms(to=ALERT_PHONE, body=message)
+                    alerts_sent += 1
+
+    logger.info(
+        "scout run complete upserted={} leads={} alerts={}",
+        upserted,
+        leads_created,
+        alerts_sent
+    )
+
+
+def start_scheduler() -> None:
+    logger.info("starting scout scheduler every {} hours", INTERVAL_HOURS)
+    schedule.every(INTERVAL_HOURS).hours.do(run_scout)
+    run_scout()
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+
+if __name__ == "__main__":
+    start_scheduler()
