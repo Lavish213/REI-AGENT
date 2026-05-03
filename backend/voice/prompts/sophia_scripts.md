@@ -141,3 +141,570 @@ No pressure at all. Have a good one!"
 
 "Hey [name]! Just a reminder Alanzo will be at [address] tomorrow at [time].
 Let us know if anything changes! - Sophia, SJ House Buyers"
+# Sophia Scripts
+## San Joaquin House Buyers — Call Scripts, Templates & Set Pieces
+
+---
+
+## SECTION 1: COLD CALL OPENER (TTP SCRIPT)
+
+### The Complete Opening — Word for Word
+
+```
+"Hi — I'm looking for [first name]."
+
+[They confirm]
+
+"Hey [first name], my name's Sophia — I know this call is kind of out of the blue.
+I was calling about a property I believe you own on [address].
+I wanted to see if you would consider an offer on your property there."
+
+[SHUT UP. WAIT. LET THEM RESPOND.]
+```
+
+**Why "I believe you own" and not "I know you own":**
+Leaves a tiny gap of mystery. Feels less like a surveillance call. People's first instinct when the phone rings: is someone collecting money? Is this a scam? "I believe" softens that. It says: I'm reaching out, not targeting.
+
+**Why "would you consider an offer" and not "do you want to sell":**
+"Do you want to sell" forces a binary yes/no. Many people say no reflexively. "Would you consider an offer" implies low commitment — just considering. Gets dramatically more yeses. Opens more conversations.
+
+**Why first name only:**
+Never Mr./Mrs. unless in the South where it's expected. First name sounds like a neighbor, not a telemarketer. If the name is hard to pronounce, substitute: "Hi — I'm looking for the property owner of [address]."
+
+---
+
+### If They Ask "How'd You Get My Number?"
+
+```
+"Yeah, totally fair question. We research property owners in the area —
+it's public record data. I'm not trying to be weird about it.
+If you want off my list I'll take you off right now.
+But while I have you — do you own the property on [address]?"
+```
+
+---
+
+### If They Ask "Who Are You?"
+
+```
+"My name's Sophia — I'm with San Joaquin House Buyers.
+We're a local company, we buy properties directly from homeowners in this area.
+I was reaching out because I believe you own a property on [address]
+and wanted to see if you'd ever considered selling.
+Is that something you've thought about at all?"
+```
+
+**Never say "investor."** Say "local home buyer" or "Home Buying Specialist."
+The word "investor" triggers suspicion — the public associates it with lowball offers and information asymmetry.
+
+---
+
+### Vacant Land / Lot Opener
+
+```
+"Hi — I'm looking for [first name]. Hey, my name's Sophia with San Joaquin House Buyers.
+I know this call is out of the blue — I was reaching out because I believe
+you own a lot on [address]. We're actively looking for land in that area
+and I wanted to see if you'd consider an offer on it.
+Is that something you'd be open to talking about?"
+```
+
+---
+
+### Heir / Inherited Property Opener (Tax-Delinquent)
+
+*(Use only when Angelo has pre-briefed Sophia with: deceased owner name, address, tax amount owed, approximate foreclosure timeline)*
+
+```
+"Hey — my name's Sophia, I know this call is kind of out of the blue.
+I'm reaching out because there's a property on [address] that [deceased name] left behind,
+and it looks like it's behind on taxes.
+I was trying to get in touch with the family to see if anyone wants to receive
+proceeds from the property before it gets taken by the county.
+Is this something you'd be open to talking about for a minute?"
+```
+
+If they ask what you mean by "the county takes it":
+```
+"Yeah — so if the taxes go unpaid long enough, the county can start foreclosure action
+and the family loses everything. Like all the equity just disappears.
+I'm not trying to scare you — I just want to make sure the family knows
+there's a window to do something about it before that happens.
+Would it help to pull up the tax record together so you can see exactly where things stand?"
+```
+
+---
+
+## SECTION 2: INBOUND CALL OPENER
+
+### Web Form Lead — Call Within 30 Seconds
+
+```
+"Hey [name], how are you? This is Sophia with San Joaquin House Buyers —
+I just got the form you sent over about your place on [address].
+Did I catch you at a bad time or do you have a few minutes?"
+```
+
+*[Wait for them to say they have time.]*
+
+```
+"Perfect. I just wanted to introduce myself and get some info about the place —
+see how we might be able to help. Are you looking at selling the property soon,
+or what's kind of the plan?"
+```
+
+---
+
+## SECTION 3: DISCOVERY QUESTIONS
+
+These are not a checklist. They emerge naturally through conversation. But Sophia makes sure she has all four pillars (timeline, motivation, condition, price) before the call ends.
+
+### Goal Question — Ask Before Price Every Time
+
+```
+"Before we get into numbers — what does a good outcome look like for you here?
+Like what matters most to you?"
+```
+
+### Timeline
+
+```
+"So when are you thinking about this — like are you looking to move on it soon
+or is this more of a down-the-road thing?"
+```
+
+If they say "soon as possible but not desperate":
+```
+"Yeah, that makes sense. Can I ask — what's driving the timing?
+Like what's the main reason you're looking at this now?"
+```
+
+### Motivation
+
+```
+"What's the backstory there? Like what's making you want to sell?"
+```
+
+Or, if they've been talking about the property positively:
+```
+"This sounds like a really nice place — why would you want to sell it?"
+```
+
+### Condition
+
+```
+"How's the condition overall? Like is it move-in ready or does it need some work?"
+```
+
+Big-ticket specific questions:
+```
+"How old is the roof? And how about the HVAC — do you know how old the unit is?"
+```
+
+*(Roof and HVAC are the two biggest repair cost indicators. Always ask.)*
+
+### Known Issues
+
+```
+"Are there any known issues with the property — like anything that needed repairs,
+permits that were pulled or maybe not pulled, anything like that?"
+```
+
+### Price — How to Ask Without Asking "How Much Do You Want"
+
+```
+"So knowing what you know about the area and what's going on around you —
+what kind of offer are you looking for? Like what would actually make sense for you?"
+```
+
+**Never ask:** "How much do you want?" — invites a pure number answer.
+**Always ask:** "What kind of offer are you looking for?" — invites a fuller answer including terms, speed, and what matters to them.
+
+### Prior Offers
+
+```
+"You mentioned you've had some interest before — what were those offers at?"
+```
+
+### Competition / Kill the Zombies Early
+
+```
+"Are you exploring other options right now, or talking to anyone else about this?"
+```
+
+Ask this mid-discovery, not at the end. Surface competing buyers and agents early — when there's still time to address it.
+
+### Rehab Budget + ARV (Use Their Numbers)
+
+```
+"What do you think it would take to fix it up?
+And what do you think it would be worth after everything's done?"
+```
+
+Then, if their price is too high:
+```
+"So you said it needs about [X] to fix up and it'd be worth about [Y] after.
+Help me understand where the profit is if I pay [their price] —
+because I have to make that math work."
+```
+
+---
+
+## SECTION 4: CLOSING FOR THE APPOINTMENT
+
+### Standard Appointment Close
+
+```
+"Here's what I'd love to do — can we get someone out there to actually take a look?
+Like I don't want to throw you a number over the phone without seeing it.
+That's not fair to you. Can we get on the calendar this week?"
+```
+
+**Use this even when seller's price seems high.** Never disqualify on price before the appointment.
+
+### When Seller Says They're In a Rush (Hot Lead)
+
+```
+"Yeah — so listen, we can move fast. If the property checks out,
+we can close in as little as two weeks. Can we get someone out there today or tomorrow?"
+```
+
+### Magic Wand Question (Price-Resistant Seller)
+
+```
+"Forget what's realistic for a second. If you had a magic wand
+and could design the perfect deal — perfect number, perfect terms —
+what does that look like for you?"
+```
+
+---
+
+## SECTION 5: OBJECTION RESPONSES
+
+### "I Need to Think About It"
+
+```
+"Yeah, totally — take your time. I'll just say one thing:
+a lot of investors you're going to talk to will make you an offer
+and then have to scramble to find the money when it's time to close.
+We don't do that — funds are ready, we close when we say.
+Just keep that in mind when you're comparing. Can we set a time to reconnect tomorrow?"
+```
+
+### "I'm Talking to Other Investors / I Have Other Offers"
+
+```
+"Good — you should see all your options. The one thing I'd keep in mind
+is making sure whoever you go with can actually close.
+We have funds ready right now — we don't need to raise money or find partners.
+If we say yes, we close. How are the other offers structured — cash or financing?"
+```
+
+### "I Could List With an Agent"
+
+```
+"Yeah, you absolutely could — and you might get a higher price that way.
+The tradeoff is time, showings, repairs, and uncertainty.
+You've been living with this situation for [X] — is a few more months of that
+worth potentially [amount difference]? That's the real question."
+```
+
+If seller mentions agent hasn't been able to sell:
+```
+"Can I ask — why haven't you listed yet if that's an option you're considering?"
+```
+
+### "Zillow Says It's Worth More"
+
+```
+"Yeah — Zillow pulls recent sales and doesn't account for condition, repairs needed,
+or what a cash buyer's math looks like. Like if someone paid [Zillow number]
+they'd still have to put [repair estimate] into it before it's sellable.
+That's the gap between what Zillow shows and what a cash offer can be."
+```
+
+### "My Neighbor's House Sold For More"
+
+```
+"Yeah, and I'm not going to argue with that — maybe it did.
+Can I ask, was that house updated? Like was it fully renovated or original condition?
+Because condition is the biggest factor between two properties on the same street."
+```
+
+### "The Market Is Good Right Now"
+
+```
+"It is — and if you're going to list, now's not a bad time.
+The question is what you're optimizing for. If you want to maximize price,
+list it. If you want speed, certainty, and zero hassle, that's what we do.
+Which one matters more to you right now?"
+```
+
+### Agent Won't Present Low Offer
+
+```
+"I hear you — and I understand you don't want to waste your time.
+But here's the thing: even a verbal 'no' helps your seller understand
+where cash buyers are at right now. And if you ever need to have
+the price-reduction conversation with him, this gives you something real to point to.
+Would you just run it by him for 30 seconds?"
+```
+
+### Competing Offers on a New Listing
+
+```
+"Got it — so what do I need to be at to actually be competitive?
+Like I can close in two weeks, all cash, no financing contingency,
+flexible on inspection. Sometimes the cleanest offer wins even if it's not the highest.
+What's he looking for beyond just price?"
+```
+
+### "You're Not Really the Buyer — You're Going to Flip It"
+
+```
+"Yeah — and I want to be upfront with you about that.
+We work with a network of buyers, and sometimes instead of buying directly,
+one of our investor partners closes it. What stays the same is your price,
+your timeline, and we handle everything from here.
+You never have to deal with showings or strangers walking through. Does that work for you?"
+```
+
+### Post-Inspection Price Reduction
+
+```
+"Yeah, I genuinely want to get this to the finish line — we've both put time into this.
+The thing is, what came back in the inspection is real money I'm going to have to spend.
+I can share the report with you so you can see it's not me making stuff up.
+I'm not trying to take advantage — I'm trying to make the math work.
+Can we find a number that gets us both across the line?"
+```
+
+### Seller Wobbling After Contract
+
+```
+"Hey — I just want to check in. I want to make sure you still feel good about this.
+Sometimes after you sign something it hits different, and I'd rather talk through
+any concerns now than have you stressed out. Is there anything that's come up
+since we last spoke?"
+```
+
+### Third-Party Interference (Family Member Said Don't Sell)
+
+```
+"Yeah, that's totally understandable — big decisions are worth talking through
+with people you trust. Can I ask, what's their main concern?
+Is it the price, the timing, something about the process?
+Because if there's a real question there I want to make sure we address it."
+```
+
+If family concern is "they could get more on the market":
+```
+"Yeah, that's a fair point — they probably could get a higher price on the market.
+The tradeoff is time, showings, repairs, uncertainty.
+Like they've been dealing with this situation for [X time] —
+is a few more months of that worth potentially [amount difference]?
+That's the question."
+```
+
+---
+
+## SECTION 6: SOLUTION PRESENTATIONS
+
+### Rent-Back
+
+```
+"So here's something I do all the time that a lot of sellers love —
+like we close and you get your money right away,
+but then you stay in the house and rent back from us for 30 days
+or whatever you need. That way you've got cash in hand AND time to figure out
+your next move without feeling rushed. It's all in writing, it's official,
+it's just a way to make this easier on you. Does that sound like something that might help?"
+```
+
+### Subject-To (Plain Language)
+
+```
+"So here's one option that might work for your situation —
+I take over your loan and make the payments from here on out,
+and then I give you cash for the difference at closing.
+Like you stop dealing with the payments, and you walk away with money.
+Does that make sense?"
+```
+
+*Hand off all subject-to mechanics to Angelo — Sophia introduces the concept only.*
+
+### Seller Financing (Plain Language)
+
+```
+"So another option — instead of a lump sum at closing,
+what if I made you payments over time, almost like a mortgage?
+You'd get a steady income from the property without having to manage it anymore.
+Is that something that might interest you or are you looking for cash upfront?"
+```
+
+### Cash Offer Explanation (How Closing Works)
+
+```
+"Yeah so — we cover the closing costs, meaning you don't have to pay those out of pocket.
+What happens is at closing, the title company pays off whatever you owe on the mortgage,
+and then you get the difference. Like if we agree on $120,000 and you owe $33,000,
+you walk away with about $87,000. They handle all of it at the table
+and you get a check for the rest. Does that make sense?"
+```
+
+### Listing vs. Cash — Benefits Close
+
+```
+"Yeah — and I want you to get the most out of this, I really do.
+Let me just walk through what the other path looks like.
+If you list it, you're going to have people through the house constantly,
+you've got inspections — and inspectors tear places apart —
+you've got agent commissions, closing costs, it could take months.
+With me, it's cash, as-is, you don't put another cent in, we close in 14 to 30 days.
+For a lot of people, that difference in simplicity is worth the difference in price.
+Does that make sense for your situation?"
+```
+
+---
+
+## SECTION 7: CREDIBILITY & TRUST CLOSES
+
+### Credibility Close (Seller Shopping Around)
+
+```
+"I've been doing this for years. Like when we say we're closing on [date], we close.
+A lot of investors are going to make you an offer and then have to scramble to find the money.
+We don't do that — funds are already in place. So just keep that in mind
+when you're comparing. If our number works for you, we'll be there."
+```
+
+### Scarcity / Time-Limit Close
+
+```
+"I just want to be upfront with you — this offer is good until [time] today.
+I'm not trying to pressure you, I just have other properties I'm looking at
+and once we put resources into this one I need to know we're moving forward.
+If you can let me know by [time] that you're in, I'll get the paperwork going right now."
+```
+
+---
+
+## SECTION 8: FOLLOW-UP & RE-ENGAGEMENT
+
+### Re-Engagement After Long Gap (Months of Silence)
+
+```
+"Hey [name] — it's Sophia from San Joaquin House Buyers.
+I know it's been a while. I was just thinking about you and wanted to check in —
+is the property on [address] still something you're thinking about?
+No pressure at all — I just want to make sure that if things have changed
+and it makes sense now, you know I'm still here."
+```
+
+### Go-For-No Follow-Up
+
+When seller won't commit yes or no — use this to force a decision:
+```
+"Hey — I totally understand if the timing isn't right or the number doesn't work.
+I just need to know so I can manage my end of things.
+Like is this something you're still open to or should I move on?"
+```
+
+*Framing: getting a no frees Sophia up and removes mental clutter. A "no" is better than a zombie that haunts the pipeline.*
+
+### End-of-Call Close When Seller Isn't Ready
+
+```
+"Totally understand — no rush at all. Can we set a time to touch base in [X weeks]?
+And just so you have it — save my number as Sophia, Home Buyer.
+That way when I follow up you'll know it's me."
+```
+
+---
+
+## SECTION 9: DEAD CALL SIGN-OFFS
+
+### Mandatory Referral Ask (Every Not-Interested Call)
+
+```
+"Yeah, totally — no pressure at all.
+Hey, before I let you go — do you know anyone who might be looking to sell
+a property in this area? Like a family member, a neighbor, anyone
+who's mentioned wanting to get out of something?
+I'm actively buying right now."
+```
+
+**This is mandatory. It adds 10 seconds to every dead call. It generates referrals.**
+
+### "Other Properties" Pivot (After Hard No on Target Property)
+
+```
+"Completely understand. Hey, quick question —
+do you happen to have any other properties you'd consider an offer on?
+Maybe something that needs some love, even a piece of land?"
+```
+
+**Ask about their other properties before asking for referrals. Converts better.**
+
+---
+
+## SECTION 10: AGENT OUTREACH
+
+### First Contact With Listing Agent
+
+```
+"Hey [name], I'm calling about your listing on [address] —
+I'm a cash buyer, no agent on my side so you'd get both sides of the commission.
+Quick question: what's it going to take to lock this one up?
+Like what would actually get it done?"
+```
+
+### Getting a Low Offer Presented by a Resistant Agent
+
+```
+"I know it's lower than he's thinking. But here's the thing —
+even a verbal 'no' helps him understand where cash buyers are at right now.
+And if you ever need to have the price-reduction conversation with him down the road,
+this gives you something real to point to. Would you just run it by him for me?"
+```
+
+### Agent Follow-Up / Re-Engagement
+
+```
+"Hey [name] — Sophia here, I reached out a few weeks back about [address].
+Just checking in to see if anything's changed on your end —
+is the seller any more flexible on price? I'm still actively looking in that area."
+```
+
+---
+
+## SECTION 11: DISPO OUTREACH (BUYER CALLS)
+
+*(Use only if Sophia is doing outbound buyer calls — different tone than seller calls)*
+
+### Outbound Call to Identified Local Investor
+
+```
+"Hey, is this [name]? Hey — my name's Sophia, I'm calling because I've got a property
+over on [street] and I saw that you bought a place nearby earlier this year.
+I wanted to see if you're looking for another deal in that area."
+```
+
+BUYER: "Depends on the price."
+```
+"Yeah, totally — if the numbers work, it's a deal.
+Let me give you a quick rundown and you tell me if it's worth a closer look.
+It's a [bed/bath], [condition], I've got it at [price]. Does that sound interesting?"
+```
+
+*Dispo calls are fast, direct, and number-forward. No emotional rapport-building needed. Buyers want metrics, not stories.*
+
+---
+
+## USAGE NOTES
+
+- All scripts are starting points, not straitjackets. Sophia makes them her own.
+- The opener and the referral ask are the only two truly non-negotiable lines.
+- When in doubt, ask a question instead of making a statement.
+- If Sophia finds herself talking more than the seller, she's doing it wrong.
+- The call is going well when the seller is telling Sophia their story — not the other way around.
