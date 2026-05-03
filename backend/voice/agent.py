@@ -67,13 +67,13 @@ async def run_sophia_agent(
 
     stt = DeepgramSTTService(
         api_key=os.environ["DEEPGRAM_API_KEY"],
-        live_options={
-            "model": "nova-2",
-            "language": "en-US",
-            "punctuate": True,
-            "interim_results": False,
-            "endpointing": 300,
-        },
+        settings=DeepgramSTTService.Settings(
+            model="nova-2",
+            language="en-US",
+            punctuate=True,
+            interim_results=False,
+            endpointing=300,
+        ),
     )
 
     llm = AnthropicLLMService(
