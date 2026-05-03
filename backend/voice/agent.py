@@ -7,6 +7,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.frames.frames import LLMContextFrame
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
@@ -135,7 +136,7 @@ async def run_sophia_agent(
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
         logger.info("client connected call_sid={}", call_sid)
-        await task.queue_frames([context_aggregator.user().get_context_frame()])
+        await task.queue_frames([LLMContextFrame(context=context)])
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):
