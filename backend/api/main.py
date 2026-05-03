@@ -23,7 +23,7 @@ from backend.voice.webhook import router as voice_router
 async def lifespan(app: FastAPI):
     logger.info("REI Agent API starting up")
     logger.info("business={}", os.environ.get("BUSINESS_NAME", "unknown"))
-    logger.info("agent={}", os.environ.get("AGENT_FULL_NAME", "unknown"))
+    logger.info("agent={}", os.environ.get("AGENT_NAME", "unknown"))
     yield
     logger.info("REI Agent API shutting down")
 
@@ -38,7 +38,6 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -81,6 +80,6 @@ async def root():
     return {
         "system": "REI Agent",
         "business": os.environ.get("BUSINESS_NAME"),
-        "agent": os.environ.get("AGENT_FULL_NAME"),
+        "agent": os.environ.get("AGENT_NAME"),
         "status": "operational",
     }
