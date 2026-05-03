@@ -9,7 +9,8 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
+from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
@@ -78,16 +79,20 @@ async def run_sophia_agent(
 
     llm = AnthropicLLMService(
         api_key=os.environ["ANTHROPIC_API_KEY"],
-        model=os.environ.get("LLM_MODEL", "claude-sonnet-4-20250514"),
+        settings=AnthropicLLMService.Settings(
+            model=os.environ.get("LLM_MODEL", "claude-sonnet-4-6"),
+        ),
         tools=SOPHIA_TOOLS,
     )
 
     tts = CartesiaTTSService(
         api_key=os.environ["CARTESIA_API_KEY"],
-        voice_id=os.environ["CARTESIA_VOICE_ID"],
-        params=CartesiaTTSService.InputParams(
-            speed="normal",
-            emotion=["positivity:high", "curiosity:medium"],
+        settings=CartesiaTTSService.Settings(
+            voice=os.environ["CARTESIA_VOICE_ID"],
+            generation_config=GenerationConfig(
+                speed=1.0,
+                emotion="positivity:high",
+            ),
         ),
     )
 
@@ -104,7 +109,7 @@ async def run_sophia_agent(
     ]
 
     context = LLMContext(messages=messages)
-    context_aggregator = llm.create_context_aggregator(context)
+    context_aggregator = LLMContextAggregatorPair(context)
 
     transcript_turns = []
 
