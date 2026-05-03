@@ -1,7 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
@@ -51,6 +51,29 @@ app.include_router(sms.router, prefix="/api", tags=["sms"])
 app.include_router(evals.router, prefix="/api", tags=["evals"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
 app.include_router(voice_router, prefix="/api", tags=["voice"])
+
+
+@app.websocket("/voice/stream/{call_sid}")
+async def voice_stream(websocket: WebSocket, call_sid: str):
+    await websocket.accept()
+
+    contexts = getattr(app.state, "call_contexts", {})
+    call_context = contexts.get(call_sid, {
+        "property_context_str": "No property context available. Greet warmly and ask if they are calling about selling their home.",
+        "owner_first_name": "there",
+        "lead": None,
+    })
+
+    try:
+        from backend.voice.agent import run_sophia_agent
+        await run_sophia_agent(websocket, call_sid, call_context)
+    except Exception as e:
+        logger.error("websocket error call_sid={} error={}", call_sid, str(e))
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 @app.get("/")
