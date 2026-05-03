@@ -1,4 +1,5 @@
 import os
+import json
 import asyncio
 from datetime import datetime, timezone
 from loguru import logger
@@ -17,6 +18,7 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketTransport,
 )
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.processors.logger import FrameLogger
 
 from backend.voice.tools import SOPHIA_TOOLS
@@ -52,6 +54,16 @@ async def run_sophia_agent(
 ) -> None:
     logger.info("sophia agent starting call_sid={}", call_sid)
 
+    stream_sid = call_sid
+    try:
+        raw = await websocket.receive_text()
+        msg = json.loads(raw)
+        if msg.get("event") == "start":
+            stream_sid = msg.get("streamSid", call_sid)
+            logger.info("stream started stream_sid={}", stream_sid)
+    except Exception as e:
+        logger.warning("could not read start event error={}", str(e))
+
     system_prompt = _load_system_prompt(
         call_context.get("property_context_str", "No property context available.")
     )
@@ -64,6 +76,12 @@ async def run_sophia_agent(
             vad_enabled=True,
             vad_analyzer=SileroVADAnalyzer(),
             vad_audio_passthrough=True,
+            serializer=TwilioFrameSerializer(
+                stream_sid=stream_sid,
+                params=TwilioFrameSerializer.InputParams(
+                    auto_hang_up=False,
+                ),
+            ),
         ),
     )
 
