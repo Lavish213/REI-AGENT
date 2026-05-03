@@ -6,13 +6,13 @@ from loguru import logger
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from pipecat.services.anthropic import AnthropicLLMService
-from pipecat.services.deepgram import DeepgramSTTService
-from pipecat.services.cartesia import CartesiaTTSService
-from pipecat.transports.network.websocket_server import (
-    WebsocketServerParams,
-    WebsocketServerTransport,
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.services.anthropic.llm import AnthropicLLMService
+from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.transports.websocket.fastapi import (
+    FastAPIWebsocketParams,
+    FastAPIWebsocketTransport,
 )
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.processors.logger import FrameLogger
@@ -54,9 +54,9 @@ async def run_sophia_agent(
         call_context.get("property_context_str", "No property context available.")
     )
 
-    transport = WebsocketServerTransport(
+    transport = FastAPIWebsocketTransport(
         websocket=websocket,
-        params=WebsocketServerParams(
+        params=FastAPIWebsocketParams(
             audio_out_enabled=True,
             add_wav_header=False,
             vad_enabled=True,
@@ -103,7 +103,7 @@ async def run_sophia_agent(
         },
     ]
 
-    context = OpenAILLMContext(messages=messages)
+    context = LLMContext(messages=messages)
     context_aggregator = llm.create_context_aggregator(context)
 
     transcript_turns = []
@@ -150,7 +150,7 @@ async def run_sophia_agent(
 async def _handle_call_end(
     call_sid: str,
     call_context: dict,
-    context: OpenAILLMContext,
+    context: LLMContext,
 ) -> None:
     logger.info("handling call end call_sid={}", call_sid)
 
