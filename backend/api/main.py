@@ -5,7 +5,8 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-load_dotenv(override=False)
+if not os.environ.get("RAILWAY_ENVIRONMENT"):
+   load_dotenv(override=False)
 
 from backend.api.routes import (
     health,
