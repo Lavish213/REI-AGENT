@@ -10,11 +10,11 @@ load_dotenv(override=False)
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from backend.scout.scorer import calculate_distress_score
+from backend.scout.scorer import calculate_distress_score, SCORE_CREATE_LEAD
 from backend.lib.db import upsert_property, insert_lead, get_lead_by_property
 
 CSV_PATH = Path(__file__).parent / "data" / "propwire_export.csv"
-LEAD_SCORE_THRESHOLD = 60
+LEAD_SCORE_THRESHOLD = SCORE_CREATE_LEAD
 
 
 def _int_cents(val: str) -> int | None:

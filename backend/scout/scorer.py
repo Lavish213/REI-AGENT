@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from loguru import logger
 
 
-SCORE_HIGH_PRIORITY = 75
+SCORE_HIGH_PRIORITY = 85
 SCORE_CREATE_LEAD = 50
 SCORE_DRIP_ONLY = 35
 
