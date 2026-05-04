@@ -11,6 +11,7 @@ from backend.comps.redfin import get_comps
 from backend.comps.calculator import calculate_arv
 from backend.comps.cache import get_cached_comps, set_cached_comps
 from backend.lib.db import update_property_arv, insert_comp
+from backend.lib.osm import enrich_property_context
 
 
 def preload_call_context(caller_phone: str) -> dict:
@@ -91,7 +92,12 @@ def preload_call_context(caller_phone: str) -> dict:
             arv_result["confidence"],
         )
 
-    context["property_context_str"] = _build_property_context_str(context)
+    osm_context = enrich_property_context(
+        prop.get("address", ""),
+        prop.get("city", ""),
+        prop.get("state", "CA"),
+    )
+    context["property_context_str"] = _build_property_context_str(context, osm_context)
     logger.info(
         "preload complete phone={} address={} arv={} mao={} confidence={}",
         caller_phone,
@@ -109,7 +115,7 @@ def _dollars(cents: int | None) -> str:
     return f"${cents / 100:,.0f}"
 
 
-def _build_property_context_str(ctx: dict) -> str:
+def _build_property_context_str(ctx: dict, osm_context: str = "") -> str:
     prop = ctx.get("property") or {}
     arv = _dollars(ctx.get("arv"))
     mao = _dollars(ctx.get("mao"))
@@ -140,11 +146,13 @@ def _build_property_context_str(ctx: dict) -> str:
     equity = prop.get("equity_pct")
     equity_str = f"{equity:.0f}%" if equity else "unknown"
 
+    location_line = f"\nLocation: {osm_context}" if osm_context else ""
+
     return f"""
 CALLER PROPERTY CONTEXT
 =======================
 Owner: {owner} (call them {first_name})
-Address: {prop.get("address", "unknown")} {prop.get("city", "")} {prop.get("zip", "")}
+Address: {prop.get("address", "unknown")} {prop.get("city", "")} {prop.get("zip", "")}{location_line}
 Beds/Baths: {prop.get("beds", "?")} bed / {prop.get("baths", "?")} bath
 Sqft: {prop.get("sqft", "unknown")}
 Year Built: {prop.get("year_built", "unknown")}
