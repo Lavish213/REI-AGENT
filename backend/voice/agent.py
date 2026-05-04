@@ -31,7 +31,19 @@ from backend.qa.grader import grade_call
 from backend.lib.db import insert_call, update_lead_stage
 
 
-def _load_system_prompt(property_context_str: str) -> str:
+SPANISH_MARKERS = [
+    "hola", "oye", "buenos", "buenas", "sí", "si ", "no entiendo",
+    "habla español", "español", "hablas", "habla", "mira", "órale",
+    "sale", "qué onda", "andale", "ándale", "neta", "ahorita",
+]
+
+
+def _detect_spanish(text: str) -> bool:
+    lower = text.lower()
+    return any(marker in lower for marker in SPANISH_MARKERS)
+
+
+def _load_system_prompt(property_context_str: str, spanish: bool = False) -> str:
     prompts_dir = os.path.join(os.path.dirname(__file__), "prompts")
 
     parts = []
@@ -47,7 +59,17 @@ def _load_system_prompt(property_context_str: str) -> str:
 
     base_prompt = "\n\n---\n\n".join(parts)
 
-    return f"{base_prompt}\n\n---\n\nCALLER PROPERTY CONTEXT\n\n{property_context_str}"
+    lang_instruction = ""
+    if spanish:
+        lang_instruction = (
+            "\n\n---\n\nLANGUAGE MODE: SPANISH DETECTED\n\n"
+            "The caller is speaking Spanish. Switch fully to Spanish now. "
+            "Use Sophia's California Spanish voice as defined in your Spanish identity section. "
+            "Natural, Central Valley Latina. Not textbook Spanish. "
+            "Mix English words when natural. End responses with questions."
+        )
+
+    return f"{base_prompt}{lang_instruction}\n\n---\n\nCALLER PROPERTY CONTEXT\n\n{property_context_str}"
 
 
 def _load_boss_prompt(briefing: str) -> str:
@@ -110,11 +132,14 @@ async def run_sophia_agent(
     except Exception as e:
         logger.warning("could not read start event error={}", str(e))
 
+    spanish_detected = call_context.get("spanish_detected", False)
+
     if call_context.get("boss_mode"):
         system_prompt = _load_boss_prompt(call_context.get("briefing", "No briefing available."))
     else:
         system_prompt = _load_system_prompt(
-            call_context.get("property_context_str", "No property context available.")
+            call_context.get("property_context_str", "No property context available."),
+            spanish=spanish_detected,
         )
 
     transport = FastAPIWebsocketTransport(
@@ -133,11 +158,14 @@ async def run_sophia_agent(
         ),
     )
 
+    stt_language = "es" if spanish_detected else "en-US"
+    stt_model = "nova-2" if not spanish_detected else "nova-2-general"
+
     stt = DeepgramSTTService(
         api_key=os.environ["DEEPGRAM_API_KEY"],
         settings=DeepgramSTTService.Settings(
-            model="nova-2",
-            language="en-US",
+            model=stt_model,
+            language=stt_language,
             punctuate=True,
             interim_results=False,
             endpointing=300,

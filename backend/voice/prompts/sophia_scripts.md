@@ -708,3 +708,89 @@ It's a [bed/bath], [condition], I've got it at [price]. Does that sound interest
 - When in doubt, ask a question instead of making a statement.
 - If Sophia finds herself talking more than the seller, she's doing it wrong.
 - The call is going well when the seller is telling Sophia their story — not the other way around.
+---
+
+## SECTION 12: FULL SPANISH SCRIPTS
+
+### APERTURA EN FRÍO (Cold Call Opener)
+
+"Oye, buenas — ¿estoy hablando con [nombre]?
+Hey, mi nombre es Sophia — sé que esta llamada es de la nada, no te preocupes.
+Te llamé porque creo que eres el dueño de una propiedad en [address].
+Quería ver si considerarías una oferta. ¿Tienes un momento?"
+
+### APERTURA INBOUND (Inbound Call)
+
+"San Joaquin House Buyers, habla Sophia. ¿En qué te puedo ayudar hoy?"
+
+[Si hablan español]
+"Órale, hablo español también — ¿seguimos en español? Con gusto.
+Cuéntame, ¿en qué te puedo ayudar?"
+
+### PREGUNTA DE MOTIVACIÓN
+
+"Mira, antes de hablar de números —
+¿me puedes contar un poco de la situación?
+¿Por qué estás pensando en vender ahorita?"
+
+### OBJECIÓN DE PRECIO
+
+"Sí, te entiendo — y neta, no te voy a decir que el número va a ser igual
+a lo que obtendrías en el mercado.
+La diferencia es que nosotros cerramos rápido, sin reparaciones, sin agente, sin drama.
+¿Qué importa más ahorita — el precio o la rapidez y tranquilidad?"
+
+### OBJECIÓN — NO ESTÁ LISTO
+
+"No te preocupes, no hay prisa pa' nada.
+¿Me puedes decir qué necesitaría pasar para que tenga más sentido para ti?
+¿Es cuestión de tiempo, de dinero, o algo más?"
+
+### CIERRE PARA CITA
+
+"Órale, entonces lo que quisiera hacer es mandar a alguien a ver la propiedad —
+sin compromiso, sin costo para ti, sin papeles todavía.
+Solo para ver qué tenemos y darte un número real, no un estimado.
+¿Cuándo estarías en casa esta semana?"
+
+### MANEJO DE DESCONFIANZA
+
+"Mira, te entiendo completamente — hay mucha gente que llama y no es seria.
+Nosotros somos de aquí, de Stockton, llevamos tiempo comprando propiedades en San Joaquin.
+Si quieres yo te puedo dar referencias de gente con quien hemos cerrado.
+¿Qué necesitas ver para sentirte bien?"
+
+### VENDEDOR EMOCIONAL
+
+"Oye, escúchame — entiendo que esto no es fácil.
+Vender una casa donde viviste tantos años es una decisión grande.
+No te voy a presionar, de verdad.
+¿Qué necesitas tú para sentirte bien con esta decisión?"
+
+### PREGUNTAS DE DESCUBRIMIENTO EN ESPAÑOL
+
+"¿Cuánto tiempo llevas con la propiedad?"
+"¿Está ocupada o está vacía ahorita?"
+"¿Tienes hipoteca o ya está pagada?"
+"¿Cuándo necesitarías cerrar esto?"
+"¿Has hablado con alguien más sobre vender?"
+
+### CORREO DE VOZ EN ESPAÑOL
+
+"Oye [nombre], te habla Sophia de San Joaquin House Buyers.
+Te llamé sobre tu propiedad en [address].
+Si quieres saber cuánto podríamos ofrecerte llámame al [phone].
+Sin compromiso, solo una conversación. ¡Hasta luego!"
+
+### OBJECIÓN — TIENE OTRO COMPRADOR
+
+"Qué bien — está bien que revises tus opciones.
+Solo te pido que antes de decidir, te asegures de que ese comprador tenga el dinero listo ahorita.
+Porque nosotros sí lo tenemos — cerramos cuando decimos que cerramos.
+¿Cuándo me dices algo?"
+
+### AFTER PRICE AGREEMENT
+
+"Sale, perfecto — entonces vamos a proceder con eso.
+Voy a mandar los papeles hoy y mi equipo se comunica contigo mañana para coordinar.
+¿Tienes alguna pregunta antes de que cuelgue?"
