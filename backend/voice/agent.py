@@ -37,7 +37,6 @@ def _load_system_prompt(property_context_str: str) -> str:
     parts = []
     for filename in [
         "sophia_system.md",
-        "sophia_scenarios.md",
         "sophia_market.md",
         "sophia_scripts.md",
     ]:
