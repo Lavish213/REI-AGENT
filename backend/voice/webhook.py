@@ -13,17 +13,33 @@ from backend.lib.db import insert_call, update_lead_stage
 router = APIRouter()
 
 
+def _normalize_phone(phone: str) -> str:
+    digits = "".join(c for c in phone if c.isdigit())
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+def _is_boss(caller_phone: str) -> bool:
+    owner = os.environ.get("OWNER_PHONE", "")
+    return bool(owner) and _normalize_phone(caller_phone) == _normalize_phone(owner)
+
+
 async def _preload_and_store(app, call_sid: str, caller_phone: str) -> None:
     try:
-        from backend.voice.preloader import preload_call_context
-        context = await run_in_threadpool(preload_call_context, caller_phone)
+        from backend.voice.preloader import preload_call_context, preload_boss_context
+        boss_mode = _is_boss(caller_phone)
+        if boss_mode:
+            context = await run_in_threadpool(preload_boss_context)
+        else:
+            context = await run_in_threadpool(preload_call_context, caller_phone)
+        context["boss_mode"] = boss_mode
         app.state.call_contexts = getattr(app.state, "call_contexts", {})
         app.state.call_contexts[call_sid] = context
-        logger.info("preload complete call_sid={} phone={}", call_sid, caller_phone)
+        logger.info("preload complete call_sid={} phone={} boss_mode={}", call_sid, caller_phone, boss_mode)
     except Exception as e:
         logger.error("preload failed call_sid={} error={}", call_sid, str(e))
         app.state.call_contexts = getattr(app.state, "call_contexts", {})
         app.state.call_contexts[call_sid] = {
+            "boss_mode": False,
             "property_context_str": "No property context available. Greet warmly and ask if they are calling about selling their home.",
             "owner_first_name": "there",
             "lead": None,

@@ -50,6 +50,23 @@ def _load_system_prompt(property_context_str: str) -> str:
     return f"{base_prompt}\n\n---\n\nCALLER PROPERTY CONTEXT\n\n{property_context_str}"
 
 
+def _load_boss_prompt(briefing: str) -> str:
+    return f"""You are Sophia Reyes, acquisitions coordinator for San Joaquin House Buyers.
+You are talking to Angelo — your boss, Alanzo. This is a private check-in call.
+
+Be casual, direct, and natural. No seller persona. No scripts.
+You know the full pipeline. You give him real numbers and real talk.
+You can look up any property by address if he asks.
+You answer questions about specific leads, scores, ARVs, MAOs, call history.
+Keep answers tight. Angelo is busy.
+
+---
+
+PIPELINE BRIEFING
+
+{briefing}"""
+
+
 def _build_tools_schema() -> ToolsSchema:
     schemas = []
     for tool in SOPHIA_TOOLS:
@@ -93,9 +110,12 @@ async def run_sophia_agent(
     except Exception as e:
         logger.warning("could not read start event error={}", str(e))
 
-    system_prompt = _load_system_prompt(
-        call_context.get("property_context_str", "No property context available.")
-    )
+    if call_context.get("boss_mode"):
+        system_prompt = _load_boss_prompt(call_context.get("briefing", "No briefing available."))
+    else:
+        system_prompt = _load_system_prompt(
+            call_context.get("property_context_str", "No property context available.")
+        )
 
     transport = FastAPIWebsocketTransport(
         websocket=websocket,

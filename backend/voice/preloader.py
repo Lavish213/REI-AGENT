@@ -1,11 +1,12 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from loguru import logger
 
 from backend.lib.db import (
     get_property_by_phone,
     get_comps_by_property,
     get_lead_by_property,
+    _get_client as _db,
 )
 from backend.comps.redfin import get_comps
 from backend.comps.calculator import calculate_arv
@@ -188,3 +189,128 @@ Gather: full address, their name, reason for calling.
 Do not make any offer — gather info only and tell them
 Alanzo will follow up with a number after reviewing the property.
 """.strip()
+
+
+def preload_boss_context() -> dict:
+    logger.info("preload_boss_context loading pipeline briefing")
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    week_start = (now - timedelta(days=7)).isoformat()
+
+    db = _db()
+
+    calls_today = db.table("calls").select("id", count="exact").gte("created_at", today_start).execute()
+    calls_week = db.table("calls").select("id", count="exact").gte("created_at", week_start).execute()
+
+    leads_week = db.table("leads").select("id", count="exact").gte("created_at", week_start).execute()
+
+    hot_props = (
+        db.table("properties")
+        .select("address, city, distress_score, distress_type, estimated_arv, mao")
+        .gte("distress_score", 85)
+        .order("distress_score", desc=True)
+        .limit(3)
+        .execute()
+    )
+
+    appointments = (
+        db.table("leads")
+        .select("id, properties(address, city)")
+        .eq("stage", "appointment_scheduled")
+        .execute()
+    )
+
+    top_leads = (
+        db.table("leads")
+        .select("id, stage, properties(address, city, distress_score, distress_type, estimated_arv, mao)")
+        .in_("stage", ["new", "contacted", "appointment_scheduled", "negotiating"])
+        .order("created_at", desc=True)
+        .limit(20)
+        .execute()
+    )
+
+    active_with_props = [
+        r for r in (top_leads.data or [])
+        if r.get("properties") and r["properties"].get("distress_score")
+    ]
+    active_with_props.sort(key=lambda r: r["properties"]["distress_score"], reverse=True)
+    top_3 = active_with_props[:3]
+
+    pipeline_mao_total = sum(
+        (r["properties"].get("mao") or 0)
+        for r in active_with_props
+        if r.get("properties")
+    )
+
+    briefing = _build_boss_briefing(
+        calls_today=calls_today.count or 0,
+        calls_week=calls_week.count or 0,
+        leads_week=leads_week.count or 0,
+        hot_props=hot_props.data or [],
+        appointments=appointments.data or [],
+        top_3=top_3,
+        pipeline_mao_total=pipeline_mao_total,
+        active_count=len(active_with_props),
+    )
+
+    logger.info("boss briefing built calls_today={} leads_week={}", calls_today.count, leads_week.count)
+    return {
+        "boss_mode": True,
+        "briefing": briefing,
+        "property_context_str": briefing,
+        "lead": None,
+        "owner_first_name": "Alanzo",
+    }
+
+
+def _build_boss_briefing(
+    calls_today: int,
+    calls_week: int,
+    leads_week: int,
+    hot_props: list,
+    appointments: list,
+    top_3: list,
+    pipeline_mao_total: int,
+    active_count: int,
+) -> str:
+    lines = ["Boss mode active. Here is your update:"]
+
+    lines.append(
+        f"This week Sophia handled {calls_week} calls and created {leads_week} leads. "
+        f"{calls_today} calls came in today."
+    )
+
+    if top_3:
+        top = top_3[0]["properties"]
+        arv_str = _dollars(top.get("estimated_arv"))
+        mao_str = _dollars(top.get("mao"))
+        distress = (top.get("distress_type") or "unknown").replace("_", " ")
+        lines.append(
+            f"Top lead: {top.get('address')}, {top.get('city')} "
+            f"scoring {top.get('distress_score')}, {distress}, "
+            f"estimated ARV {arv_str}, MAO {mao_str}."
+        )
+
+    if appointments:
+        for appt in appointments:
+            prop = appt.get("properties") or {}
+            addr = prop.get("address") or "unknown address"
+            city = prop.get("city") or ""
+            lines.append(f"You have a walkthrough scheduled at {addr}, {city}.")
+
+    if hot_props:
+        for hp in hot_props:
+            lines.append(
+                f"Hot alert — {hp.get('address')}, {hp.get('city')} "
+                f"just came in at score {hp.get('distress_score')}."
+            )
+
+    pipeline_str = _dollars(pipeline_mao_total) if pipeline_mao_total else "$0"
+    lines.append(
+        f"Pipeline has {active_count} active leads worth {pipeline_str} combined."
+    )
+
+    lines.append("What do you want me to focus on?")
+
+    return "\n".join(lines)
