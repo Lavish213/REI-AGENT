@@ -94,30 +94,20 @@ async def handle_inbound_sms(request: Request) -> Response:
     body = form.get("Body", "").strip()
     message_sid = form.get("MessageSid", "")
 
-    logger.info("inbound SMS from={} body={} sid={}", from_number, body[:50], message_sid)
+    logger.info("inbound_sms from={} sid={}", from_number, message_sid)
 
-    opt_out_keywords = {"stop", "unsubscribe", "cancel", "quit", "end"}
-    if body.lower() in opt_out_keywords:
-        logger.info("opt-out received from={}", from_number)
-        from backend.lib.db import insert_sms
-        insert_sms({
-            "direction": "inbound",
-            "body": body,
-            "signalwire_message_id": message_sid,
-            "sent_at": datetime.now(timezone.utc).isoformat(),
-        })
+    from backend.alerts.drip import handle_inbound_reply
+    action = await asyncio.to_thread(handle_inbound_reply, from_number, body, message_sid)
+    logger.info("inbound_sms action={} from={}", action, from_number)
+
+    if action == "opted_out":
         twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Message>You have been unsubscribed. Reply START to resubscribe.</Message>
 </Response>"""
         return PlainTextResponse(content=twiml, media_type="text/xml")
 
-    from backend.lib.db import insert_sms
-    insert_sms({
-        "direction": "inbound",
-        "body": body,
-        "signalwire_message_id": message_sid,
-        "sent_at": datetime.now(timezone.utc).isoformat(),
-    })
-
-    return PlainTextResponse(content="<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>", media_type="text/xml")
+    return PlainTextResponse(
+        content='<?xml version="1.0" encoding="UTF-8"?><Response/>',
+        media_type="text/xml",
+    )

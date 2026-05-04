@@ -22,4 +22,7 @@ pytz
 tenacity
 pydantic
 pydantic-settings
+APScheduler
+requests
+lxml
 ruff

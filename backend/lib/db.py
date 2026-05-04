@@ -180,3 +180,155 @@ def update_property_arv(property_id: str, arv: int, mao: int, confidence: str) -
         "updated_at": datetime.now(timezone.utc).isoformat()
     }).eq("id", property_id).execute()
     logger.info("update_property_arv id={} arv={} mao={}", property_id, arv, mao)
+
+
+def get_active_drip_leads() -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("leads")
+        .select("*, properties(*)")
+        .eq("opted_out", False)
+        .eq("drip_paused", False)
+        .eq("drip_completed", False)
+        .not_("drip_started_at", "is", "null")
+        .execute()
+    )
+    logger.debug("get_active_drip_leads count={}", len(response.data))
+    return response.data
+
+
+def start_lead_drip(lead_id: str, sequence: str, drip_started_at: str, initial_day: int = 0) -> None:
+    client = _get_client()
+    client.table("leads").update({
+        "drip_sequence": sequence,
+        "drip_day": initial_day,
+        "drip_started_at": drip_started_at,
+        "drip_paused": False,
+        "drip_completed": False,
+        "opted_out": False,
+        "last_sms_at": drip_started_at,
+    }).eq("id", lead_id).execute()
+    logger.info("start_lead_drip lead_id={} sequence={}", lead_id, sequence)
+
+
+def update_lead_drip_progress(lead_id: str, drip_day: int, last_sms_at: str) -> None:
+    client = _get_client()
+    client.table("leads").update({
+        "drip_day": drip_day,
+        "last_sms_at": last_sms_at,
+    }).eq("id", lead_id).execute()
+    logger.debug("update_lead_drip_progress lead_id={} day={}", lead_id, drip_day)
+
+
+def mark_lead_opted_out(lead_id: str) -> None:
+    client = _get_client()
+    client.table("leads").update({
+        "opted_out": True,
+        "drip_paused": True,
+    }).eq("id", lead_id).execute()
+    logger.info("mark_lead_opted_out lead_id={}", lead_id)
+
+
+def pause_lead_drip(lead_id: str) -> None:
+    client = _get_client()
+    client.table("leads").update({"drip_paused": True}).eq("id", lead_id).execute()
+    logger.info("pause_lead_drip lead_id={}", lead_id)
+
+
+def complete_lead_drip(lead_id: str) -> None:
+    client = _get_client()
+    client.table("leads").update({"drip_completed": True}).eq("id", lead_id).execute()
+    logger.info("complete_lead_drip lead_id={}", lead_id)
+
+
+def append_drip_reply(lead_id: str, reply: dict) -> None:
+    client = _get_client()
+    current = client.table("leads").select("drip_replies").eq("id", lead_id).execute()
+    replies = (current.data[0].get("drip_replies") or []) if current.data else []
+    replies.append(reply)
+    client.table("leads").update({"drip_replies": replies}).eq("id", lead_id).execute()
+    logger.debug("append_drip_reply lead_id={}", lead_id)
+
+
+def get_lead_by_owner_phone(phone: str) -> dict | None:
+    client = _get_client()
+    response = (
+        client.table("leads")
+        .select("*, properties(*)")
+        .eq("owner_phone", phone)
+        .limit(1)
+        .execute()
+    )
+    result = response.data[0] if response.data else None
+    logger.debug("get_lead_by_owner_phone phone={} found={}", phone, result is not None)
+    return result
+
+
+def get_leads_for_drip_start(min_score: int) -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("leads")
+        .select("*, properties(*)")
+        .is_("drip_started_at", "null")
+        .eq("opted_out", False)
+        .not_("owner_phone", "is", "null")
+        .execute()
+    )
+    return [
+        r for r in response.data
+        if (r.get("properties") or {}).get("distress_score", 0) >= min_score
+    ]
+
+
+def get_leads_for_outbound(min_score: int = 50) -> list[dict]:
+    client = _get_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+    response = (
+        client.table("leads")
+        .select("*, properties(*)")
+        .eq("opted_out", False)
+        .eq("callable", True)
+        .eq("dnc_blocked", False)
+        .or_(f"last_called_at.lte.{cutoff},last_called_at.is.null")
+        .execute()
+    )
+    return [
+        r for r in response.data
+        if (r.get("properties") or {}).get("distress_score", 0) >= min_score
+        and (r.get("properties") or {}).get("estimated_arv") is not None
+        and (r.get("properties") or {}).get("callable_phones")
+    ]
+
+
+def get_lead_with_property(lead_id: str) -> dict | None:
+    client = _get_client()
+    response = (
+        client.table("leads")
+        .select("*, properties(*)")
+        .eq("id", lead_id)
+        .limit(1)
+        .execute()
+    )
+    result = response.data[0] if response.data else None
+    logger.debug("get_lead_with_property id={} found={}", lead_id, result is not None)
+    return result
+
+
+def update_lead_call_outcome(lead_id: str, outcome: str, call_sid: str, duration: int = 0) -> None:
+    client = _get_client()
+    current = client.table("leads").select("call_attempts").eq("id", lead_id).execute()
+    attempts = (current.data[0].get("call_attempts") or 0) + 1 if current.data else 1
+    client.table("leads").update({
+        "last_called_at": datetime.now(timezone.utc).isoformat(),
+        "call_attempts": attempts,
+        "last_call_outcome": outcome,
+    }).eq("id", lead_id).execute()
+    logger.info("update_lead_call_outcome lead_id={} outcome={} sid={}", lead_id, outcome, call_sid)
+
+
+def schedule_callback(lead_id: str, callback_at: str) -> None:
+    client = _get_client()
+    client.table("leads").update({
+        "callback_scheduled_at": callback_at,
+    }).eq("id", lead_id).execute()
+    logger.info("schedule_callback lead_id={} at={}", lead_id, callback_at)

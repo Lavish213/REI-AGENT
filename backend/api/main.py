@@ -25,7 +25,10 @@ async def lifespan(app: FastAPI):
     logger.info("REI Agent API starting up")
     logger.info("business={}", os.environ.get("BUSINESS_NAME", "unknown"))
     logger.info("agent={}", os.environ.get("AGENT_NAME", "unknown"))
+    from backend.alerts.drip import start_drip_scheduler, stop_drip_scheduler
+    start_drip_scheduler()
     yield
+    stop_drip_scheduler()
     logger.info("REI Agent API shutting down")
 
 
