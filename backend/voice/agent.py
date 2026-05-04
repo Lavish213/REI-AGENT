@@ -129,6 +129,7 @@ async def run_sophia_agent(
         api_key=os.environ["ANTHROPIC_API_KEY"],
         settings=AnthropicLLMService.Settings(
             model=os.environ.get("LLM_MODEL", "claude-sonnet-4-6"),
+            enable_prompt_caching=True,
         ),
     )
 
@@ -178,7 +179,6 @@ async def run_sophia_agent(
     task = PipelineTask(
         pipeline,
         params=PipelineParams(
-            allow_interruptions=True,
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
