@@ -18,6 +18,15 @@ from backend.api.routes import (
     analytics,
 )
 from backend.voice.webhook import router as voice_router
+from backend.voice.outbound_webhook import router as outbound_router
+
+
+def _run_outbound_campaign() -> None:
+    try:
+        from scripts.run_outbound import run_campaign
+        run_campaign()
+    except Exception as e:
+        logger.error("outbound_campaign_error error={}", str(e))
 
 
 @asynccontextmanager
@@ -26,9 +35,26 @@ async def lifespan(app: FastAPI):
     logger.info("business={}", os.environ.get("BUSINESS_NAME", "unknown"))
     logger.info("agent={}", os.environ.get("AGENT_NAME", "unknown"))
     from backend.alerts.drip import start_drip_scheduler, stop_drip_scheduler
+    from apscheduler.schedulers.background import BackgroundScheduler
+
     start_drip_scheduler()
+
+    outbound_scheduler = BackgroundScheduler(timezone="America/Los_Angeles")
+    outbound_scheduler.add_job(
+        _run_outbound_campaign,
+        "cron",
+        hour="9,13",
+        minute="0",
+        id="outbound_campaign",
+        replace_existing=True,
+    )
+    outbound_scheduler.start()
+    logger.info("outbound_scheduler started cron=9am,1pm PT")
+
     yield
+
     stop_drip_scheduler()
+    outbound_scheduler.shutdown(wait=False)
     logger.info("REI Agent API shutting down")
 
 
@@ -54,6 +80,7 @@ app.include_router(sms.router, prefix="/api", tags=["sms"])
 app.include_router(evals.router, prefix="/api", tags=["evals"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
 app.include_router(voice_router, prefix="/api", tags=["voice"])
+app.include_router(outbound_router, prefix="/api", tags=["outbound"])
 
 
 @app.websocket("/voice/stream/{call_sid}")
