@@ -22,10 +22,11 @@ from pipecat.transports.websocket.fastapi import (
 )
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.serializers.twilio import TwilioFrameSerializer
-from pipecat.processors.logger import FrameLogger
+from pipecat.adapters.schemas.function_schema import FunctionSchema
+from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pipecat.services.llm_service import FunctionCallParams
 
-from backend.voice.tools import SOPHIA_TOOLS
-from backend.voice.context import compress_context
+from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.qa.grader import grade_call
 from backend.lib.db import insert_call, update_lead_stage
 
@@ -50,6 +51,27 @@ def _load_system_prompt(property_context_str: str) -> str:
     return f"{base_prompt}\n\n---\n\nCALLER PROPERTY CONTEXT\n\n{property_context_str}"
 
 
+def _build_tools_schema() -> ToolsSchema:
+    schemas = []
+    for tool in SOPHIA_TOOLS:
+        props = tool["input_schema"]["properties"]
+        required = tool["input_schema"].get("required", [])
+        schemas.append(FunctionSchema(
+            name=tool["name"],
+            description=tool["description"],
+            properties=props,
+            required=required,
+        ))
+    return ToolsSchema(standard_tools=schemas)
+
+
+def _make_tool_handler(tool_name: str):
+    async def handler(params: FunctionCallParams) -> None:
+        result = execute_tool(tool_name, dict(params.arguments))
+        await params.result_callback(result)
+    return handler
+
+
 async def run_sophia_agent(
     websocket,
     call_sid: str,
@@ -59,11 +81,16 @@ async def run_sophia_agent(
 
     stream_sid = call_sid
     try:
-        raw = await websocket.receive_text()
-        msg = json.loads(raw)
-        if msg.get("event") == "start":
-            stream_sid = msg.get("streamSid", call_sid)
-            logger.info("stream started stream_sid={}", stream_sid)
+        for _ in range(5):
+            raw = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
+            msg = json.loads(raw)
+            if msg.get("event") == "start":
+                stream_sid = msg.get("streamSid", call_sid)
+                logger.info("stream started stream_sid={}", stream_sid)
+                break
+            logger.debug("pre-start event={}", msg.get("event"))
+    except asyncio.TimeoutError:
+        logger.warning("timed out waiting for start event using call_sid as fallback")
     except Exception as e:
         logger.warning("could not read start event error={}", str(e))
 
@@ -75,6 +102,7 @@ async def run_sophia_agent(
         websocket=websocket,
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
+            audio_in_sample_rate=16000,
             audio_out_enabled=True,
             add_wav_header=False,
             serializer=TwilioFrameSerializer(
@@ -102,8 +130,10 @@ async def run_sophia_agent(
         settings=AnthropicLLMService.Settings(
             model=os.environ.get("LLM_MODEL", "claude-sonnet-4-6"),
         ),
-        tools=SOPHIA_TOOLS,
     )
+
+    for tool in SOPHIA_TOOLS:
+        llm.register_function(tool["name"], _make_tool_handler(tool["name"]))
 
     tts = CartesiaTTSService(
         api_key=os.environ["CARTESIA_API_KEY"],
@@ -116,27 +146,24 @@ async def run_sophia_agent(
         ),
     )
 
-    owner_first = call_context.get("owner_first_name") or "there"
     messages = [
         {
             "role": "system",
             "content": system_prompt,
         },
         {
-            "role": "assistant",
-            "content": f"San Joaquin House Buyers, this is Sophia!",
+            "role": "user",
+            "content": "[call started]",
         },
     ]
 
-    context = LLMContext(messages=messages)
+    context = LLMContext(messages=messages, tools=_build_tools_schema())
     context_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
             vad_analyzer=SileroVADAnalyzer(),
         ),
     )
-
-    transcript_turns = []
 
     pipeline = Pipeline([
         transport.input(),
@@ -220,6 +247,8 @@ def _build_transcript(messages: list[dict]) -> str:
         role = msg.get("role", "")
         content = msg.get("content", "")
         if isinstance(content, str) and role in ("user", "assistant"):
+            if content == "[call started]":
+                continue
             speaker = "SELLER" if role == "user" else "SOPHIA"
             lines.append(f"{speaker}: {content}")
     return "\n".join(lines)

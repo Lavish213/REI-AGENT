@@ -53,7 +53,7 @@ def _get_comps_from_region(region_url: str, beds: int | None, baths: float | Non
 
     params = {
         "al": 1,
-        "market": "socal",
+        "market": "norcal",
         "num_beds": bed_min,
         "max_num_beds": bed_max,
         "min_sqft": sqft_min,

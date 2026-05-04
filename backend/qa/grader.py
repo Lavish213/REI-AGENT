@@ -79,7 +79,7 @@ def grade_call(transcript: str, lead_id: str, call_sid: str) -> dict:
     try:
         client = _get_client()
         response = client.messages.create(
-            model=os.environ.get("LLM_MODEL", "claude-sonnet-4-20250514"),
+            model=os.environ.get("LLM_MODEL", "claude-sonnet-4-6"),
             max_tokens=1000,
             messages=[{
                 "role": "user",

@@ -1,15 +1,33 @@
 import os
+import asyncio
 import json
 from datetime import datetime, timezone
 from loguru import logger
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import PlainTextResponse
+from fastapi.concurrency import run_in_threadpool
 
-from backend.voice.preloader import preload_call_context
 from backend.lib.db import insert_call, update_lead_stage
 
 
 router = APIRouter()
+
+
+async def _preload_and_store(app, call_sid: str, caller_phone: str) -> None:
+    try:
+        from backend.voice.preloader import preload_call_context
+        context = await run_in_threadpool(preload_call_context, caller_phone)
+        app.state.call_contexts = getattr(app.state, "call_contexts", {})
+        app.state.call_contexts[call_sid] = context
+        logger.info("preload complete call_sid={} phone={}", call_sid, caller_phone)
+    except Exception as e:
+        logger.error("preload failed call_sid={} error={}", call_sid, str(e))
+        app.state.call_contexts = getattr(app.state, "call_contexts", {})
+        app.state.call_contexts[call_sid] = {
+            "property_context_str": "No property context available. Greet warmly and ask if they are calling about selling their home.",
+            "owner_first_name": "there",
+            "lead": None,
+        }
 
 
 @router.post("/voice/inbound")
@@ -21,11 +39,6 @@ async def handle_inbound_call(request: Request) -> Response:
 
     logger.info("inbound call from={} sid={} status={}", caller_phone, call_sid, call_status)
 
-    context = preload_call_context(caller_phone)
-
-    request.app.state.call_contexts = getattr(request.app.state, "call_contexts", {})
-    request.app.state.call_contexts[call_sid] = context
-
     ws_url = os.environ.get("RAILWAY_STATIC_URL") or os.environ.get("PUBLIC_URL", "")
     ws_url = ws_url.replace("https://", "wss://").replace("http://", "ws://")
 
@@ -35,6 +48,8 @@ async def handle_inbound_call(request: Request) -> Response:
         <Stream url="{ws_url}/voice/stream/{call_sid}" />
     </Connect>
 </Response>"""
+
+    asyncio.create_task(_preload_and_store(request.app, call_sid, caller_phone))
 
     logger.info("returning LaML for call sid={}", call_sid)
     return PlainTextResponse(content=laml, media_type="text/xml")
@@ -51,19 +66,7 @@ async def handle_call_status(request: Request) -> Response:
 
     if call_status in ("completed", "failed", "busy", "no-answer"):
         contexts = getattr(request.app.state, "call_contexts", {})
-        ctx = contexts.pop(call_sid, None)
-
-        if ctx and ctx.get("lead"):
-            lead = ctx["lead"]
-            call_data = {
-                "lead_id": lead["id"],
-                "signalwire_call_id": call_sid,
-                "direction": "inbound",
-                "duration_seconds": int(duration),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-            insert_call(call_data)
-            logger.info("call record inserted lead_id={} duration={}s", lead["id"], duration)
+        contexts.pop(call_sid, None)
 
     return PlainTextResponse(content="ok")
 

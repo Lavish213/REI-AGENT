@@ -35,7 +35,7 @@ def compress_context(messages: list[dict], current_state: str) -> list[dict]:
     try:
         client = _get_client()
         response = client.messages.create(
-            model=os.environ.get("LLM_MODEL", "claude-sonnet-4-20250514"),
+            model=os.environ.get("LLM_MODEL", "claude-sonnet-4-6"),
             max_tokens=300,
             messages=[{
                 "role": "user",
