@@ -135,6 +135,7 @@ AGENT_NAME
 AGENT_PHONE
 OWNER_PHONE
 ALERT_PHONE
+BATCHDATA_API_KEY
 
 ## WHAT NOT TO DO
 - Do not use n8n or any visual workflow tools
