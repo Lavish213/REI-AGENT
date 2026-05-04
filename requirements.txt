@@ -8,6 +8,8 @@ pipecat-ai[cartesia,deepgram,silero,anthropic]
 loguru
 python-dotenv
 httpx
+beautifulsoup4
+pdfplumber
 schedule
 pandas
 Pillow
