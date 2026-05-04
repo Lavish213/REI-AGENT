@@ -1,6 +1,7 @@
 import csv
 import os
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -10,7 +11,7 @@ load_dotenv(override=False)
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from backend.scout.scorer import calculate_distress_score, SCORE_CREATE_LEAD
+from backend.scout.scorer import calculate_distress_score, SCORE_CREATE_LEAD, SCORE_HIGH_PRIORITY, SCORE_DRIP_ONLY
 from backend.lib.db import upsert_property, insert_lead, get_lead_by_property
 
 CSV_PATH = Path(__file__).parent / "data" / "propwire_export.csv"
@@ -135,8 +136,7 @@ def main() -> None:
     with open(CSV_PATH, newline="", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
 
-    total = len(rows)
-    print(f"Loaded {total} rows from {CSV_PATH.name}")
+    print(f"Loaded {len(rows)} rows from {CSV_PATH.name}")
 
     parsed = []
     for row in rows:
@@ -147,8 +147,36 @@ def main() -> None:
         prop["distress_score"] = calculate_distress_score(prop)
         parsed.append(prop)
 
-    print(f"Parsed {len(parsed)} valid properties")
+    print(f"Parsed {len(parsed)} rows with APNs")
 
+    disqualified = [p for p in parsed if not p.get("deal_viable")]
+    viable = [p for p in parsed if p.get("deal_viable")]
+
+    print(f"\n--- DISQUALIFIED: {len(disqualified)} ---")
+    reason_counts: dict[str, int] = defaultdict(int)
+    for p in disqualified:
+        raw = p.get("disqualified_reason") or "unknown"
+        bucket = raw.split(":")[0]
+        reason_counts[bucket] += 1
+    for reason, count in sorted(reason_counts.items(), key=lambda x: -x[1]):
+        print(f"  {reason}: {count}")
+
+    print(f"\n--- SCORE DISTRIBUTION ({len(viable)} viable) ---")
+    high = [p for p in viable if p["distress_score"] >= SCORE_HIGH_PRIORITY]
+    mid = [p for p in viable if SCORE_CREATE_LEAD <= p["distress_score"] < SCORE_HIGH_PRIORITY]
+    drip = [p for p in viable if SCORE_DRIP_ONLY <= p["distress_score"] < SCORE_CREATE_LEAD]
+    skip = [p for p in viable if p["distress_score"] < SCORE_DRIP_ONLY]
+    print(f"  {SCORE_HIGH_PRIORITY}+  high priority: {len(high)}")
+    print(f"  {SCORE_CREATE_LEAD}-{SCORE_HIGH_PRIORITY - 1}  create lead:   {len(mid)}")
+    print(f"  {SCORE_DRIP_ONLY}-{SCORE_CREATE_LEAD - 1}  drip only:     {len(drip)}")
+    print(f"  <{SCORE_DRIP_ONLY}  skip:           {len(skip)}")
+
+    print(f"\n--- TOP 10 ---")
+    for p in sorted(viable, key=lambda x: x["distress_score"], reverse=True)[:10]:
+        arv_str = f"ARV=${p.get('estimated_arv', 0) // 100:,}" if p.get("estimated_arv") else "ARV=?"
+        print(f"  [{p['distress_score']}] {p['address']}, {p['city']} | {p['distress_type']} | {arv_str}")
+
+    print(f"\n--- UPSERTING {len(parsed)} properties ---")
     upserted = 0
     errors = 0
     for prop in parsed:
@@ -161,16 +189,16 @@ def main() -> None:
             logger.error("upsert failed apn={} error={}", prop.get("apn"), str(e))
             errors += 1
 
-    print(f"Upserted {upserted} properties ({errors} errors)")
+    print(f"Upserted {upserted} ({errors} errors)")
 
-    high_score = [p for p in parsed if p["distress_score"] > LEAD_SCORE_THRESHOLD]
-    print(f"\nHigh-score properties (score > {LEAD_SCORE_THRESHOLD}): {len(high_score)}")
+    lead_eligible = [p for p in viable if p["distress_score"] >= LEAD_SCORE_THRESHOLD]
+    print(f"\n--- LEADS (score >= {LEAD_SCORE_THRESHOLD}, viable only): {len(lead_eligible)} eligible ---")
 
     from backend.lib.db import _get_client as _db
 
     leads_created = 0
     leads_skipped = 0
-    for prop in high_score:
+    for prop in lead_eligible:
         try:
             db_row = _db().table("properties").select("id").eq("apn", prop["apn"]).limit(1).execute()
             if not db_row.data:
@@ -183,7 +211,7 @@ def main() -> None:
                 continue
             insert_lead(property_id)
             leads_created += 1
-            print(f"  lead created: {prop['address']}, {prop['city']} (score={prop['distress_score']})")
+            print(f"  lead: {prop['address']}, {prop['city']} (score={prop['distress_score']})")
         except Exception as e:
             logger.error("lead creation failed apn={} error={}", prop.get("apn"), str(e))
 

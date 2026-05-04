@@ -7,214 +7,252 @@ SCORE_HIGH_PRIORITY = 85
 SCORE_CREATE_LEAD = 50
 SCORE_DRIP_ONLY = 35
 
-_DISTRESS_BASE = {
-    "nts_filed": 65,
-    "pre_foreclosure": 55,
-    "notice_of_default": 55,
-    "tax_delinquent": 45,
-    "active_lien": 30,
-    "code_violation": 25,
-    "vacant": 45,
-    "absentee_owner": 25,
-    "out_of_state_owner": 30,
-    "free_and_clear": 20,
-    "failed_listing": 15,
-    "unknown": 0,
+_DISQUALIFY_TYPES = {
+    "land", "lot", "vacant land", "acreage", "agricultural",
+    "farm", "ranch", "commercial", "industrial", "mobile",
+    "manufactured", "timeshare",
 }
+_DISQUALIFY_ADDRESS_TOKENS = {" lot ", " lots ", " acreage ", " land ", " parcel "}
 
 
-def _score_distress_type(distress_type: str) -> int:
-    return _DISTRESS_BASE.get(distress_type, 0)
+def _years_owned(prop: dict) -> float | None:
+    y = prop.get("years_owned")
+    if y is not None:
+        return float(y)
+    m = prop.get("ownership_months")
+    if m is not None:
+        return float(m) / 12.0
+    return None
 
 
-def _score_hold_time(prop: dict) -> int:
-    years = prop.get("years_owned")
-    if years is None:
-        months = prop.get("ownership_months")
-        if months is not None:
-            years = months / 12.0
-    if years is None:
-        return 0
-    if years >= 20:
-        return 20
-    if years >= 15:
-        return 16
-    if years >= 10:
-        return 12
-    if years >= 7:
-        return 8
-    if years >= 5:
-        return 5
-    if years >= 2:
-        return 2
-    return 0
+def _check_disqualifiers(prop: dict) -> str | None:
+    pt = (prop.get("property_type") or prop.get("land_use") or "").lower()
+    if any(bad in pt for bad in _DISQUALIFY_TYPES):
+        return f"property_type:{pt}"
+
+    addr = (" " + (prop.get("address") or "").lower() + " ")
+    if any(tok in addr for tok in _DISQUALIFY_ADDRESS_TOKENS):
+        return f"address_token:{addr.strip()}"
+
+    beds = prop.get("beds")
+    if not beds or beds == 0:
+        return "no_beds"
+
+    sqft = prop.get("sqft")
+    if not sqft or sqft < 400:
+        return "sqft_too_small"
+
+    ev = prop.get("estimated_value")
+    if ev is not None:
+        ev_dollars = ev / 100
+        if ev_dollars < 50000:
+            return f"value_too_low:{int(ev_dollars)}"
+        if ev_dollars > 225000:
+            return f"value_too_high:{int(ev_dollars)}"
+
+    years = _years_owned(prop)
+    if years is not None and years < 0.5:
+        return "owned_under_6_months"
+
+    return None
 
 
-def _score_equity(prop: dict) -> int:
-    if prop.get("free_and_clear"):
-        return 25
-    equity_pct = prop.get("equity_pct")
-    if equity_pct is None:
-        return 0
-    if equity_pct >= 70:
-        return 20
-    if equity_pct >= 50:
-        return 15
-    if equity_pct >= 30:
-        return 10
-    if equity_pct >= 10:
-        return 3
-    return 0
-
-
-def _score_auction_proximity(auction_date_str: str | None) -> int:
-    if not auction_date_str:
-        return 0
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%Y/%m/%d"):
-        try:
-            auction_date = datetime.strptime(auction_date_str, fmt).replace(tzinfo=timezone.utc)
-            break
-        except ValueError:
-            continue
-    else:
-        return 0
-    days_away = (auction_date - datetime.now(timezone.utc)).days
-    if days_away < 0:
-        return 0
-    if days_away <= 14:
-        return 35
-    if days_away <= 30:
-        return 28
-    if days_away <= 60:
-        return 20
-    if days_away <= 90:
-        return 12
-    return 6
-
-
-def _score_tax_delinquency(prop: dict) -> int:
-    score = 0
+def _tax_delinquent_years(prop: dict) -> int:
     tax_year = prop.get("tax_year")
-    if tax_year is not None:
-        try:
-            years_delinquent = datetime.now(timezone.utc).year - int(tax_year)
-            if years_delinquent >= 3:
-                score += 25
-            elif years_delinquent == 2:
-                score += 18
-            elif years_delinquent == 1:
-                score += 10
-        except (ValueError, TypeError):
-            pass
-
-    amount = prop.get("tax_delinquent_amount")
-    if amount:
-        dollars = amount / 100
-        if dollars >= 20000:
-            score += 10
-        elif dollars >= 10000:
-            score += 7
-        elif dollars >= 5000:
-            score += 4
-        elif dollars >= 1000:
-            score += 2
-
-    return score
+    if tax_year is None:
+        return 0
+    try:
+        return max(0, datetime.now(timezone.utc).year - int(tax_year))
+    except (ValueError, TypeError):
+        return 0
 
 
-def _score_stack_bonuses(prop: dict) -> int:
-    bonus = 0
+def _motivation_score(prop: dict) -> int:
+    score = 0
     distress = prop.get("distress_type", "unknown")
-    vacant = prop.get("vacant", False)
-    absentee = distress == "absentee_owner" or prop.get("absentee_owner", False)
-    free_clear = prop.get("free_and_clear", False) or distress == "free_and_clear"
-    pre_fc = distress in ("pre_foreclosure", "notice_of_default")
-    tax_del = distress == "tax_delinquent" or (prop.get("tax_delinquent_amount") or 0) > 0
+    vacant = bool(prop.get("vacant"))
+    absentee = bool(prop.get("absentee_owner")) or distress == "absentee_owner"
+    free_clear = bool(prop.get("free_and_clear")) or distress == "free_and_clear"
+    pre_fc = bool(prop.get("pre_foreclosure")) or distress in ("pre_foreclosure", "notice_of_default")
+    nts = bool(prop.get("nts_date")) or distress == "nts_filed"
+    nod = bool(prop.get("nod_date"))
+    tax_del_years = _tax_delinquent_years(prop)
+    tax_del = tax_del_years > 0 or distress == "tax_delinquent" or (prop.get("tax_delinquent_amount") or 0) > 0
+    lien = (prop.get("lien_amount") or 0) / 100
+    code_viol = distress == "code_violation"
+    mail_state = (prop.get("owner_mailing_state") or "").upper()
     equity_pct = prop.get("equity_pct") or 0
 
+    if nts:
+        score += 65
+    if pre_fc:
+        score += 55
+    if nod and not pre_fc:
+        score += 55
+    if tax_del_years >= 3:
+        score += 45
+    elif tax_del_years in (1, 2):
+        score += 30
+    if lien > 5000:
+        score += 25
+    if code_viol:
+        score += 18
+
+    if vacant:
+        score += 42
+
+    if mail_state and mail_state != "CA":
+        score += 30
+    if absentee:
+        score += 22
+    if free_clear:
+        score += 15
+
+    years = _years_owned(prop)
+    if years is not None:
+        if years >= 20:
+            score += 20
+        elif years >= 15:
+            score += 16
+        elif years >= 10:
+            score += 12
+        elif years >= 7:
+            score += 8
+        elif years >= 5:
+            score += 5
+        elif years >= 2:
+            score += 2
+
     if vacant and absentee:
-        bonus += 20
-    if vacant and free_clear:
-        bonus += 18
+        score += 22
     if vacant and pre_fc:
-        bonus += 25
+        score += 28
+    if vacant and free_clear:
+        score += 18
     if absentee and tax_del:
-        bonus += 18
-    if absentee and free_clear:
-        bonus += 10
+        score += 20
     if pre_fc and equity_pct >= 50:
-        bonus += 22
+        score += 22
     if tax_del and free_clear:
-        bonus += 20
-    if prop.get("nod_date") and equity_pct >= 50:
-        bonus += 15
+        score += 20
 
     signals = sum([
-        distress not in ("unknown", ""),
-        (prop.get("tax_delinquent_amount") or 0) > 0,
-        bool(prop.get("nod_date")),
+        nts or pre_fc or nod,
+        tax_del,
         bool(prop.get("auction_date")),
-        (prop.get("lien_amount") or 0) > 0,
+        lien > 0,
         vacant,
+        absentee,
     ])
     if signals >= 4:
-        bonus += 25
+        score += 25
     elif signals == 3:
-        bonus += 15
+        score += 15
 
-    return bonus
+    return min(score, 100)
 
 
-def _score_property_type(prop: dict) -> int:
-    pt = (prop.get("property_type") or prop.get("land_use") or "").lower()
-    if "vacant land" in pt or "land" in pt:
-        return 10
-    if "multi" in pt or "duplex" in pt or "triplex" in pt or "fourplex" in pt:
-        return 8
-    if "single" in pt or "sfr" in pt or "residence" in pt:
-        return 5
-    if "condo" in pt or "townhouse" in pt:
-        return 3
+def _compute_arv(prop: dict) -> int:
+    zestimate = prop.get("zestimate")
+    if zestimate and zestimate > 0:
+        return int(zestimate)
+    assessed = prop.get("assessed_total_value")
+    if assessed and assessed > 0:
+        return int(assessed / 0.80)
+    ev = prop.get("estimated_value")
+    if ev and ev > 0:
+        return int(ev)
     return 0
 
 
-def _score_penalties(prop: dict) -> int:
-    penalty = 0
-    years = prop.get("years_owned")
-    if years is None:
-        months = prop.get("ownership_months")
-        if months is not None:
-            years = months / 12.0
-    if years is not None and years < 2:
-        penalty += 15
+def _deal_score(prop: dict, arv: int) -> int:
+    score = 0
+    equity_pct = prop.get("equity_pct") or 0
+    free_clear = bool(prop.get("free_and_clear")) or prop.get("distress_type") == "free_and_clear"
 
-    owner = (prop.get("owner_name") or "").upper()
-    owner_type = (prop.get("owner_type") or "").upper()
-    corporate_signals = ("LLC", "INC", "CORP", "TRUST", "LP ", "LLP", "FUND", "HOLDINGS", "PROPERTIES LLC")
-    if any(s in owner for s in corporate_signals) or any(s in owner_type for s in ("LLC", "CORP", "INC", "TRUST")):
-        penalty += 5
+    if free_clear:
+        score += 40
+    elif equity_pct >= 70:
+        score += 32
+    elif equity_pct >= 50:
+        score += 22
+    elif equity_pct >= 30:
+        score += 14
+    elif equity_pct >= 10:
+        score += 5
 
-    return penalty
+    if arv > 0:
+        arv_dollars = arv / 100
+        if 150000 <= arv_dollars <= 200000:
+            score += 25
+        elif 120000 <= arv_dollars < 150000:
+            score += 18
+        elif 200000 < arv_dollars <= 225000:
+            score += 18
+        elif 80000 <= arv_dollars < 120000:
+            score += 10
+        elif 50000 <= arv_dollars < 80000:
+            score += 5
+
+    pt = (prop.get("property_type") or prop.get("land_use") or "").lower()
+    if "single" in pt or "sfr" in pt or "residence" in pt:
+        score += 12
+    elif "duplex" in pt or "triplex" in pt:
+        score += 10
+    elif "fourplex" in pt or "4-plex" in pt or "4plex" in pt or "quadplex" in pt:
+        score += 8
+    elif "condo" in pt or "townhouse" in pt:
+        score += 4
+
+    year_built = prop.get("year_built")
+    if year_built:
+        if year_built < 1960:
+            score += 10
+        elif year_built < 1980:
+            score += 7
+        elif year_built < 2000:
+            score += 4
+        else:
+            score += 1
+
+    return min(score, 100)
 
 
 def calculate_distress_score(prop: dict) -> int:
-    score = 0
-    score += _score_distress_type(prop.get("distress_type", "unknown"))
-    score += _score_hold_time(prop)
-    score += _score_equity(prop)
-    score += _score_auction_proximity(prop.get("auction_date"))
-    score += _score_tax_delinquency(prop)
-    score += _score_stack_bonuses(prop)
-    score += _score_property_type(prop)
-    score -= _score_penalties(prop)
-    final_score = max(0, min(score, 100))
+    reason = _check_disqualifiers(prop)
+    if reason:
+        prop["deal_viable"] = False
+        prop["disqualified_reason"] = reason
+        prop["motivation_score"] = 0
+        prop["deal_score"] = 0
+        prop["estimated_arv"] = 0
+        prop["mao"] = 0
+        logger.debug("disqualified apn={} reason={}", prop.get("apn"), reason)
+        return 0
+
+    prop["deal_viable"] = True
+    prop["disqualified_reason"] = None
+
+    motivation = _motivation_score(prop)
+    arv = _compute_arv(prop)
+    deal = _deal_score(prop, arv)
+    mao = max(0, int(arv * 0.70) - 2500000)
+
+    prop["motivation_score"] = motivation
+    prop["deal_score"] = deal
+    prop["estimated_arv"] = arv
+    prop["mao"] = mao
+
+    final = min(int(motivation * 0.65 + deal * 0.35), 100)
     logger.debug(
-        "calculate_distress_score apn={} type={} score={}",
+        "calculate_distress_score apn={} type={} motivation={} deal={} score={}",
         prop.get("apn"),
         prop.get("distress_type"),
-        final_score,
+        motivation,
+        deal,
+        final,
     )
-    return final_score
+    return final
 
 
 def score_properties(properties: list[dict]) -> list[dict]:
