@@ -39,6 +39,8 @@ from backend.voice.processors.interruption import InterruptionAckProcessor
 from backend.voice.processors.emotion import EmotionDetectorProcessor
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
 from backend.voice.processors.room_tone import RoomToneProcessor
+from backend.voice.processors.response_cache import ResponseCacheProcessor, pregenerate_response_cache
+from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor
 
 
 SPANISH_MARKERS = [
@@ -201,7 +203,7 @@ async def run_sophia_agent(
     )
 
     stt_language = "es" if spanish_detected else "en-US"
-    stt_model = "nova-2" if not spanish_detected else "nova-2-general"
+    stt_model = "nova-3" if not spanish_detected else "nova-3-general"
 
     stt = DeepgramSTTService(
         api_key=os.environ["DEEPGRAM_API_KEY"],
@@ -210,18 +212,21 @@ async def run_sophia_agent(
             language=stt_language,
             punctuate=True,
             interim_results=False,
-            endpointing=300,
+            endpointing=200,
+            utterance_end_ms=800,
         ),
     )
 
+    voice_model = os.environ.get("VOICE_LLM_MODEL", "claude-haiku-4-5-20251001")
     llm = AnthropicLLMService(
         api_key=os.environ["ANTHROPIC_API_KEY"],
         settings=AnthropicLLMService.Settings(
-            model=os.environ.get("LLM_MODEL", "claude-sonnet-4-6"),
+            model=voice_model,
             enable_prompt_caching=True,
             max_tokens=80,
         ),
     )
+    logger.info("voice llm model={}", voice_model)
 
     for tool in SOPHIA_TOOLS:
         llm.register_function(tool["name"], _make_tool_handler(tool["name"]))
@@ -234,9 +239,10 @@ async def run_sophia_agent(
     cartesia_api_key = os.environ.get("CARTESIA_API_KEY", "")
     cartesia_voice_id = os.environ.get("CARTESIA_VOICE_ID", "")
 
-    backchannel_clips, filler_clips = await asyncio.gather(
+    backchannel_clips, filler_clips, response_cache_clips = await asyncio.gather(
         pregenerate_backchannel_clips(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
         pregenerate_filler_clips(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
+        pregenerate_response_cache(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
     )
 
     transport_output = transport.output()
@@ -251,6 +257,12 @@ async def run_sophia_agent(
 
     emotion_proc = EmotionDetectorProcessor(on_emotion)
     context_tracker = ContextTrackerProcessor(call_ctx)
+
+    response_cache_proc = ResponseCacheProcessor(transport_output, response_cache_clips, clip_sample_rate)
+
+    latency_tracker = LatencyTracker()
+    latency_proc_stt = LatencyTrackerProcessor(latency_tracker)
+    latency_proc_tts = LatencyTrackerProcessor(latency_tracker)
 
     room_tone_proc = RoomToneProcessor()
 
@@ -283,6 +295,7 @@ async def run_sophia_agent(
     pipeline = Pipeline([
         transport.input(),
         stt,
+        latency_proc_stt,
         emotion_proc,
         context_tracker,
         backchannel_proc,
@@ -290,7 +303,9 @@ async def run_sophia_agent(
         interruption_proc,
         context_aggregator.user(),
         llm,
+        response_cache_proc,
         tts,
+        latency_proc_tts,
         room_tone_proc,
         transport_output,
         context_aggregator.assistant(),
