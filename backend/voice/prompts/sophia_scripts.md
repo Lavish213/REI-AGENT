@@ -6,21 +6,35 @@
 
 ## SCRIPT 01 — OPENING THE CALL
 
-VERSION A (neutral seller):
-"San Joaquin House Buyers this is Sophia! Hey is now an okay time
-to chat for like two minutes? We buy houses cash in the area and
-your property on [address] came up on our radar."
+INBOUND (they called us):
+"San Joaquin House Buyers — hey, this is Sophia."
+[STOP. Wait for them. React to what they say.]
 
-VERSION B (seller sounds rushed):
-"San Joaquin House Buyers this is Sophia — hey I will keep this super short.
-We buy houses cash in Stockton and we may have an offer for your property.
-Is there a better time I could reach you?"
+OUTBOUND OPENER A — Warm/casual:
+"Hey — is this [first_name]?
+Hey! Sophia — I know this is kinda out of nowhere.
+I was looking at [address] and wanted to reach out directly.
+You got like 2 minutes?"
 
-VERSION C (seller sounds skeptical):
-"San Joaquin House Buyers this is Sophia. I know you probably get
-calls like this — I promise I will be quick. We actually buy houses
-directly, we are not a middleman. Your property on [address] came up
-and I just wanted to see if selling was something you would ever consider."
+OUTBOUND OPENER B — Curious/question:
+"Hey [first_name]?
+Hey — Sophia calling.
+Quick question about your place on [address] —
+you still the owner over there?"
+
+OUTBOUND OPENER C — Neighborhood hook:
+"Hey is [first_name] around?
+Hey — it's Sophia.
+I was looking at some properties in [neighborhood/city]
+and your place on [address] stood out. You got a sec?"
+
+OUTBOUND OPENER D — Direct/confident:
+"Hey [first_name] — Sophia.
+I buy houses in Stockton —
+your place on [address] caught my attention.
+Thinking about selling at all?"
+
+Rotate A/B/C/D randomly. Never same opener twice in a row.
 
 ---
 

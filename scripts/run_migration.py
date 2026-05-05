@@ -18,14 +18,25 @@ if not DB_PASSWORD:
 ref = SUPABASE_URL.replace("https://", "").split(".")[0]
 conn_str = f"postgresql://postgres:{DB_PASSWORD}@db.{ref}.supabase.co:5432/postgres?sslmode=require"
 
-migration = Path(__file__).parent.parent / "supabase" / "migrations" / "20260504_add_missing_properties_columns.sql"
-sql = migration.read_text()
+migrations_dir = Path(__file__).parent.parent / "supabase" / "migrations"
+files = sorted(migrations_dir.glob("*.sql"))
+
+if not files:
+    print("No migration files found.")
+    sys.exit(0)
 
 conn = psycopg2.connect(conn_str)
 conn.autocommit = True
 cur = conn.cursor()
-cur.execute(sql)
+
+for f in files:
+    sql = f.read_text()
+    try:
+        cur.execute(sql)
+        print(f"OK  {f.name}")
+    except Exception as e:
+        print(f"ERR {f.name}: {e}")
+
 cur.close()
 conn.close()
-
-print("Migration applied.")
+print("\nAll migrations processed.")

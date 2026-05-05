@@ -9,6 +9,7 @@ from loguru import logger
 
 from backend.lib.db import get_lead_with_property, update_lead_call_outcome, insert_call
 from backend.voice.outbound import build_voicemail_laml, build_outbound_answer_laml, _get_first_name
+from backend.lib.osm import geocode_address, get_nearby_landmarks
 
 router = APIRouter()
 
@@ -83,6 +84,26 @@ async def handle_outbound_status(request: Request, lead_id: str) -> Response:
     return PlainTextResponse(content="ok")
 
 
+async def _get_landmark_for_property(prop: dict) -> str | None:
+    try:
+        address = prop.get("address", "")
+        city = prop.get("city", "Stockton")
+        if not address:
+            return None
+        geo = await asyncio.to_thread(geocode_address, address, city, "CA")
+        if not geo:
+            return city or None
+        landmarks = await asyncio.to_thread(
+            get_nearby_landmarks, geo["lat"], geo["lng"], 1000
+        )
+        if landmarks:
+            return landmarks[0]["name"]
+        return geo.get("neighborhood") or city or None
+    except Exception as e:
+        logger.warning("landmark_lookup_failed error={}", str(e))
+        return None
+
+
 @router.websocket("/voice/outbound-stream/{lead_id}")
 async def outbound_voice_stream(websocket: WebSocket, lead_id: str):
     await websocket.accept()
@@ -93,13 +114,15 @@ async def outbound_voice_stream(websocket: WebSocket, lead_id: str):
     first_name = _get_first_name(lead, prop) if lead else "there"
     address = prop.get("address", "your property") if prop else "your property"
 
+    landmark = await _get_landmark_for_property(prop) if prop else None
+
     outbound_context = {
         "boss_mode": False,
         "is_outbound": True,
         "lead": lead,
         "lead_id": lead_id,
         "owner_first_name": first_name,
-        "property_context_str": _build_outbound_context(lead, prop, first_name, address),
+        "property_context_str": _build_outbound_context(lead, prop, first_name, address, landmark),
         "spanish_detected": False,
     }
 
@@ -117,7 +140,13 @@ async def outbound_voice_stream(websocket: WebSocket, lead_id: str):
             pass
 
 
-def _build_outbound_context(lead: dict | None, prop: dict | None, first_name: str, address: str) -> str:
+def _build_outbound_context(
+    lead: dict | None,
+    prop: dict | None,
+    first_name: str,
+    address: str,
+    landmark: str | None = None,
+) -> str:
     if not lead or not prop:
         return (
             f"OUTBOUND CALL CONTEXT\n"
@@ -131,23 +160,42 @@ def _build_outbound_context(lead: dict | None, prop: dict | None, first_name: st
     mao = prop.get("mao")
     arv_str = f"${arv / 100:,.0f}" if arv else "unknown"
     mao_str = f"${mao / 100:,.0f}" if mao else "unknown"
+    city = prop.get("city", "Stockton")
+
+    if landmark:
+        neighborhood_line = (
+            f"Nearby landmark for opener: {landmark}\n"
+            f'Use naturally: "I was looking at your place on {address} — '
+            f"that whole area near {landmark} has been moving really fast lately.\"\n"
+            f'Or: "That whole {city} area near {landmark} has been really active lately."'
+        )
+    else:
+        neighborhood_line = (
+            f'Use city hook: "That whole {city} area has been really active lately."'
+        )
 
     return f"""OUTBOUND CALL CONTEXT
 =====================
-YOU CALLED THEM. You initiated this call. Start with:
-"Hey {first_name}! This is Sophia calling from San Joaquin House Buyers.
-I'm reaching out about your property at {address} — do you have just a couple minutes to chat?"
-
-If Spanish speaker detected switch immediately:
-"Oye {first_name}! Habla Sophia de San Joaquin House Buyers.
-Te llamo sobre tu propiedad en {address}. ¿Tienes unos minutos?"
+YOU CALLED THEM. You initiated this call.
+Use one of the 4 openers from your system prompt (A, B, C, or D). Rotate randomly.
 
 Owner: {first_name}
-Address: {address} {prop.get("city", "")}
+Address: {address} {city}
 Distress Type: {distress}
 Score: {score}/100
 ARV: {arv_str}
 MAO: {mao_str}
+
+NEIGHBORHOOD HOOK
+=================
+{neighborhood_line}
+
+OPENER GUIDANCE
+===============
+After opener: drop address then STOP. Let silence work. Do not fill it.
+If Spanish speaker detected switch immediately:
+"Oye {first_name}! Habla Sophia de San Joaquin House Buyers.
+Te llamo sobre tu propiedad en {address}. ¿Tienes unos minutos?"
 
 OUTBOUND CALL GUIDANCE
 ======================

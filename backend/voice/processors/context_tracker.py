@@ -8,25 +8,34 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 @dataclass
 class CallContext:
     seller_name: str | None = None
+    opener_used: str | None = None
+    last_opener_used: str | None = None
+    current_phase: str = "PERMISSION"
     property_issues: list[str] = field(default_factory=list)
     motivation_signals: list[str] = field(default_factory=list)
     last_price_mentioned: int | None = None
     timeline_mentioned: str | None = None
     objections_raised: list[str] = field(default_factory=list)
+    objections_handled: list[str] = field(default_factory=list)
     rapport_moments: list[str] = field(default_factory=list)
     current_emotion: str | None = None
+    last_acknowledgment_used: str | None = None
+    callback_time_mentioned: str | None = None
+    talk_time_sophia: float = 0.0
+    talk_time_caller: float = 0.0
 
     def build_context_prefix(self) -> str:
         parts = []
         if self.seller_name:
             parts.append(f"seller name: {self.seller_name}")
+        parts.append(f"phase: {self.current_phase}")
         if self.property_issues:
-            parts.append(f"property issues mentioned: {', '.join(self.property_issues[-3:])}")
+            parts.append(f"property issues: {', '.join(self.property_issues[-3:])}")
         if self.motivation_signals:
-            parts.append(f"motivation signals: {', '.join(self.motivation_signals[-3:])}")
+            parts.append(f"motivation: {', '.join(self.motivation_signals[-3:])}")
         if self.last_price_mentioned is not None:
             dollar = self.last_price_mentioned // 100
-            parts.append(f"last price discussed: ${dollar:,}")
+            parts.append(f"last price: ${dollar:,}")
         if self.timeline_mentioned:
             parts.append(f"timeline: {self.timeline_mentioned}")
         if self.objections_raised:
@@ -94,6 +103,16 @@ class ContextTrackerProcessor(FrameProcessor):
 
         if isinstance(frame, TranscriptionFrame) and frame.text:
             self._analyze(frame.text)
+            prefix = self._ctx.build_context_prefix()
+            if prefix:
+                try:
+                    frame = TranscriptionFrame(
+                        text=f"{prefix}\n\n{frame.text}",
+                        user_id=frame.user_id,
+                        timestamp=frame.timestamp,
+                    )
+                except Exception:
+                    pass
 
         await self.push_frame(frame, direction)
 

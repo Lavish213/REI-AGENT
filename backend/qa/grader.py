@@ -20,8 +20,8 @@ def _get_client() -> Anthropic:
 
 GRADING_PROMPT = """
 You are a quality assessor for Sophia Reyes, a 25 year old AI voice agent
-for San Joaquin House Buyers. Sophia handles inbound calls from distressed
-property owners and her goal is to qualify sellers and book walkthroughs.
+for San Joaquin House Buyers. Sophia handles inbound and outbound calls from
+distressed property owners. Her goal is to qualify sellers and book walkthroughs.
 
 Grade this call transcript on exactly these 6 metrics from 0 to 10:
 
@@ -53,15 +53,32 @@ Grade this call transcript on exactly these 6 metrics from 0 to 10:
    Did the call achieve its purpose?
    Either: appointment booked, offer discussed, or clear next step set.
 
+Also determine these boolean and numeric fields:
+
+opener_completed: true if caller stayed past ~15 seconds and opener finished
+reached_discovery: true if Sophia asked open-ended questions about situation
+reached_qualification: true if Sophia asked about mortgage, price expectation, or timeline
+reached_pitch: true if Sophia gave a verbal offer or pitch
+appointment_offered: true if Sophia explicitly asked for a walkthrough
+appointment_booked: true if seller agreed to a walkthrough time
+objections_count: integer count of distinct objections raised by seller
+objections_handled_count: integer count of objections Sophia addressed well
+talk_ratio_sophia: float 0.0-1.0 estimating fraction of words spoken by Sophia (0.35-0.45 is ideal)
+phase_reached: string — furthest phase reached: PERMISSION, CURIOSITY_HOOK, DISCOVERY, QUALIFY, PITCH, or CLOSE
+sentiment_arc: string describing how caller emotion changed across call, e.g. "skeptical→interested→warm" or "warm→frustrated" or "neutral throughout"
+
 Also identify:
-- FAILURES: List specific moments the call failed (be very specific)
-- PROMPT_SUGGESTIONS: Specific changes to Sophia's prompt that would fix failures
-- CALL_SUMMARY: One sentence summary of what happened
-- OVERALL_SCORE: Exact average of all 6 metrics rounded to 1 decimal
+failures: list of specific moments the call failed (be very specific)
+prompt_suggestions: list of specific changes to Sophia's prompt that would fix failures
+call_summary: one sentence summary of what happened
+overall_score: exact average of all 6 metrics rounded to 1 decimal
 
 Return ONLY a valid JSON object with these exact keys:
 qualification, offer_quality, objection_handling, appointment_booking,
-tone, goal_completion, failures, prompt_suggestions, call_summary, overall_score
+tone, goal_completion, opener_completed, reached_discovery, reached_qualification,
+reached_pitch, appointment_offered, appointment_booked, objections_count,
+objections_handled_count, talk_ratio_sophia, phase_reached, sentiment_arc,
+failures, prompt_suggestions, call_summary, overall_score
 
 No preamble. No explanation. Only the JSON object.
 
@@ -107,6 +124,17 @@ def grade_call(transcript: str, lead_id: str, call_sid: str) -> dict:
             "failures": scores.get("failures", []),
             "prompt_suggestions": scores.get("prompt_suggestions", []),
             "summary": scores.get("call_summary", ""),
+            "opener_completed": scores.get("opener_completed"),
+            "reached_discovery": scores.get("reached_discovery"),
+            "reached_qualification": scores.get("reached_qualification"),
+            "reached_pitch": scores.get("reached_pitch"),
+            "appointment_offered": scores.get("appointment_offered"),
+            "appointment_booked": scores.get("appointment_booked"),
+            "objections_count": scores.get("objections_count"),
+            "objections_handled": scores.get("objections_handled_count"),
+            "talk_ratio_sophia": scores.get("talk_ratio_sophia"),
+            "phase_reached": scores.get("phase_reached"),
+            "sentiment_arc": scores.get("sentiment_arc"),
         }
 
         from backend.lib.db import _get_client as get_db

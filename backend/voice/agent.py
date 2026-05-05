@@ -252,12 +252,6 @@ async def run_sophia_agent(
     emotion_proc = EmotionDetectorProcessor(on_emotion)
     context_tracker = ContextTrackerProcessor(call_ctx)
 
-    def _inject_context_prefix(text: str) -> str:
-        prefix = call_ctx.build_context_prefix()
-        if prefix:
-            return f"{prefix}\n\n{text}"
-        return text
-
     room_tone_proc = RoomToneProcessor()
 
     messages = [

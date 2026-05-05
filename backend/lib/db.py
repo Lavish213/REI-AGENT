@@ -190,11 +190,11 @@ def get_active_drip_leads() -> list[dict]:
         .eq("opted_out", False)
         .eq("drip_paused", False)
         .eq("drip_completed", False)
-        .not_("drip_started_at", "is", "null")
         .execute()
     )
-    logger.debug("get_active_drip_leads count={}", len(response.data))
-    return response.data
+    rows = [r for r in response.data if r.get("drip_started_at")]
+    logger.debug("get_active_drip_leads count={}", len(rows))
+    return rows
 
 
 def start_lead_drip(lead_id: str, sequence: str, drip_started_at: str, initial_day: int = 0) -> None:
@@ -269,14 +269,14 @@ def get_leads_for_drip_start(min_score: int) -> list[dict]:
     response = (
         client.table("leads")
         .select("*, properties(*)")
-        .is_("drip_started_at", "null")
         .eq("opted_out", False)
-        .not_("owner_phone", "is", "null")
         .execute()
     )
     return [
         r for r in response.data
-        if (r.get("properties") or {}).get("distress_score", 0) >= min_score
+        if not r.get("drip_started_at")
+        and r.get("owner_phone")
+        and (r.get("properties") or {}).get("distress_score", 0) >= min_score
     ]
 
 
