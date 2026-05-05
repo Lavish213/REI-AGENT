@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import asyncio
 from datetime import datetime, timezone
@@ -8,7 +9,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.frames.frames import LLMContextFrame
+from pipecat.frames.frames import LLMContextFrame, TranscriptionFrame
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
@@ -21,14 +22,23 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketTransport,
 )
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.services.llm_service import FunctionCallParams
+from pipecat.processors.frame_processor import FrameDirection
 
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.qa.grader import grade_call
 from backend.lib.db import insert_call, update_lead_stage
+from backend.voice.orpheus_tts import OrpheusTTSService
+from backend.voice.processors.backchannel import BackchannelProcessor, pregenerate_backchannel_clips
+from backend.voice.processors.filler import FillerGapProcessor, pregenerate_filler_clips
+from backend.voice.processors.interruption import InterruptionAckProcessor
+from backend.voice.processors.emotion import EmotionDetectorProcessor
+from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
+from backend.voice.processors.room_tone import RoomToneProcessor
 
 
 SPANISH_MARKERS = [
@@ -37,10 +47,18 @@ SPANISH_MARKERS = [
     "sale", "qué onda", "andale", "ándale", "neta", "ahorita",
 ]
 
+_MD_STRIP_PATTERN = re.compile(r"^#{1,3}\s+|[*`]|^---+$", re.MULTILINE)
+
 
 def _detect_spanish(text: str) -> bool:
     lower = text.lower()
     return any(marker in lower for marker in SPANISH_MARKERS)
+
+
+def _strip_markdown(text: str) -> str:
+    text = _MD_STRIP_PATTERN.sub("", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def _load_system_prompt(property_context_str: str, spanish: bool = False) -> str:
@@ -57,19 +75,20 @@ def _load_system_prompt(property_context_str: str, spanish: bool = False) -> str
             with open(filepath, "r") as f:
                 parts.append(f.read().strip())
 
-    base_prompt = "\n\n---\n\n".join(parts)
+    base_prompt = "\n\n".join(parts)
+    base_prompt = _strip_markdown(base_prompt)
 
     lang_instruction = ""
     if spanish:
         lang_instruction = (
-            "\n\n---\n\nLANGUAGE MODE: SPANISH DETECTED\n\n"
+            "\n\nLANGUAGE MODE: SPANISH DETECTED\n\n"
             "The caller is speaking Spanish. Switch fully to Spanish now. "
             "Use Sophia's California Spanish voice as defined in your Spanish identity section. "
             "Natural, Central Valley Latina. Not textbook Spanish. "
             "Mix English words when natural. End responses with questions."
         )
 
-    return f"{base_prompt}{lang_instruction}\n\n---\n\nCALLER PROPERTY CONTEXT\n\n{property_context_str}"
+    return f"{base_prompt}{lang_instruction}\n\nCALLER PROPERTY CONTEXT\n\n{property_context_str}"
 
 
 def _load_boss_prompt(briefing: str) -> str:
@@ -81,8 +100,6 @@ You know the full pipeline. You give him real numbers and real talk.
 You can look up any property by address if he asks.
 You answer questions about specific leads, scores, ARVs, MAOs, call history.
 Keep answers tight. Angelo is busy.
-
----
 
 PIPELINE BRIEFING
 
@@ -108,6 +125,31 @@ def _make_tool_handler(tool_name: str):
         result = execute_tool(tool_name, dict(params.arguments))
         await params.result_callback(result)
     return handler
+
+
+async def _build_tts(call_ctx_ref: dict) -> tuple:
+    use_orpheus = bool(os.environ.get("TOGETHER_AI_API_KEY"))
+
+    if use_orpheus:
+        tts = OrpheusTTSService(
+            api_key=os.environ["TOGETHER_AI_API_KEY"],
+            voice="leah",
+        )
+        logger.info("using orpheus tts via together ai")
+    else:
+        tts = CartesiaTTSService(
+            api_key=os.environ["CARTESIA_API_KEY"],
+            settings=CartesiaTTSService.Settings(
+                voice=os.environ["CARTESIA_VOICE_ID"],
+                generation_config=GenerationConfig(
+                    speed=1.0,
+                    emotion="positivity:high",
+                ),
+            ),
+        )
+        logger.info("using cartesia tts fallback")
+
+    return tts
 
 
 async def run_sophia_agent(
@@ -177,22 +219,46 @@ async def run_sophia_agent(
         settings=AnthropicLLMService.Settings(
             model=os.environ.get("LLM_MODEL", "claude-sonnet-4-6"),
             enable_prompt_caching=True,
+            max_tokens=80,
         ),
     )
 
     for tool in SOPHIA_TOOLS:
         llm.register_function(tool["name"], _make_tool_handler(tool["name"]))
 
-    tts = CartesiaTTSService(
-        api_key=os.environ["CARTESIA_API_KEY"],
-        settings=CartesiaTTSService.Settings(
-            voice=os.environ["CARTESIA_VOICE_ID"],
-            generation_config=GenerationConfig(
-                speed=1.0,
-                emotion="positivity:high",
-            ),
-        ),
+    tts = await _build_tts({})
+
+    call_ctx = CallContext()
+
+    clip_sample_rate = 16000
+    cartesia_api_key = os.environ.get("CARTESIA_API_KEY", "")
+    cartesia_voice_id = os.environ.get("CARTESIA_VOICE_ID", "")
+
+    backchannel_clips, filler_clips = await asyncio.gather(
+        pregenerate_backchannel_clips(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
+        pregenerate_filler_clips(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
     )
+
+    transport_output = transport.output()
+
+    backchannel_proc = BackchannelProcessor(transport_output, backchannel_clips, clip_sample_rate)
+    filler_proc = FillerGapProcessor(transport_output, filler_clips, clip_sample_rate)
+    interruption_proc = InterruptionAckProcessor()
+
+    def on_emotion(emotion: str):
+        call_ctx.current_emotion = emotion
+        logger.debug("emotion detected emotion={}", emotion)
+
+    emotion_proc = EmotionDetectorProcessor(on_emotion)
+    context_tracker = ContextTrackerProcessor(call_ctx)
+
+    def _inject_context_prefix(text: str) -> str:
+        prefix = call_ctx.build_context_prefix()
+        if prefix:
+            return f"{prefix}\n\n{text}"
+        return text
+
+    room_tone_proc = RoomToneProcessor()
 
     messages = [
         {
@@ -209,17 +275,30 @@ async def run_sophia_agent(
     context_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
-            vad_analyzer=SileroVADAnalyzer(),
+            vad_analyzer=SileroVADAnalyzer(
+                params=VADParams(
+                    confidence=0.7,
+                    start_secs=0.2,
+                    stop_secs=0.3,
+                    min_volume=0.6,
+                ),
+            ),
         ),
     )
 
     pipeline = Pipeline([
         transport.input(),
         stt,
+        emotion_proc,
+        context_tracker,
+        backchannel_proc,
+        filler_proc,
+        interruption_proc,
         context_aggregator.user(),
         llm,
         tts,
-        transport.output(),
+        room_tone_proc,
+        transport_output,
         context_aggregator.assistant(),
     ])
 
