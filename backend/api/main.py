@@ -35,9 +35,11 @@ async def lifespan(app: FastAPI):
     logger.info("business={}", os.environ.get("BUSINESS_NAME", "unknown"))
     logger.info("agent={}", os.environ.get("AGENT_NAME", "unknown"))
     from backend.alerts.drip import start_drip_scheduler, stop_drip_scheduler
+    from backend.voice.appointment_scheduler import start_appointment_scheduler, stop_appointment_scheduler
     from apscheduler.schedulers.background import BackgroundScheduler
 
     start_drip_scheduler()
+    start_appointment_scheduler()
 
     outbound_scheduler = BackgroundScheduler(timezone="America/Los_Angeles")
     outbound_scheduler.add_job(
@@ -54,6 +56,7 @@ async def lifespan(app: FastAPI):
     yield
 
     stop_drip_scheduler()
+    stop_appointment_scheduler()
     outbound_scheduler.shutdown(wait=False)
     logger.info("REI Agent API shutting down")
 

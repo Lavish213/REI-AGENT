@@ -332,3 +332,64 @@ def schedule_callback(lead_id: str, callback_at: str) -> None:
         "callback_scheduled_at": callback_at,
     }).eq("id", lead_id).execute()
     logger.info("schedule_callback lead_id={} at={}", lead_id, callback_at)
+
+
+def update_lead_for_disposition(lead_id: str, disposition: str) -> None:
+    client = _get_client()
+    now = datetime.now(timezone.utc).isoformat()
+    if disposition == "HOT":
+        client.table("leads").update({
+            "priority_callback": True,
+            "updated_at": now,
+        }).eq("id", lead_id).execute()
+    elif disposition == "DEAD":
+        client.table("leads").update({
+            "opted_out": True,
+            "drip_paused": True,
+            "updated_at": now,
+        }).eq("id", lead_id).execute()
+    elif disposition == "COLD":
+        current = client.table("leads").select("drip_day").eq("id", lead_id).execute()
+        current_day = (current.data[0].get("drip_day") or -1) if current.data else -1
+        if current_day < 30:
+            client.table("leads").update({
+                "drip_day": 30,
+                "updated_at": now,
+            }).eq("id", lead_id).execute()
+    logger.info("update_lead_for_disposition lead_id={} disposition={}", lead_id, disposition)
+
+
+def update_lead_appointment(lead_id: str, appointment_at: str) -> None:
+    client = _get_client()
+    client.table("leads").update({
+        "appointment_at": appointment_at,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", lead_id).execute()
+    logger.info("update_lead_appointment lead_id={} at={}", lead_id, appointment_at)
+
+
+def get_pending_appointment_leads() -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("leads")
+        .select("*, properties(*)")
+        .eq("stage", "walkthrough_booked")
+        .not_.is_("appointment_at", "null")
+        .execute()
+    )
+    logger.debug("get_pending_appointment_leads count={}", len(response.data))
+    return response.data
+
+
+def update_appt_reminder_flags(lead_id: str, day_before: bool | None = None, morning: bool | None = None, no_show: bool | None = None) -> None:
+    client = _get_client()
+    data = {}
+    if day_before is not None:
+        data["appt_day_before_sent"] = day_before
+    if morning is not None:
+        data["appt_morning_sent"] = morning
+    if no_show is not None:
+        data["appt_no_show_sent"] = no_show
+    if data:
+        client.table("leads").update(data).eq("id", lead_id).execute()
+        logger.debug("update_appt_reminder_flags lead_id={}", lead_id)

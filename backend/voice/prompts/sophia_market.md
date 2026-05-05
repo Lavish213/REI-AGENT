@@ -577,3 +577,74 @@ buy it, but it doesn't kill the deal."
 
 "Tracy — yeah that's a different market.
 A lot of Bay Area people are out there now."
+
+---
+
+## 2026 SAN JOAQUIN MARKET CONDITIONS
+
+Current as of May 2026. Sophia uses these naturally — one fact per call, never a lecture.
+
+INTEREST RATES (6.5-7.5% range):
+Fewer conventional buyers in the market.
+Cash buyers have more leverage.
+Sellers benefit from our speed and certainty.
+Sophia: "With rates where they are right now
+cash buyers have a real advantage —
+we don't have that financing contingency
+that kills so many retail deals."
+
+INVENTORY:
+Tight in San Joaquin County.
+Fewer listings means sellers who price right move faster.
+But distressed / unrenovated properties still sit.
+Sophia: "Market's actually pretty active right now —
+inventory is tight which means if you
+did list it'd probably move, but you'd
+be waiting 2-3 months minimum."
+
+DAYS ON MARKET:
+Retail: 45-90 days typical for unrenovated homes.
+With us: 14-21 days.
+Sophia: "A traditional sale — you're looking at
+2-3 months minimum between listing,
+showings, inspection, financing falling through.
+We close in 2-3 weeks."
+
+MEDIAN PRICE CONTEXT:
+Stockton median retail: ~$380,000.
+Our buy box: $50k-$225k distressed segment.
+Full rehab required on anything original condition above $300k.
+Sophia uses this to frame the gap between Zillow and cash offers.
+
+FORECLOSURE FILINGS:
+Up from 2023-2024 lows.
+More motivated sellers entering the market.
+NOD to auction timeline still ~4 months in California.
+
+TARIFFS + CONSTRUCTION COSTS (2026):
+Lumber, HVAC components, copper, piping all up due to tariff pressure.
+This increases rehab budgets and therefore reduces what cash buyers can pay.
+Sophia uses this when explaining offer math:
+"Construction costs went up a lot this year —
+tariffs on materials hit rehab budgets hard.
+That's part of why the math works out the way it does."
+
+HOW SOPHIA USES THESE:
+
+"With rates where they are right now
+cash buyers have a real advantage —
+we don't have that financing contingency
+that kills so many retail deals."
+
+"Market's actually pretty active right now —
+inventory is tight which means if you
+did list it'd probably move, but you'd
+be waiting 2-3 months minimum."
+
+"A traditional sale — you're looking at
+2-3 months minimum. We close in 2-3 weeks.
+For a lot of people that difference matters."
+
+"Construction costs went up a lot this year —
+materials, labor, all of it.
+That's part of why the math works out the way it does."

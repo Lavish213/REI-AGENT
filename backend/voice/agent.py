@@ -31,7 +31,7 @@ from pipecat.processors.frame_processor import FrameDirection
 
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.qa.grader import grade_call
-from backend.lib.db import insert_call, update_lead_stage
+from backend.lib.db import insert_call, update_lead_stage, update_lead_for_disposition
 from backend.voice.orpheus_tts import OrpheusTTSService
 from backend.voice.processors.backchannel import BackchannelProcessor, pregenerate_backchannel_clips
 from backend.voice.processors.filler import FillerGapProcessor, pregenerate_filler_clips
@@ -122,9 +122,9 @@ def _build_tools_schema() -> ToolsSchema:
     return ToolsSchema(standard_tools=schemas)
 
 
-def _make_tool_handler(tool_name: str):
+def _make_tool_handler(tool_name: str, call_ctx=None):
     async def handler(params: FunctionCallParams) -> None:
-        result = execute_tool(tool_name, dict(params.arguments))
+        result = execute_tool(tool_name, dict(params.arguments), call_ctx=call_ctx)
         await params.result_callback(result)
     return handler
 
@@ -229,7 +229,7 @@ async def run_sophia_agent(
     logger.info("voice llm model={}", voice_model)
 
     for tool in SOPHIA_TOOLS:
-        llm.register_function(tool["name"], _make_tool_handler(tool["name"]))
+        llm.register_function(tool["name"], _make_tool_handler(tool["name"], call_ctx))
 
     tts = await _build_tts({})
 
@@ -336,18 +336,20 @@ async def run_sophia_agent(
     except Exception as e:
         logger.error("sophia agent error call_sid={} error={}", call_sid, str(e))
     finally:
-        await _handle_call_end(call_sid, call_context, context)
+        await _handle_call_end(call_sid, call_context, context, call_ctx)
 
 
 async def _handle_call_end(
     call_sid: str,
     call_context: dict,
     context: LLMContext,
+    call_ctx=None,
 ) -> None:
     logger.info("handling call end call_sid={}", call_sid)
 
     try:
         transcript = _build_transcript(context.messages)
+        disposition = call_ctx.disposition if call_ctx else None
 
         lead = call_context.get("lead")
         if lead:
@@ -356,9 +358,13 @@ async def _handle_call_end(
                 "signalwire_call_id": call_sid,
                 "direction": "inbound",
                 "transcript": transcript,
+                "call_disposition": disposition,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
             insert_call(call_data)
+
+            if disposition:
+                update_lead_for_disposition(lead["id"], disposition)
 
             asyncio.create_task(
                 _run_qa_async(transcript, lead["id"], call_sid)

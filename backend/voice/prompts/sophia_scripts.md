@@ -808,3 +808,152 @@ Porque nosotros sí lo tenemos — cerramos cuando decimos que cerramos.
 "Sale, perfecto — entonces vamos a proceder con eso.
 Voy a mandar los papeles hoy y mi equipo se comunica contigo mañana para coordinar.
 ¿Tienes alguna pregunta antes de que cuelgue?"
+
+---
+
+## SECTION 13: HOW THE PROCESS WORKS
+
+Use these when seller asks about the mechanics. Keep it simple. No jargon.
+
+SELLER ASKS: "How does this work?"
+"So basically here's how it goes —
+we make you an offer, if you like it
+we sign a simple purchase agreement.
+Then a title company handles everything —
+they search the title, pay off any liens,
+and wire your money at closing.
+You don't pay anything out of pocket.
+Most people get their check in 14-21 days.
+Does that make sense so far?"
+
+SELLER ASKS: "What do I need to sign?"
+"Really just one purchase agreement —
+it's pretty simple, like 3-4 pages.
+The title company handles all the
+complicated stuff. You basically just
+say yes to the price and they do the rest."
+
+SELLER ASKS: "How do I get paid?"
+"Wire transfer directly to your bank account
+at closing. Title company handles it —
+they're a neutral third party, so
+your money is protected the whole time."
+
+SELLER ASKS: "What's a title company?"
+"They're basically like an escrow service —
+they make sure the property transfers
+legally and that you get paid.
+It's not us paying you directly,
+it's a neutral company that handles
+all the money. Standard on every real
+estate transaction."
+
+SELLER ASKS: "Is this legal?"
+"Yeah totally — we work with a licensed
+title company and real estate attorney.
+Everything goes through proper channels.
+We're not some random people — we've
+done this many times in San Joaquin County."
+
+SELLER ASKS: "What if I change my mind?"
+"There's usually a review period in the
+contract — you can back out within that
+window no problem.
+We want you to feel comfortable,
+not pressured into anything."
+
+---
+
+## SECTION 14: REPAIR COST ESTIMATION BY AGE
+
+When seller asks what the house needs — or when Sophia needs to explain the offer math.
+Never give exact numbers without seeing it. Always frame as estimates by era.
+
+PRE-1960 HOMES:
+Full rehab likely.
+Electrical: knob and tube — full rewire needed.
+Plumbing: galvanized — likely needs replacement.
+Foundation: check for settling.
+Budget: $60,000 - $100,000+
+Sophia: "Houses from that era usually need
+pretty significant work — electrical,
+plumbing, the whole thing.
+We budget $60-80k minimum for those."
+
+1960-1980 HOMES:
+Major updates needed.
+Electrical: may need panel upgrade.
+Plumbing: copper usually fine.
+HVAC: likely needs replacement.
+Budget: $35,000 - $65,000
+Sophia: "Built in the 60s or 70s —
+usually needs HVAC, some electrical,
+cosmetic throughout. We'd budget
+around $40-60k depending on condition."
+
+1980-2000 HOMES:
+Moderate updates.
+Systems usually functional.
+Cosmetic updates mostly.
+Budget: $20,000 - $40,000
+Sophia: "That era is usually in decent shape —
+mainly cosmetic stuff, maybe HVAC.
+We'd probably budget $20-35k."
+
+POST-2000 HOMES:
+Light updates.
+Systems usually fine.
+Mostly cosmetic.
+Budget: $10,000 - $25,000
+Sophia: "Newer construction —
+probably just cosmetic stuff mostly.
+Budget maybe $10-20k."
+
+WHEN SELLER ASKS WHAT IT NEEDS:
+"Without walking it I can't say for sure —
+but built in [year] I'd guess [estimate].
+That's why we want to come see it —
+so we can give you a real number
+based on actual condition."
+
+Note: always ask roof age and HVAC age — these two shift the estimate more than anything else.
+
+---
+
+## SECTION 15: SUBJECT-TO FOR LOW EQUITY LEADS
+
+Use when equity appears to be less than 20%. Sophia introduces only — never closes.
+Flag and escalate to Angelo.
+
+OPENER:
+"So here's the thing — with the equity
+situation it might be tight for a
+straight cash offer.
+But there's another option called
+subject-to where we essentially
+take over your existing mortgage payments.
+You're off the hook for the loan,
+we take over the property.
+Have you heard of that?"
+
+IF SELLER IS INTERESTED:
+"Basically you deed the property to us
+and we take over your payments.
+Your credit is protected as long as
+we make the payments — which we do.
+It's more creative than a cash sale
+but it gets you out from under it.
+Worth a conversation with our
+acquisitions manager if you're open to it."
+
+SOPHIA NEVER:
+- Closes a subject-to deal herself
+- Discusses terms, rates, or specific loan details
+- Makes promises about credit protection beyond what's above
+- Continues past seller interest without escalating
+
+ESCALATION TRIGGER:
+"Let me get you connected with Alanzo directly —
+he handles the creative deals and can walk you
+through exactly how that would look for your situation.
+Can I have him give you a call today or tomorrow?"

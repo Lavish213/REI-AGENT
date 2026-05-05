@@ -1,9 +1,13 @@
 import os
 from datetime import datetime, timezone
+
+import pytz
 from loguru import logger
 
-from backend.lib.db import update_lead_stage, insert_sms
+from backend.lib.db import update_lead_stage, update_lead_appointment, insert_sms
 from backend.alerts.sms import send_sms
+
+_PACIFIC = pytz.timezone("America/Los_Angeles")
 
 
 SOPHIA_TOOLS = [
@@ -64,6 +68,21 @@ SOPHIA_TOOLS = [
         },
     },
     {
+        "name": "set_disposition",
+        "description": "Classify the lead once you have enough signals. HOT=seller mentioned timeline, asked about price, agreed to appointment, or asked how the process works. WARM=engaged but not ready, open to callback. COLD=not interested now, may reconsider later. DEAD=hostile, wrong number, explicit no, or DNC request. Call this once during the call when the picture is clear.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "disposition": {
+                    "type": "string",
+                    "enum": ["HOT", "WARM", "COLD", "DEAD"],
+                    "description": "Lead classification",
+                },
+            },
+            "required": ["disposition"],
+        },
+    },
+    {
         "name": "end_call",
         "description": "End the call cleanly. Call this when conversation is complete.",
         "input_schema": {
@@ -88,13 +107,15 @@ SOPHIA_TOOLS = [
 ]
 
 
-def execute_tool(tool_name: str, tool_input: dict) -> str:
+def execute_tool(tool_name: str, tool_input: dict, call_ctx=None) -> str:
     logger.info("execute_tool name={} input={}", tool_name, tool_input)
 
     if tool_name == "book_appointment":
         return _book_appointment(tool_input)
     if tool_name == "send_followup_sms":
         return _send_followup_sms(tool_input)
+    if tool_name == "set_disposition":
+        return _set_disposition(tool_input, call_ctx)
     if tool_name == "end_call":
         return _end_call(tool_input)
 
@@ -111,20 +132,28 @@ def _book_appointment(inp: dict) -> str:
     seller_name = inp.get("seller_name", "there")
     owner_phone = os.environ.get("OWNER_PHONE", "")
 
+    dt_pacific = None
     try:
-        dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-        dt_display = dt.strftime("%A %b %-d at %-I:%M %p")
+        dt_naive = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+        dt_pacific = _PACIFIC.localize(dt_naive)
+        dt_display = dt_naive.strftime("%A %b %-d at %-I:%M %p")
+        time_display = dt_naive.strftime("%-I:%M %p")
+        day_display = dt_naive.strftime("%A")
     except ValueError:
         dt_display = f"{date_str} at {time_str}"
+        time_display = time_str
+        day_display = date_str
 
     if lead_id:
         update_lead_stage(lead_id, "walkthrough_booked")
+        if dt_pacific is not None:
+            update_lead_appointment(lead_id, dt_pacific.isoformat())
 
     confirmation_msg = (
-        f"Hey {seller_name}! Confirmed walkthrough at {address} "
-        f"{dt_display}. "
-        f"Alanzo's number: {owner_phone}. "
-        f"See you then! - Sophia, SJ House Buyers"
+        f"Hey {seller_name}! Sophia here \u2014 just confirming we're set for "
+        f"{day_display} at {time_display} at {address}. "
+        f"Super easy process \u2014 we'll take a quick walk through and then I'll get you "
+        f"a real number same day. See you then! \U0001f3e1"
     )
     if seller_phone:
         send_sms(to=seller_phone, body=confirmation_msg)
@@ -159,6 +188,17 @@ def _send_followup_sms(inp: dict) -> str:
 
     logger.warning("send_followup_sms missing to or message")
     return "SMS not sent — missing phone number or message."
+
+
+def _set_disposition(inp: dict, call_ctx) -> str:
+    disposition = inp.get("disposition", "").upper()
+    valid = {"HOT", "WARM", "COLD", "DEAD"}
+    if disposition not in valid:
+        return f"Invalid disposition. Use one of: {', '.join(sorted(valid))}"
+    if call_ctx is not None:
+        call_ctx.disposition = disposition
+    logger.info("set_disposition disposition={}", disposition)
+    return f"Disposition set to {disposition}."
 
 
 def _end_call(inp: dict) -> str:

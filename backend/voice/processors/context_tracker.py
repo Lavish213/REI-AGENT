@@ -23,6 +23,7 @@ class CallContext:
     callback_time_mentioned: str | None = None
     talk_time_sophia: float = 0.0
     talk_time_caller: float = 0.0
+    disposition: str | None = None
 
     def build_context_prefix(self) -> str:
         parts = []
@@ -42,6 +43,8 @@ class CallContext:
             parts.append(f"objections: {', '.join(self.objections_raised[-2:])}")
         if self.current_emotion:
             parts.append(f"caller sentiment: {self.current_emotion}")
+        if self.disposition:
+            parts.append(f"disposition: {self.disposition}")
         if not parts:
             return ""
         return "[CONTEXT: " + "; ".join(parts) + "]"
