@@ -1,8 +1,13 @@
+import os
 import re
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+
+if TYPE_CHECKING:
+    from pipecat.processors.aggregators.llm_context import LLMContext
 
 
 @dataclass
@@ -24,6 +29,7 @@ class CallContext:
     talk_time_sophia: float = 0.0
     talk_time_caller: float = 0.0
     disposition: str | None = None
+    extended_loaded: bool = False
 
     def build_context_prefix(self) -> str:
         parts = []
@@ -77,6 +83,26 @@ _OBJECTION_PATTERNS = [
     (r"\b(other offer|someone else|another buyer)\b", "competing offer"),
 ]
 
+_EXTENDED_PROCESS_PATTERN = re.compile(
+    r"\b(how does (this|it) work|title company|what do i sign|how.?do i get paid|escrow|is this legal|purchase agreement|what happens (when|after|at)|who pays closing)\b",
+    re.IGNORECASE,
+)
+
+_EXTENDED_LOCATION_PATTERN = re.compile(
+    r"\b(south stockton|north stockton|weston ranch|lincoln village|march lane|hammer lane|flood zone|delta|lincoln unified|spanos|valley oak|brookside|lodi|tracy|manteca)\b",
+    re.IGNORECASE,
+)
+
+_EXTENDED_SPANISH_PATTERN = re.compile(
+    r"\b(hola|oye|buenos|buenas|espa[nñ]ol|hablas|habla|[oó]rale|sale|neta|ahorita|qu[eé] onda|[aá]ndale)\b",
+    re.IGNORECASE,
+)
+
+_EXTENDED_SUBJECTTO_PATTERN = re.compile(
+    r"\b(owe (too much|more than|a lot)|upside down|subject.?to|behind on (the )?mortgage|negative equity|underwater|not much equity)\b",
+    re.IGNORECASE,
+)
+
 _TIMELINE_PATTERN = re.compile(
     r"\b(asap|immediately|right away|next week|next month|30 days|60 days|90 days|few months|end of the year)\b",
     re.IGNORECASE,
@@ -96,10 +122,20 @@ def _extract_price_cents(text: str) -> int | None:
     return val * 100
 
 
+def _load_extended_prompt(extended_path: str) -> str:
+    try:
+        with open(extended_path) as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
 class ContextTrackerProcessor(FrameProcessor):
-    def __init__(self, call_ctx: CallContext):
+    def __init__(self, call_ctx: CallContext, llm_context=None, extended_prompt_path: str | None = None):
         super().__init__()
         self._ctx = call_ctx
+        self._llm_context = llm_context
+        self._extended_prompt_path = extended_prompt_path
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -119,8 +155,26 @@ class ContextTrackerProcessor(FrameProcessor):
 
         await self.push_frame(frame, direction)
 
+    def _maybe_load_extended(self, text: str) -> None:
+        if self._ctx.extended_loaded or not self._llm_context or not self._extended_prompt_path:
+            return
+        if (
+            _EXTENDED_PROCESS_PATTERN.search(text)
+            or _EXTENDED_LOCATION_PATTERN.search(text)
+            or _EXTENDED_SPANISH_PATTERN.search(text)
+            or _EXTENDED_SUBJECTTO_PATTERN.search(text)
+        ):
+            content = _load_extended_prompt(self._extended_prompt_path)
+            if content and self._llm_context.messages:
+                self._llm_context.messages[0]["content"] += "\n\n" + content
+                self._ctx.extended_loaded = True
+                from loguru import logger
+                logger.info("extended_prompt_loaded trigger_text={}", text[:60])
+
     def _analyze(self, text: str):
         lower = text.lower()
+
+        self._maybe_load_extended(text)
 
         price = _extract_price_cents(text)
         if price is not None:

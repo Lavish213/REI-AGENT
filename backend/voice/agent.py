@@ -66,31 +66,29 @@ def _strip_markdown(text: str) -> str:
 def _load_system_prompt(property_context_str: str, spanish: bool = False) -> str:
     prompts_dir = os.path.join(os.path.dirname(__file__), "prompts")
 
-    parts = []
-    for filename in [
-        "sophia_system.md",
-        "sophia_market.md",
-        "sophia_scripts.md",
-    ]:
-        filepath = os.path.join(prompts_dir, filename)
-        if os.path.exists(filepath):
-            with open(filepath, "r") as f:
-                parts.append(f.read().strip())
+    core_path = os.path.join(prompts_dir, "sophia_core.md")
+    with open(core_path) as f:
+        base_prompt = f.read().strip()
 
-    base_prompt = "\n\n".join(parts)
-    base_prompt = _strip_markdown(base_prompt)
-
-    lang_instruction = ""
     if spanish:
-        lang_instruction = (
+        extended_path = os.path.join(prompts_dir, "sophia_extended.md")
+        if os.path.exists(extended_path):
+            with open(extended_path) as f:
+                base_prompt = base_prompt + "\n\n" + f.read().strip()
+        base_prompt += (
             "\n\nLANGUAGE MODE: SPANISH DETECTED\n\n"
             "The caller is speaking Spanish. Switch fully to Spanish now. "
-            "Use Sophia's California Spanish voice as defined in your Spanish identity section. "
-            "Natural, Central Valley Latina. Not textbook Spanish. "
-            "Mix English words when natural. End responses with questions."
+            "Use Sophia's California Spanish voice. Natural, Central Valley Latina. "
+            "Not textbook Spanish. Mix English words when natural. End responses with questions."
         )
 
-    return f"{base_prompt}{lang_instruction}\n\nCALLER PROPERTY CONTEXT\n\n{property_context_str}"
+    base_prompt = _strip_markdown(base_prompt)
+    return f"{base_prompt}\n\nCALLER PROPERTY CONTEXT\n\n{property_context_str}"
+
+
+def _get_extended_prompt_path() -> str:
+    prompts_dir = os.path.join(os.path.dirname(__file__), "prompts")
+    return os.path.join(prompts_dir, "sophia_extended.md")
 
 
 def _load_boss_prompt(briefing: str) -> str:
@@ -256,7 +254,11 @@ async def run_sophia_agent(
         logger.debug("emotion detected emotion={}", emotion)
 
     emotion_proc = EmotionDetectorProcessor(on_emotion)
-    context_tracker = ContextTrackerProcessor(call_ctx)
+    extended_path = _get_extended_prompt_path() if not spanish_detected else None
+    context_tracker = ContextTrackerProcessor(
+        call_ctx,
+        extended_prompt_path=extended_path,
+    )
 
     response_cache_proc = ResponseCacheProcessor(transport_output, response_cache_clips, clip_sample_rate)
 
@@ -278,6 +280,9 @@ async def run_sophia_agent(
     ]
 
     context = LLMContext(messages=messages, tools=_build_tools_schema())
+    if not spanish_detected:
+        context_tracker._llm_context = context
+
     context_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
