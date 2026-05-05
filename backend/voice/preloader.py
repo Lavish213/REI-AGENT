@@ -12,7 +12,7 @@ from backend.comps.redfin import get_comps
 from backend.comps.calculator import calculate_arv
 from backend.comps.cache import get_cached_comps, set_cached_comps
 from backend.lib.db import update_property_arv, insert_comp
-from backend.lib.osm import enrich_property_context
+from backend.lib.osm import enrich_property_full
 
 
 def preload_call_context(caller_phone: str) -> dict:
@@ -93,12 +93,12 @@ def preload_call_context(caller_phone: str) -> dict:
             arv_result["confidence"],
         )
 
-    osm_context = enrich_property_context(
+    osm_data = enrich_property_full(
         prop.get("address", ""),
         prop.get("city", ""),
         prop.get("state", "CA"),
     )
-    context["property_context_str"] = _build_property_context_str(context, osm_context)
+    context["property_context_str"] = _build_property_context_str(context, osm_data)
     logger.info(
         "preload complete phone={} address={} arv={} mao={} confidence={}",
         caller_phone,
@@ -116,13 +116,14 @@ def _dollars(cents: int | None) -> str:
     return f"${cents / 100:,.0f}"
 
 
-def _build_property_context_str(ctx: dict, osm_context: str = "") -> str:
+def _build_property_context_str(ctx: dict, osm_data: dict | None = None) -> str:
     prop = ctx.get("property") or {}
     arv = _dollars(ctx.get("arv"))
     mao = _dollars(ctx.get("mao"))
     confidence = ctx.get("arv_confidence", "low")
     owner = ctx.get("owner_name", "Unknown")
     first_name = ctx.get("owner_first_name", "there")
+    osm = osm_data or {}
 
     auction_date = prop.get("auction_date")
     if auction_date:
@@ -147,13 +148,51 @@ def _build_property_context_str(ctx: dict, osm_context: str = "") -> str:
     equity = prop.get("equity_pct")
     equity_str = f"{equity:.0f}%" if equity else "unknown"
 
-    location_line = f"\nLocation: {osm_context}" if osm_context else ""
+    cross = osm.get("cross_streets", [])
+    cross_str = (
+        f"near {cross[0]} and {cross[1]}" if len(cross) >= 2
+        else f"near {cross[0]}" if cross
+        else "unknown"
+    )
+
+    neighborhood = osm.get("neighborhood") or prop.get("city", "")
+    district = osm.get("school_district", "unknown")
+    district_desc = osm.get("school_district_description", "")
+    district_line = f"{district} ({district_desc})" if district_desc else district
+
+    arv_min = osm.get("arv_min")
+    arv_max = osm.get("arv_max")
+    arv_range_str = (
+        f"${arv_min:,} - ${arv_max:,}" if arv_min and arv_max else "unknown"
+    )
+
+    flood_zone = osm.get("flood_zone", "unknown")
+    flood_risk = osm.get("flood_risk", "unknown")
+    flood_line = f"Zone {flood_zone} — {flood_risk}" if flood_zone != "unknown" else "unknown"
+
+    ace_miles = osm.get("ace_miles")
+    ace_station = osm.get("ace_station", "")
+    ace_accessible = osm.get("ace_accessible", False)
+    if ace_miles is not None:
+        ace_line = f"{ace_miles} miles to {ace_station} Station"
+        if ace_accessible:
+            ace_line += " (ACE-accessible — Bay Area commuter appeal)"
+    else:
+        ace_line = "unknown"
+
+    buy_box = osm.get("buy_box", "unknown")
+    nbhd_notes = osm.get("neighborhood_notes", "")
+
+    landmarks = osm.get("landmarks", [])
+    landmarks_str = ", ".join(landmarks[:3]) if landmarks else "none found"
 
     return f"""
 CALLER PROPERTY CONTEXT
 =======================
 Owner: {owner} (call them {first_name})
-Address: {prop.get("address", "unknown")} {prop.get("city", "")} {prop.get("zip", "")}{location_line}
+Address: {prop.get("address", "unknown")} {prop.get("city", "")} {prop.get("zip", "")}
+Cross Streets: {cross_str}
+Neighborhood: {neighborhood}
 Beds/Baths: {prop.get("beds", "?")} bed / {prop.get("baths", "?")} bath
 Sqft: {prop.get("sqft", "unknown")}
 Year Built: {prop.get("year_built", "unknown")}
@@ -161,6 +200,16 @@ Distress Type: {distress}
 Equity: {equity_str}
 Tax Delinquent: {_dollars(prop.get("tax_delinquent_amount"))}
 Auction Date: {auction_str}
+Nearby: {landmarks_str}
+
+LOCATION INTELLIGENCE
+=====================
+School District: {district_line}
+ARV Range for Area: {arv_range_str}
+Flood Zone: {flood_line}
+ACE Train: {ace_line}
+Buy Box Fit: {buy_box}
+Notes: {nbhd_notes}
 
 PRICING
 =======

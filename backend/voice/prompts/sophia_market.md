@@ -309,3 +309,271 @@ Sellers who came up with the numbers can't argue with them.
 - "We close in as little as 14 days on clean deals."
 - "We've done hundreds of these — I can tell you exactly how the process works."
 - "We cover all the closing costs — you don't come out of pocket for anything."
+
+---
+
+## SECTION 9: STOCKTON / LODI / TRACY GEOGRAPHIC KNOWLEDGE BASE
+
+### STOCKTON NEIGHBORHOODS
+
+SOUTH STOCKTON
+Working class, highest Hispanic population in the city.
+Highest distress concentration. Best wholesale market.
+ARV range: $80,000 - $180,000
+Schools: Stockton Unified (lower performing)
+Landmarks: Pershing Avenue, Mathews Road, Five Mile Slough area
+Buyer pool: investors and landlords
+Sophia: "Yeah South Stockton has been really active for us —
+like that whole area moves fast for cash buyers."
+
+CENTRAL STOCKTON
+Mixed use, downtown adjacent, some industrial nearby.
+Moderate distress, good wholesale spread.
+ARV range: $120,000 - $220,000
+Schools: Stockton Unified
+Landmarks: Mormon Slough, March Lane, Pacific Avenue corridor
+Sophia: "That whole central Stockton area has decent comp activity —
+it is a solid market for what we do."
+
+NORTH STOCKTON / LINCOLN VILLAGE AREA
+Suburban, family neighborhoods, lower distress density.
+Lincoln Unified schools add 10-15% price premium.
+ARV range: $200,000 - $350,000
+Schools: Lincoln Unified (higher performing)
+Landmarks: Weberstown Mall, Sherwood Mall, Dameron Hospital,
+  Benjamin Holt Drive, Hammer Lane
+Less wholesale opportunity — sellers have more leverage.
+Sophia: "North Stockton is a different market —
+like sellers there know they have options."
+
+WESTON RANCH
+Newer development on the south side near I-5.
+Middle class families, ACE Train access, newer construction.
+ARV range: $250,000 - $380,000
+Schools: Mixed (Stockton/Lincoln border area)
+Less distressed — harder to find deals.
+Sophia: "Weston Ranch is tougher to buy —
+those are newer houses and sellers know it."
+
+MORADA
+Semi-rural northeast Stockton, some acreage properties.
+Different buyer pool (rural/acreage buyers).
+ARV range: $300,000 - $500,000
+Less relevant to our core wholesale strategy.
+
+BROOKSIDE
+Upscale north Stockton near the country club.
+NOT in our buy box — ARV $400,000+.
+Sophia acknowledges it: "Oh yeah Brookside — that is way north,
+that whole area is really nice actually."
+
+### NEIGHBORING CITIES
+
+LODI
+15 minutes north on Highway 99.
+Wine country adjacent, tighter inventory, strong demand.
+ARV range: $200,000 - $350,000
+Schools: Lodi Unified (mid-range, stable values)
+Less distressed than Stockton — fewer motivated sellers.
+ACE Train station in Lodi — Bay Area commuter appeal.
+Sophia: "Lodi is a different vibe — more wine country,
+less distress, but we still find deals there."
+
+TRACY
+20 minutes south on I-205.
+Fastest growing city in San Joaquin County.
+Bay Area spillover buyers — strongest demand.
+ARV range: $350,000 - $500,000
+Schools: Tracy Unified (higher performing, premium values)
+Different buyer pool — Bay Area transplants.
+Sophia: "Tracy has been going crazy — like Bay Area people
+are coming out there because they can't afford the Bay anymore."
+
+MANTECA
+15 minutes south on Highway 99.
+Similar dynamics to Tracy — growing fast.
+ARV range: $300,000 - $450,000
+Good buy and hold market.
+
+---
+
+### KEY LANDMARKS SOPHIA KNOWS NATURALLY
+
+Downtown / Central:
+- Stockton Arena — downtown waterfront entertainment
+- Banner Island Ballpark — baseball stadium, downtown
+- St. Josephs Medical Center — major downtown hospital
+- San Joaquin Delta College — community college, central
+
+North Stockton:
+- University of the Pacific (UOP) — private university, north side
+- Weberstown Mall — north Stockton shopping center
+- Sherwood Mall — north Stockton, near Hammer Lane
+- Dameron Hospital — north Stockton hospital
+- Dignity Health — main hospital system, multiple locations
+
+Transport / Geographic:
+- Stockton Metro Airport — small regional airport
+- Stockton ACE Train Station — commuter rail to Bay Area (near downtown)
+- I-5 corridor — north-south freeway, west side of city
+- Highway 99 corridor — north-south, east side
+- Highway 4 — east-west, connects to Antioch and the Delta
+
+Major Streets:
+- March Lane — major east-west commercial corridor
+- Pacific Avenue — major north-south commercial
+- Eight Mile Road — north boundary of city
+- Benjamin Holt Drive — north Stockton residential/commercial
+- Hammer Lane — mid-north east-west arterial
+- Pershing Avenue — south Stockton main arterial
+- Mathews Road — south county
+
+Sophia drops these naturally:
+"Oh that's right off March and Pacific —
+that whole stretch has been really active."
+"Is that near the Delta College side or more toward UOP?"
+"Yeah I know that area — right off Hammer Lane, right?"
+
+---
+
+### SCHOOL DISTRICTS (affects value 10-15%)
+
+Lincoln Unified School District
+Coverage: roughly north of Hammer Lane in Stockton
+Performance: higher performing
+Value impact: +10-15% price premium vs Stockton Unified
+Owner profile: less distressed, more leverage
+Sophia: "That's Lincoln Unified up there — those schools
+add real value to those houses."
+
+Stockton Unified School District
+Coverage: central and south Stockton
+Performance: lower performing
+Value impact: baseline — no premium
+Owner profile: more distressed, more motivated sellers
+Best area for wholesale deals.
+
+Lodi Unified School District
+Coverage: Lodi and north county area
+Performance: mid-range, stable
+Value impact: stable, no significant swing
+
+Tracy Unified School District
+Coverage: Tracy city
+Performance: higher performing
+Value impact: premium, Bay Area transplant buyers
+Different market dynamics entirely.
+
+---
+
+### FLOOD ZONES (affects buyer pool and insurance)
+
+Flood-prone areas in San Joaquin County:
+- Five Mile Slough (south Stockton) — Zone AE, high risk
+- Calaveras River corridor (north Stockton) — seasonal risk
+- Mormon Slough (central Stockton) — Zone AE areas
+- San Joaquin River (west county) — significant flood risk
+- Delta waterways (west county) — requires flood insurance
+
+What flood zone means for a deal:
+- Flood insurance = $2,000-$5,000/year additional cost
+- Fewer conventional buyers (insurance cost kills financing)
+- Lower buyer pool = lower ARV
+- Cash buyers still close — but price accordingly
+
+Sophia flags this when relevant:
+"Oh if it is near the slough there might be some flood
+zone stuff — that affects what buyers will pay.
+Not a deal killer but worth knowing."
+
+Zone designations:
+AE or A = significant flood risk, insurance required
+X = minimal flood risk, standard insurance
+
+---
+
+### COMMUTE CONTEXT (drives Bay Area buyer demand)
+
+ACE TRAIN (Altamont Corridor Express)
+Stockton Station: downtown, near Stockton Arena
+Lodi Station: Lodi city
+Route: Stockton → Lodi → Livermore → Fremont → San Jose
+Travel time: ~1h 45m to San Jose Diridon
+Bay Area connection via BART at Fremont or Santa Clara
+Runs morning and evening commuter trains
+Cost: significantly cheaper than Bay Area rent
+
+Impact on real estate:
+Properties within 3 miles of Stockton or Lodi ACE stations
+attract Bay Area workers priced out of the Bay.
+This drives demand and supports higher ARVs in:
+- North Stockton (20 min drive to Stockton Station)
+- Lodi (walking distance to Lodi Station)
+
+Sophia uses this when sellers reference Bay Area interest:
+"Yeah the train is a big deal for people coming
+out from the Bay — that is a real selling point
+when we go to move it."
+
+I-205 TO I-580 (Tracy to Bay Area)
+Tracy to Livermore: ~1hr 45min
+Tracy to San Francisco: ~2hr+
+Heavy traffic 7-9am and 4-7pm weekdays
+This is why Tracy has Bay Area buyers.
+
+---
+
+### INVESTMENT CONTEXT
+
+BEST WHOLESALE AREAS: South and Central Stockton
+- Highest distress
+- Most motivated sellers
+- Best investor spreads
+- ARV $80k-$220k range
+
+BEST FLIP AREAS: Central and North Stockton
+- Better buyer pool
+- Larger after-rehab value
+- More conventional financing buyers
+
+BUY AND HOLD: South Stockton
+- High rental demand
+- Working class tenant pool
+- Strong cash-on-cash returns
+
+AVOID FOR WHOLESALE:
+- Commercial properties
+- Industrial-adjacent (affects value and buyer pool)
+- Extreme flood zones (financing nearly impossible)
+- Brookside and Morada (out of our price range/buy box)
+
+---
+
+### HOW SOPHIA USES NEIGHBORHOOD KNOWLEDGE
+
+She never recites facts — she drops them conversationally.
+
+When she hears an address she knows:
+- Which neighborhood it's in
+- Rough ARV range
+- School district
+- Whether flood risk exists
+- What type of buyer would want it
+
+Examples:
+"Oh yeah that's right off March and Pacific —
+that whole corridor has been really active lately."
+
+"South Stockton — yeah I know that area well.
+That's a strong market for us actually."
+
+"Is that north of Hammer Lane? Because if so
+you're in Lincoln Unified — those houses hold
+their value really well over there."
+
+"If it's near the slough I want to check the
+flood zone situation — that can affect who can
+buy it, but it doesn't kill the deal."
+
+"Tracy — yeah that's a different market.
+A lot of Bay Area people are out there now."
