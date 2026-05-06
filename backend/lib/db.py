@@ -207,6 +207,10 @@ def start_lead_drip(lead_id: str, sequence: str, drip_started_at: str, initial_d
         "drip_completed": False,
         "opted_out": False,
         "last_sms_at": drip_started_at,
+        "email_day": -1,
+        "email_paused": False,
+        "email_completed": False,
+        "last_email_at": drip_started_at,
     }).eq("id", lead_id).execute()
     logger.info("start_lead_drip lead_id={} sequence={}", lead_id, sequence)
 
@@ -292,12 +296,17 @@ def get_leads_for_outbound(min_score: int = 50) -> list[dict]:
         .or_(f"last_called_at.lte.{cutoff},last_called_at.is.null")
         .execute()
     )
-    return [
+    results = [
         r for r in response.data
         if (r.get("properties") or {}).get("distress_score", 0) >= min_score
         and (r.get("properties") or {}).get("estimated_arv") is not None
         and (r.get("properties") or {}).get("callable_phones")
     ]
+    results.sort(
+        key=lambda r: r.get("composite_score") or (r.get("properties") or {}).get("distress_score", 0),
+        reverse=True,
+    )
+    return results
 
 
 def get_lead_with_property(lead_id: str) -> dict | None:
@@ -393,3 +402,150 @@ def update_appt_reminder_flags(lead_id: str, day_before: bool | None = None, mor
     if data:
         client.table("leads").update(data).eq("id", lead_id).execute()
         logger.debug("update_appt_reminder_flags lead_id={}", lead_id)
+
+
+def update_lead_speed_to_lead(lead_id: str, attempts: int, completed: bool = False) -> None:
+    client = _get_client()
+    client.table("leads").update({
+        "speed_to_lead_attempts": attempts,
+        "speed_to_lead_completed": completed,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", lead_id).execute()
+    logger.debug("update_lead_speed_to_lead lead_id={} attempts={} completed={}", lead_id, attempts, completed)
+
+
+def get_calls_for_lead(lead_id: str) -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("calls")
+        .select("*")
+        .eq("lead_id", lead_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    logger.debug("get_calls_for_lead lead_id={} count={}", lead_id, len(response.data))
+    return response.data
+
+
+def get_sms_for_lead(lead_id: str) -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("sms_messages")
+        .select("*")
+        .eq("lead_id", lead_id)
+        .order("sent_at", desc=True)
+        .execute()
+    )
+    logger.debug("get_sms_for_lead lead_id={} count={}", lead_id, len(response.data))
+    return response.data
+
+
+def update_lead_engagement_scores(
+    lead_id: str,
+    recency: int,
+    intensity: int,
+    pattern: int,
+    composite: float,
+) -> None:
+    client = _get_client()
+    client.table("leads").update({
+        "recency_score": recency,
+        "intensity_score": intensity,
+        "pattern_score": pattern,
+        "composite_score": composite,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", lead_id).execute()
+    logger.debug("update_lead_engagement_scores lead_id={} composite={}", lead_id, composite)
+
+
+def update_lead_transcript_intel(lead_id: str, intel: dict) -> None:
+    client = _get_client()
+    data: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    field_map = {
+        "motivation_level": "motivation_level",
+        "price_floor": "price_floor",
+        "timeline_urgency": "timeline_urgency",
+        "hot_topics": "hot_topics",
+        "rapport_openers": "rapport_openers",
+        "competitor_mentions": "competitor_mentions",
+        "next_best_action": "next_best_action",
+        "call_summary": "call_summary",
+    }
+    for src, dst in field_map.items():
+        val = intel.get(src)
+        if val is not None:
+            data[dst] = val
+    client.table("leads").update(data).eq("id", lead_id).execute()
+    logger.info("update_lead_transcript_intel lead_id={}", lead_id)
+
+
+def get_active_email_leads() -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("leads")
+        .select("*, properties(*)")
+        .eq("opted_out", False)
+        .eq("email_paused", False)
+        .eq("email_completed", False)
+        .not_.is_("owner_email", "null")
+        .execute()
+    )
+    rows = [r for r in response.data if r.get("owner_email")]
+    logger.debug("get_active_email_leads count={}", len(rows))
+    return rows
+
+
+def update_lead_email_progress(lead_id: str, email_day: int, last_email_at: str) -> None:
+    client = _get_client()
+    client.table("leads").update({
+        "email_day": email_day,
+        "last_email_at": last_email_at,
+    }).eq("id", lead_id).execute()
+    logger.debug("update_lead_email_progress lead_id={} day={}", lead_id, email_day)
+
+
+def pause_lead_email(lead_id: str) -> None:
+    client = _get_client()
+    client.table("leads").update({"email_paused": True}).eq("id", lead_id).execute()
+    logger.info("pause_lead_email lead_id={}", lead_id)
+
+
+def complete_lead_email(lead_id: str) -> None:
+    client = _get_client()
+    client.table("leads").update({"email_completed": True}).eq("id", lead_id).execute()
+    logger.info("complete_lead_email lead_id={}", lead_id)
+
+
+def update_call_voicemail_script(lead_id: str, script_num: int) -> None:
+    client = _get_client()
+    response = (
+        client.table("calls")
+        .select("id")
+        .eq("lead_id", lead_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if response.data:
+        call_id = response.data[0]["id"]
+        client.table("calls").update({"voicemail_script": script_num}).eq("id", call_id).execute()
+        logger.debug("update_call_voicemail_script lead_id={} script={}", lead_id, script_num)
+
+
+def mark_callback_from_voicemail(call_sid: str) -> None:
+    client = _get_client()
+    client.table("calls").update({"callback_from_voicemail": True}).eq(
+        "signalwire_call_id", call_sid
+    ).execute()
+    logger.info("mark_callback_from_voicemail call_sid={}", call_sid)
+
+
+def start_email_drip_for_lead(lead_id: str, started_at: str) -> None:
+    client = _get_client()
+    client.table("leads").update({
+        "email_day": -1,
+        "email_paused": False,
+        "email_completed": False,
+        "last_email_at": started_at,
+    }).eq("id", lead_id).execute()
+    logger.info("start_email_drip_for_lead lead_id={}", lead_id)

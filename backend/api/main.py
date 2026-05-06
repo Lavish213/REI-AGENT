@@ -50,8 +50,24 @@ async def lifespan(app: FastAPI):
         id="outbound_campaign",
         replace_existing=True,
     )
+
+    def _refresh_engagement() -> None:
+        try:
+            from backend.scout.engagement import refresh_all_engagement
+            refresh_all_engagement()
+        except Exception as e:
+            logger.error("engagement_refresh_error error={}", str(e))
+
+    outbound_scheduler.add_job(
+        _refresh_engagement,
+        "cron",
+        hour="6",
+        minute="0",
+        id="engagement_refresh",
+        replace_existing=True,
+    )
     outbound_scheduler.start()
-    logger.info("outbound_scheduler started cron=9am,1pm PT")
+    logger.info("outbound_scheduler started cron=9am,1pm PT engagement_refresh=6am")
 
     yield
 

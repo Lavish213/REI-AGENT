@@ -78,7 +78,7 @@ def _get_phone_list(prop: dict) -> list[str]:
     return []
 
 
-def call_lead(lead_id: str) -> dict:
+def call_lead(lead_id: str, bypass_cooldown: bool = False) -> dict:
     lead = get_lead_with_property(lead_id)
     if not lead:
         logger.error("call_lead lead_not_found lead_id={}", lead_id)
@@ -102,7 +102,7 @@ def call_lead(lead_id: str) -> dict:
         return {"success": False, "reason": "no_phones"}
 
     last_called_raw = lead.get("last_called_at")
-    if last_called_raw:
+    if last_called_raw and not bypass_cooldown:
         last_called = datetime.fromisoformat(last_called_raw.replace("Z", "+00:00"))
         hours_since = (datetime.now(timezone.utc) - last_called).total_seconds() / 3600
         if hours_since < 72:

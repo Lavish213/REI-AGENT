@@ -240,6 +240,8 @@ def handle_inbound_reply(from_phone: str, body: str, message_sid: str) -> str:
 
     if any(kw in body_lower for kw in HOT_KEYWORDS):
         pause_lead_drip(lead_id)
+        from backend.lib.db import pause_lead_email
+        pause_lead_email(lead_id)
         append_drip_reply(lead_id, {
             "body": body_stripped,
             "received_at": datetime.now(timezone.utc).isoformat(),
@@ -271,6 +273,8 @@ def handle_inbound_reply(from_phone: str, body: str, message_sid: str) -> str:
         return "hot_reply"
 
     pause_lead_drip(lead_id)
+    from backend.lib.db import pause_lead_email
+    pause_lead_email(lead_id)
     append_drip_reply(lead_id, {
         "body": body_stripped,
         "received_at": datetime.now(timezone.utc).isoformat(),
@@ -312,6 +316,11 @@ def start_drip_scheduler() -> None:
     _scheduler.add_job(_tick, "interval", minutes=15, id="drip_tick", replace_existing=True)
     _scheduler.start()
     logger.info("drip_scheduler started interval=15min")
+
+    from backend.alerts.email import start_email_scheduler
+    from backend.alerts.speed_to_lead import start_speed_to_lead_scheduler
+    start_email_scheduler(existing_scheduler=_scheduler)
+    start_speed_to_lead_scheduler(existing_scheduler=_scheduler)
 
 
 def stop_drip_scheduler() -> None:

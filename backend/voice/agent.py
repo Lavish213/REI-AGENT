@@ -374,6 +374,9 @@ async def _handle_call_end(
             asyncio.create_task(
                 _run_qa_async(transcript, lead["id"], call_sid)
             )
+            asyncio.create_task(
+                _run_transcript_intel_async(transcript, lead["id"], call_sid)
+            )
 
     except Exception as e:
         logger.error("handle_call_end error call_sid={} error={}", call_sid, str(e))
@@ -385,6 +388,15 @@ async def _run_qa_async(transcript: str, lead_id: str, call_sid: str) -> None:
         logger.info("QA grading complete call_sid={}", call_sid)
     except Exception as e:
         logger.error("QA grading failed call_sid={} error={}", call_sid, str(e))
+
+
+async def _run_transcript_intel_async(transcript: str, lead_id: str, call_sid: str) -> None:
+    try:
+        from backend.qa.transcript_intel import analyze_transcript
+        await asyncio.to_thread(analyze_transcript, transcript, lead_id, call_sid)
+        logger.info("transcript_intel complete call_sid={}", call_sid)
+    except Exception as e:
+        logger.error("transcript_intel failed call_sid={} error={}", call_sid, str(e))
 
 
 def _build_transcript(messages: list[dict]) -> str:

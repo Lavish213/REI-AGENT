@@ -43,7 +43,28 @@ async def handle_outbound_answered(request: Request, lead_id: str) -> Response:
     if answered_by in ("machine_end_beep", "machine_end_silence", "machine_end_other", "machine_start"):
         logger.info("outbound_voicemail lead_id={} answered_by={}", lead_id, answered_by)
         await run_in_threadpool(update_lead_call_outcome, lead_id, "voicemail", call_sid)
-        laml = build_voicemail_laml(lead, prop)
+
+        in_stl = (
+            not lead.get("speed_to_lead_completed", False)
+            and (lead.get("speed_to_lead_attempts") or 0) > 0
+        )
+        if in_stl:
+            from backend.alerts.ringless import (
+                build_ringless_voicemail_laml,
+                select_script_number,
+            )
+            stl_attempts = lead.get("speed_to_lead_attempts") or 1
+            script_num = select_script_number(stl_attempts)
+            laml = build_ringless_voicemail_laml(lead, prop, script_num)
+            logger.info(
+                "ringless_voicemail lead_id={} script={} stl_attempts={}",
+                lead_id,
+                script_num,
+                stl_attempts,
+            )
+        else:
+            laml = build_voicemail_laml(lead, prop)
+
         return PlainTextResponse(content=laml, media_type="text/xml")
 
     laml = build_outbound_answer_laml(lead_id)
@@ -116,13 +137,19 @@ async def outbound_voice_stream(websocket: WebSocket, lead_id: str):
 
     landmark = await _get_landmark_for_property(prop) if prop else None
 
+    from backend.qa.transcript_intel import build_prior_call_context
+    prior_context = build_prior_call_context(lead) if lead else None
+    base_context_str = _build_outbound_context(lead, prop, first_name, address, landmark)
+    if prior_context:
+        base_context_str = base_context_str + "\n\n" + prior_context
+
     outbound_context = {
         "boss_mode": False,
         "is_outbound": True,
         "lead": lead,
         "lead_id": lead_id,
         "owner_first_name": first_name,
-        "property_context_str": _build_outbound_context(lead, prop, first_name, address, landmark),
+        "property_context_str": base_context_str,
         "spanish_detected": False,
     }
 

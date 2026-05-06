@@ -76,6 +76,14 @@ def run_scout() -> None:
                     send_sms(to=ALERT_PHONE, body=message)
                     alerts_sent += 1
 
+                if prop["distress_score"] >= 50:
+                    try:
+                        from backend.alerts.speed_to_lead import run_speed_to_lead
+                        run_speed_to_lead(lead_id)
+                        logger.info("speed_to_lead triggered lead_id={} score={}", lead_id, prop["distress_score"])
+                    except Exception as e:
+                        logger.error("speed_to_lead trigger failed lead_id={} error={}", lead_id, str(e))
+
     logger.info(
         "scout run complete upserted={} leads={} alerts={}",
         upserted,
