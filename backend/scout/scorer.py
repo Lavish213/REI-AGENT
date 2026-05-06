@@ -136,6 +136,9 @@ def _motivation_score(prop: dict) -> int:
     if tax_del and free_clear:
         score += 20
 
+    if prop.get("price_reduced"):
+        score += 15
+
     signals = sum([
         nts or pre_fc or nod,
         tax_del,
@@ -153,6 +156,24 @@ def _motivation_score(prop: dict) -> int:
 
 
 def _compute_arv(prop: dict) -> int:
+    try:
+        from backend.comps.homeharvest import get_comps as hh_get_comps
+        result = hh_get_comps(
+            address=prop.get("address", ""),
+            city=prop.get("city", ""),
+            state=prop.get("state", "CA"),
+            beds=prop.get("beds"),
+            baths=prop.get("baths"),
+            sqft=prop.get("sqft"),
+        )
+        if result.get("arv_estimate") and result["arv_estimate"] > 0:
+            prop["arv_confidence"] = result["confidence"]
+            prop["comp_count"] = result["comp_count"]
+            prop["price_per_sqft"] = result["price_per_sqft"]
+            return result["arv_estimate"]
+    except Exception as e:
+        logger.warning("homeharvest arv lookup failed apn={} error={}", prop.get("apn"), str(e))
+
     zestimate = prop.get("zestimate")
     if zestimate and zestimate > 0:
         return int(zestimate)

@@ -17,6 +17,7 @@ from backend.scout.parser import parse_csv
 from backend.scout.scorer import score_properties
 from backend.alerts.formatter import format_lead_alert
 from backend.alerts.sms import send_sms
+from backend.scout.expired import run_expired_scraper
 
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "data")
@@ -95,6 +96,7 @@ def run_scout() -> None:
 def start_scheduler() -> None:
     logger.info("starting scout scheduler every {} hours", INTERVAL_HOURS)
     schedule.every(INTERVAL_HOURS).hours.do(run_scout)
+    schedule.every().day.at("07:00").do(run_expired_scraper)
     run_scout()
     while True:
         schedule.run_pending()

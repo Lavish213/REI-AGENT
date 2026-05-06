@@ -11,6 +11,7 @@ from backend.lib.db import (
 from backend.comps.redfin import get_comps
 from backend.comps.calculator import calculate_arv
 from backend.comps.cache import get_cached_comps, set_cached_comps
+from backend.comps.homeharvest import get_comps as hh_get_comps
 from backend.lib.db import update_property_arv, insert_comp
 from backend.lib.osm import enrich_property_full
 
@@ -26,6 +27,7 @@ def preload_call_context(caller_phone: str) -> dict:
         "arv": None,
         "mao": None,
         "arv_confidence": "low",
+        "hh_comps": None,
         "owner_name": None,
         "owner_first_name": None,
         "property_context_str": "",
@@ -92,6 +94,20 @@ def preload_call_context(caller_phone: str) -> dict:
             arv_result["mao"],
             arv_result["confidence"],
         )
+
+    try:
+        hh_result = hh_get_comps(
+            address=prop.get("address", ""),
+            city=prop.get("city", ""),
+            state=prop.get("state", "CA"),
+            beds=prop.get("beds"),
+            baths=prop.get("baths"),
+            sqft=prop.get("sqft"),
+        )
+        context["hh_comps"] = hh_result if hh_result.get("comp_count", 0) > 0 else None
+    except Exception as e:
+        logger.warning("hh_get_comps failed in preloader phone={} error={}", caller_phone, str(e))
+        context["hh_comps"] = None
 
     osm_data = enrich_property_full(
         prop.get("address", ""),
@@ -186,6 +202,24 @@ def _build_property_context_str(ctx: dict, osm_data: dict | None = None) -> str:
     landmarks = osm.get("landmarks", [])
     landmarks_str = ", ".join(landmarks[:3]) if landmarks else "none found"
 
+    hh = ctx.get("hh_comps") or {}
+    hh_count = hh.get("comp_count", 0)
+    hh_confidence = hh.get("confidence", "")
+    hh_ppsf = hh.get("price_per_sqft", 0)
+    hh_arv = hh.get("arv_estimate", 0)
+    hh_low = hh.get("comp_range_low", 0)
+    hh_high = hh.get("comp_range_high", 0)
+
+    if hh_count > 0:
+        comps_block = (
+            f"Comps ({hh_count} sales within 0.5mi, 90 days):\n"
+            f" Avg price/sqft: ${hh_ppsf / 100:,.0f}\n"
+            f" Estimated ARV: {_dollars(hh_arv)} ({hh_confidence} confidence)\n"
+            f" Comp range: {_dollars(hh_low)} - {_dollars(hh_high)}"
+        )
+    else:
+        comps_block = "Comps: none found — ARV based on assessed value"
+
     return f"""
 CALLER PROPERTY CONTEXT
 =======================
@@ -213,6 +247,7 @@ Notes: {nbhd_notes}
 
 PRICING
 =======
+{comps_block}
 Estimated ARV: {arv} (confidence: {confidence})
 Your Max Offer (MAO): {mao}
 Comp Count: {len(ctx.get("comps", []))}

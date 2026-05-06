@@ -25,4 +25,5 @@ pydantic-settings
 APScheduler
 requests
 lxml
+homeharvest
 ruff
