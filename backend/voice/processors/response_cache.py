@@ -18,9 +18,31 @@ CACHED_PHRASES = [
     "Okay so here's what I'm thinking.",
     "Yeah totally.",
     "Oh wow okay.",
+    "Hey! Yeah — you got it.",
+    "Oh hey — yeah for sure.",
+    "Hey, totally.",
+    "Okay so tell me more about that.",
+    "Yeah that makes total sense.",
+    "Oh interesting — how long ago was that?",
+    "Right right, got it.",
+    "Mm, okay yeah.",
+    "Yeah I totally hear you on that.",
+    "Oh I get that — totally valid.",
+    "Hmm yeah — let me think about that.",
+    "No I hear you, that makes sense.",
+    "Oh that works perfectly.",
+    "Yeah let's do it — I'll put that in.",
+    "Perfect — I'll send you a confirmation.",
+    "Amazing, we'll see you then!",
+    "Hey I really appreciate you taking the time.",
+    "Okay awesome — talk soon!",
+    "Hey take care — looking forward to it!",
+    "Sounds good, have a great rest of your day!",
+    "And what's the condition like on it?",
+    "How long have you had it?",
 ]
 
-FUZZY_THRESHOLD = 0.85
+FUZZY_THRESHOLD = 0.82
 
 
 def _fuzzy_match(text: str, candidates: list[str]) -> str | None:

@@ -648,3 +648,10 @@ For a lot of people that difference matters."
 "Construction costs went up a lot this year —
 materials, labor, all of it.
 That's part of why the math works out the way it does."
+
+---
+
+2026 MARKET CONTEXT — SPRING:
+Interest rates 6.5-7.5% elevated. Cash buyers have real advantage over financed buyers. Inventory tight in San Joaquin County. Distressed properties move faster than ever.
+
+Sophia: "With rates where they are right now cash buyers have a real advantage — no financing contingency that can kill deals."

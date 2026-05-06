@@ -30,6 +30,7 @@ class CallContext:
     talk_time_caller: float = 0.0
     disposition: str | None = None
     extended_loaded: bool = False
+    turn_count: int = 0
 
     def build_context_prefix(self) -> str:
         parts = []
@@ -103,6 +104,11 @@ _EXTENDED_SUBJECTTO_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_EXTENDED_PROPERTY_PATTERN = re.compile(
+    r"\b(solar|hoa|homeowners.?association|tenant|renter|lease|prop 13|proposition 13|property tax|transfer tax)\b",
+    re.IGNORECASE,
+)
+
 _TIMELINE_PATTERN = re.compile(
     r"\b(asap|immediately|right away|next week|next month|30 days|60 days|90 days|few months|end of the year)\b",
     re.IGNORECASE,
@@ -142,6 +148,12 @@ class ContextTrackerProcessor(FrameProcessor):
 
         if isinstance(frame, TranscriptionFrame) and frame.text:
             self._analyze(frame.text)
+            self._ctx.turn_count += 1
+            if self._ctx.turn_count >= 6 and self._llm_context is not None:
+                if len(self._llm_context.messages) > 6:
+                    from backend.voice.context import compress_context
+                    compressed = compress_context(self._llm_context.messages, self._ctx.current_phase)
+                    self._llm_context.messages = compressed
             prefix = self._ctx.build_context_prefix()
             if prefix:
                 try:
@@ -163,6 +175,7 @@ class ContextTrackerProcessor(FrameProcessor):
             or _EXTENDED_LOCATION_PATTERN.search(text)
             or _EXTENDED_SPANISH_PATTERN.search(text)
             or _EXTENDED_SUBJECTTO_PATTERN.search(text)
+            or _EXTENDED_PROPERTY_PATTERN.search(text)
         ):
             content = _load_extended_prompt(self._extended_prompt_path)
             if content and self._llm_context.messages:

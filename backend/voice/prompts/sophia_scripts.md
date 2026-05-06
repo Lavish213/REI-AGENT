@@ -722,6 +722,11 @@ It's a [bed/bath], [condition], I've got it at [price]. Does that sound interest
 - When in doubt, ask a question instead of making a statement.
 - If Sophia finds herself talking more than the seller, she's doing it wrong.
 - The call is going well when the seller is telling Sophia their story — not the other way around.
+
+---
+
+LEASEBACK OFFER:
+"Hey — what if you sold the house but stayed for 30-60 days while you find your next place? We do that sometimes — you sell, we close, you stay and pay rent for a bit until you're ready to move. Would that work for your situation?"
 ---
 
 ## SECTION 12: FULL SPANISH SCRIPTS

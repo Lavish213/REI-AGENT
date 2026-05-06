@@ -85,6 +85,17 @@ def run_scout() -> None:
                     except Exception as e:
                         logger.error("speed_to_lead trigger failed lead_id={} error={}", lead_id, str(e))
 
+                if prop.get("distress_score", 0) >= 35:
+                    realestateapi_key = os.environ.get("REALESTATEAPI_KEY")
+                    if realestateapi_key:
+                        try:
+                            from backend.lib.batchdata import enrich_lead_realestateapi
+                            lead_id_for_enrich = prop.get("lead_id") or prop.get("id")
+                            if lead_id_for_enrich:
+                                enrich_lead_realestateapi(lead_id_for_enrich)
+                        except Exception as enrich_err:
+                            logger.warning("auto_enrichment failed lead_id={} error={}", prop.get("lead_id"), str(enrich_err))
+
     logger.info(
         "scout run complete upserted={} leads={} alerts={}",
         upserted,

@@ -398,3 +398,98 @@ def enrich_property_context(address: str, city: str, state: str) -> str:
     result = f"Property is {', '.join(parts)}."
     logger.info("enrich_property_context result={}", result)
     return result
+
+
+def get_walkability_score(lat: float, lng: float) -> dict:
+    radius = 800
+    query = f"""
+[out:json][timeout:15];
+(
+  node["public_transport"~"stop_position|platform"](around:{radius},{lat},{lng});
+  node["highway"="bus_stop"](around:{radius},{lat},{lng});
+  node["railway"~"station|halt|tram_stop"](around:{radius},{lat},{lng});
+  node["shop"~"supermarket|convenience|pharmacy|grocery"](around:{radius},{lat},{lng});
+  node["amenity"~"restaurant|cafe|fast_food"](around:{radius},{lat},{lng});
+  node["leisure"~"park|playground|garden"](around:{radius},{lat},{lng});
+  way["leisure"~"park|playground|garden"](around:{radius},{lat},{lng});
+);
+out count;
+""".strip()
+
+    try:
+        with httpx.Client(headers=OSM_HEADERS, timeout=20) as client:
+            response = client.post(OVERPASS_BASE, data={"data": query})
+            response.raise_for_status()
+            data = response.json()
+
+            counts = data.get("elements", [{}])
+            transit_count = 0
+            grocery_count = 0
+            restaurant_count = 0
+            park_count = 0
+
+            detail_query = f"""
+[out:json][timeout:15];
+(
+  node["public_transport"~"stop_position|platform"](around:{radius},{lat},{lng});
+  node["highway"="bus_stop"](around:{radius},{lat},{lng});
+  node["railway"~"station|halt|tram_stop"](around:{radius},{lat},{lng});
+  node["shop"~"supermarket|convenience|pharmacy|grocery"](around:{radius},{lat},{lng});
+  node["amenity"~"restaurant|cafe|fast_food"](around:{radius},{lat},{lng});
+  node["leisure"~"park|playground|garden"](around:{radius},{lat},{lng});
+  way["leisure"~"park|playground|garden"](around:{radius},{lat},{lng});
+);
+out tags;
+""".strip()
+            response2 = client.post(OVERPASS_BASE, data={"data": detail_query})
+            response2.raise_for_status()
+            elements = response2.json().get("elements", [])
+
+            for el in elements:
+                tags = el.get("tags", {})
+                pt = tags.get("public_transport") or tags.get("highway") or tags.get("railway", "")
+                shop = tags.get("shop", "")
+                amenity = tags.get("amenity", "")
+                leisure = tags.get("leisure", "")
+
+                if pt in ("stop_position", "platform", "bus_stop", "station", "halt", "tram_stop"):
+                    transit_count += 1
+                elif el.get("type") == "node" and "highway" in tags and tags["highway"] == "bus_stop":
+                    transit_count += 1
+                if shop in ("supermarket", "convenience", "pharmacy", "grocery"):
+                    grocery_count += 1
+                if amenity in ("restaurant", "cafe", "fast_food"):
+                    restaurant_count += 1
+                if leisure in ("park", "playground", "garden"):
+                    park_count += 1
+
+            transit_score = min(transit_count * 10, 30)
+            grocery_score = min(grocery_count * 15, 30)
+            restaurant_score = min(restaurant_count * 5, 25)
+            park_score = min(park_count * 5, 15)
+
+            total = transit_score + grocery_score + restaurant_score + park_score
+
+            if total >= 70:
+                description = "very walkable"
+            elif total >= 50:
+                description = "walkable"
+            elif total >= 25:
+                description = "somewhat walkable"
+            else:
+                description = "car dependent"
+
+            logger.info(
+                "walkability lat={} lng={} transit={} grocery={} restaurant={} park={} score={}",
+                lat, lng, transit_count, grocery_count, restaurant_count, park_count, total,
+            )
+
+            return {
+                "walk_score": total,
+                "description": description,
+                "transit_score": transit_score,
+            }
+
+    except Exception as e:
+        logger.error("get_walkability_score failed lat={} lng={} error={}", lat, lng, str(e))
+        return {"walk_score": 0, "description": "unknown", "transit_score": 0}

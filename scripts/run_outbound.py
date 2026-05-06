@@ -23,6 +23,14 @@ SCORE_TIERS = [
 
 
 def _sort_leads(leads: list[dict]) -> list[dict]:
+    for lead in leads:
+        prop = lead.get("properties") or {}
+        distress = prop.get("distress_score") or 0
+        engagement = lead.get("engagement_score") or 0
+        existing_composite = lead.get("composite_score")
+        if existing_composite is None:
+            lead["composite_score"] = int(distress * 0.5 + engagement * 0.5)
+
     def priority(lead: dict) -> tuple:
         callback_at = lead.get("callback_scheduled_at")
         if callback_at:
@@ -33,17 +41,16 @@ def _sort_leads(leads: list[dict]) -> list[dict]:
             except Exception:
                 pass
 
-        prop = lead.get("properties") or {}
-        score = prop.get("distress_score", 0)
+        composite = lead.get("composite_score") or 0
 
-        if score >= 85:
+        if composite >= 85:
             tier = 1
-        elif score >= 70:
+        elif composite >= 70:
             tier = 2
         else:
             tier = 3
 
-        return (tier, -score)
+        return (tier, -composite)
 
     return sorted(leads, key=priority)
 

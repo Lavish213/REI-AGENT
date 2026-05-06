@@ -155,6 +155,23 @@ def _motivation_score(prop: dict) -> int:
     return min(score, 100)
 
 
+def _move_score(prop: dict) -> int:
+    score = 0
+    distress = prop.get("distress_type", "unknown")
+    years = _years_owned(prop)
+
+    if distress in ("probate", "inherited", "estate"):
+        score += 8
+    if distress in ("divorce", "separation"):
+        score += 6
+    if distress in ("pre_foreclosure", "notice_of_default", "nts_filed"):
+        score += 6
+    if years is not None and years >= 7:
+        score += 4
+
+    return min(score, 30)
+
+
 def _compute_arv(prop: dict) -> int:
     try:
         from backend.comps.homeharvest import get_comps as hh_get_comps
@@ -258,13 +275,15 @@ def calculate_distress_score(prop: dict) -> int:
     arv = _compute_arv(prop)
     deal = _deal_score(prop, arv)
     mao = max(0, int(arv * 0.70) - 2500000)
+    move_bonus = _move_score(prop)
 
     prop["motivation_score"] = motivation
     prop["deal_score"] = deal
     prop["estimated_arv"] = arv
     prop["mao"] = mao
+    prop["move_score"] = move_bonus
 
-    final = min(int(motivation * 0.65 + deal * 0.35), 100)
+    final = min(int(motivation * 0.65 + deal * 0.35 + move_bonus * 0.1), 100)
     logger.debug(
         "calculate_distress_score apn={} type={} motivation={} deal={} score={}",
         prop.get("apn"),

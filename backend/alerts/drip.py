@@ -329,3 +329,96 @@ def stop_drip_scheduler() -> None:
         _scheduler.shutdown(wait=False)
         _scheduler = None
         logger.info("drip_scheduler stopped")
+
+
+def send_birthday_message(lead_id: str, first_name: str, phone: str) -> bool:
+    from backend.alerts.sms import send_sms
+    from backend.compliance.compliance import ComplianceEngine
+
+    engine = ComplianceEngine()
+    result = engine.check_sms_allowed(lead_id)
+    if not result.allowed:
+        logger.info("birthday_sms blocked lead_id={} reason={}", lead_id, result.reason)
+        return False
+
+    message = f"Happy birthday {first_name}! Hope you're having a great day. - Sophia, SJ House Buyers"
+    return send_sms(phone, message)
+
+
+def send_purchase_anniversary_message(lead_id: str, first_name: str, phone: str, address: str) -> bool:
+    from backend.alerts.sms import send_sms
+    from backend.compliance.compliance import ComplianceEngine
+
+    engine = ComplianceEngine()
+    result = engine.check_sms_allowed(lead_id)
+    if not result.allowed:
+        logger.info("anniversary_sms blocked lead_id={} reason={}", lead_id, result.reason)
+        return False
+
+    message = f"Hey {first_name} \u2014 hope life's been good since you bought on {address}. If you ever want to know what it's worth now just let us know! - Sophia"
+    return send_sms(phone, message)
+
+
+def send_wedding_anniversary_message(lead_id: str, first_name: str, spouse_name: str, phone: str) -> bool:
+    from backend.alerts.sms import send_sms
+    from backend.compliance.compliance import ComplianceEngine
+
+    engine = ComplianceEngine()
+    result = engine.check_sms_allowed(lead_id)
+    if not result.allowed:
+        logger.info("wedding_anniversary_sms blocked lead_id={} reason={}", lead_id, result.reason)
+        return False
+
+    message = f"Hey {first_name} \u2014 hope you and {spouse_name} are having a wonderful anniversary! - Sophia, San Joaquin House Buyers"
+    return send_sms(phone, message)
+
+
+def run_daily_drip_triggers() -> None:
+    from datetime import date
+    from backend.lib.db import get_supabase
+
+    today = date.today()
+    sb = get_supabase()
+
+    try:
+        result = sb.table("leads").select(
+            "id,first_name,phone,birthday,wedding_anniversary,home_purchase_anniversary,spouse_name,address"
+        ).not_.is_("phone", "null").execute()
+
+        for lead in (result.data or []):
+            lead_id = lead["id"]
+            first_name = lead.get("first_name") or "there"
+            phone = lead.get("phone", "")
+            if not phone:
+                continue
+
+            birthday_str = lead.get("birthday")
+            if birthday_str:
+                try:
+                    bday = date.fromisoformat(birthday_str)
+                    if bday.month == today.month and bday.day == today.day:
+                        send_birthday_message(lead_id, first_name, phone)
+                except Exception:
+                    pass
+
+            wedding_str = lead.get("wedding_anniversary")
+            if wedding_str:
+                try:
+                    wanniv = date.fromisoformat(wedding_str)
+                    if wanniv.month == today.month and wanniv.day == today.day:
+                        spouse = lead.get("spouse_name") or "your spouse"
+                        send_wedding_anniversary_message(lead_id, first_name, spouse, phone)
+                except Exception:
+                    pass
+
+            purchase_str = lead.get("home_purchase_anniversary")
+            if purchase_str:
+                try:
+                    panniv = date.fromisoformat(purchase_str)
+                    if panniv.month == today.month and panniv.day == today.day:
+                        address = lead.get("address") or "your property"
+                        send_purchase_anniversary_message(lead_id, first_name, phone, address)
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.error("run_daily_drip_triggers failed error={}", str(e))

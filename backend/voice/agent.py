@@ -43,6 +43,8 @@ from backend.voice.processors.phone_eq import PhoneEQProcessor
 from backend.voice.processors.breath_injector import BreathInjectorProcessor
 from backend.voice.processors.response_cache import ResponseCacheProcessor, pregenerate_response_cache
 from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor
+from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
+from backend.voice.processors.fair_housing import FairHousingFilter
 
 
 SPANISH_MARKERS = [
@@ -220,21 +222,31 @@ async def run_sophia_agent(
             language=stt_language,
             punctuate=True,
             interim_results=False,
-            endpointing=200,
-            utterance_end_ms=800,
+            endpointing=300,
+            utterance_end_ms=1000,
         ),
     )
 
-    voice_model = os.environ.get("VOICE_LLM_MODEL", "claude-haiku-4-5-20251001")
-    llm = AnthropicLLMService(
-        api_key=os.environ["ANTHROPIC_API_KEY"],
-        settings=AnthropicLLMService.Settings(
-            model=voice_model,
-            enable_prompt_caching=True,
-            max_tokens=80,
-        ),
-    )
-    logger.info("voice llm model={}", voice_model)
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if groq_key:
+        from pipecat.services.openai.llm import OpenAILLMService
+        llm = OpenAILLMService(
+            api_key=groq_key,
+            base_url="https://api.groq.com/openai/v1",
+            model="llama-3.3-70b-versatile",
+        )
+        logger.info("voice llm using groq model=llama-3.3-70b-versatile")
+    else:
+        voice_model = os.environ.get("VOICE_LLM_MODEL", "claude-haiku-4-5-20251001")
+        llm = AnthropicLLMService(
+            api_key=os.environ["ANTHROPIC_API_KEY"],
+            settings=AnthropicLLMService.Settings(
+                model=voice_model,
+                enable_prompt_caching=True,
+                max_tokens=80,
+            ),
+        )
+        logger.info("voice llm model={}", voice_model)
 
     call_ctx = CallContext()
 
@@ -271,6 +283,8 @@ async def run_sophia_agent(
     )
 
     response_cache_proc = ResponseCacheProcessor(transport_output, response_cache_clips, clip_sample_rate)
+    sentence_streamer = SentenceStreamProcessor()
+    fair_housing_filter = FairHousingFilter()
 
     latency_tracker = LatencyTracker()
     latency_proc_stt = LatencyTrackerProcessor(latency_tracker)
@@ -320,6 +334,8 @@ async def run_sophia_agent(
         interruption_proc,
         context_aggregator.user(),
         llm,
+        fair_housing_filter,
+        sentence_streamer,
         response_cache_proc,
         breath_injector_proc,
         tts,

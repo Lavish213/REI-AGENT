@@ -17,6 +17,10 @@ def _get_client() -> Client:
     return _client
 
 
+def get_supabase() -> Client:
+    return _get_client()
+
+
 def upsert_property(data: dict) -> None:
     client = _get_client()
     client.table("properties").upsert(data, on_conflict="apn").execute()
