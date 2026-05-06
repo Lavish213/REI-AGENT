@@ -549,3 +549,75 @@ def start_email_drip_for_lead(lead_id: str, started_at: str) -> None:
         "last_email_at": started_at,
     }).eq("id", lead_id).execute()
     logger.info("start_email_drip_for_lead lead_id={}", lead_id)
+
+
+def update_engagement_score(lead_id: str, event_type: str) -> None:
+    client = _get_client()
+    response = (
+        client.table("leads")
+        .select("recency_score,intensity_score,pattern_score,engagement_score,composite_score,last_contact_at,distress_score")
+        .eq("id", lead_id)
+        .limit(1)
+        .execute()
+    )
+    if not response.data:
+        return
+
+    row = response.data[0]
+    recency = row.get("recency_score") or 0
+    intensity = min(row.get("intensity_score") or 0, 40)
+    pattern = min(row.get("pattern_score") or 0, 30)
+    distress = row.get("distress_score") or 0
+
+    event_intensity = {
+        "sms_reply": 30,
+        "call_answered": 20,
+        "appointment_booked": 40,
+        "callback_received": 40,
+        "sms_opened": 5,
+        "call_brief": 10,
+        "no_contact_30d": 0,
+    }
+    event_pattern = {
+        "sms_reply": 25,
+        "call_answered": 15,
+        "appointment_booked": 30,
+        "callback_received": 30,
+        "sms_opened": 0,
+        "call_brief": 10,
+        "no_contact_30d": 0,
+    }
+
+    if event_type == "no_contact_30d":
+        recency = 2
+    else:
+        last_contact = row.get("last_contact_at")
+        if last_contact:
+            try:
+                last_dt = datetime.fromisoformat(last_contact.replace("Z", "+00:00"))
+                days = (datetime.now(timezone.utc) - last_dt).days
+                if days < 7:
+                    recency = 30
+                elif days < 30:
+                    recency = 20
+                elif days < 90:
+                    recency = 10
+                else:
+                    recency = 2
+            except Exception:
+                pass
+
+    intensity = min(intensity + event_intensity.get(event_type, 0), 40)
+    pattern = min(pattern + event_pattern.get(event_type, 0), 30)
+    engagement = recency + intensity + pattern
+    composite = min(round(distress * 0.5 + engagement * 0.5, 2), 100)
+
+    client.table("leads").update({
+        "recency_score": recency,
+        "intensity_score": intensity,
+        "pattern_score": pattern,
+        "engagement_score": engagement,
+        "composite_score": composite,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", lead_id).execute()
+    logger.info("update_engagement_score lead_id={} event={} composite={}", lead_id, event_type, composite)

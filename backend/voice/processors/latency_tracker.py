@@ -56,10 +56,15 @@ class LatencyTracker:
         llm_ms = int((self._tts_start_ts - self._stt_ts) * 1000)
         tts_ms = int((self._tts_audio_ts - self._tts_start_ts) * 1000)
         total_ms = int((self._tts_audio_ts - self._stop_ts) * 1000)
-        flag = " ⚠ SLOW" if total_ms > 600 else ""
+        if total_ms > 600:
+            label = "[LATENCY ⚠ SLOW]"
+        elif total_ms >= 400:
+            label = "[LATENCY OK]"
+        else:
+            label = "[LATENCY ✅ FAST]"
         logger.info(
-            "[LATENCY] STT: {}ms | LLM: {}ms | TTS: {}ms | Total: {}ms{}",
-            stt_ms, llm_ms, tts_ms, total_ms, flag,
+            "{} STT: {}ms | LLM: {}ms | TTS: {}ms | Total: {}ms",
+            label, stt_ms, llm_ms, tts_ms, total_ms,
         )
 
 

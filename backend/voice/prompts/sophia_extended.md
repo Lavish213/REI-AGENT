@@ -1,5 +1,5 @@
 SOPHIA EXTENDED CONTEXT
-Loaded on trigger: process questions / location mention / Spanish detected / subject-to signals
+Loaded on trigger: process questions / location mention / Spanish detected / subject-to signals / repair questions / contract questions
 
 ---
 

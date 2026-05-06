@@ -39,6 +39,8 @@ from backend.voice.processors.interruption import InterruptionAckProcessor
 from backend.voice.processors.emotion import EmotionDetectorProcessor
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
 from backend.voice.processors.room_tone import RoomToneProcessor
+from backend.voice.processors.phone_eq import PhoneEQProcessor
+from backend.voice.processors.breath_injector import BreathInjectorProcessor
 from backend.voice.processors.response_cache import ResponseCacheProcessor, pregenerate_response_cache
 from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor
 
@@ -127,7 +129,15 @@ def _make_tool_handler(tool_name: str, call_ctx=None):
     return handler
 
 
-async def _build_tts(call_ctx_ref: dict) -> tuple:
+def _rate_for_emotion(emotion: str | None) -> float:
+    if emotion in ("frustrated", "sad"):
+        return 0.92
+    if emotion in ("interested",):
+        return 1.0
+    return 0.97
+
+
+async def _build_tts(call_ctx_ref) -> tuple:
     use_orpheus = bool(os.environ.get("TOGETHER_AI_API_KEY"))
 
     if use_orpheus:
@@ -142,7 +152,7 @@ async def _build_tts(call_ctx_ref: dict) -> tuple:
             settings=CartesiaTTSService.Settings(
                 voice=os.environ["CARTESIA_VOICE_ID"],
                 generation_config=GenerationConfig(
-                    speed=1.0,
+                    speed=_rate_for_emotion(getattr(call_ctx_ref, "current_emotion", None)),
                     emotion="positivity:high",
                 ),
             ),
@@ -226,12 +236,12 @@ async def run_sophia_agent(
     )
     logger.info("voice llm model={}", voice_model)
 
+    call_ctx = CallContext()
+
     for tool in SOPHIA_TOOLS:
         llm.register_function(tool["name"], _make_tool_handler(tool["name"], call_ctx))
 
-    tts = await _build_tts({})
-
-    call_ctx = CallContext()
+    tts = await _build_tts(call_ctx)
 
     clip_sample_rate = 16000
     cartesia_api_key = os.environ.get("CARTESIA_API_KEY", "")
@@ -267,6 +277,8 @@ async def run_sophia_agent(
     latency_proc_tts = LatencyTrackerProcessor(latency_tracker)
 
     room_tone_proc = RoomToneProcessor()
+    phone_eq_proc = PhoneEQProcessor()
+    breath_injector_proc = BreathInjectorProcessor()
 
     messages = [
         {
@@ -290,7 +302,7 @@ async def run_sophia_agent(
                 params=VADParams(
                     confidence=0.7,
                     start_secs=0.2,
-                    stop_secs=0.3,
+                    stop_secs=0.2,
                     min_volume=0.6,
                 ),
             ),
@@ -309,8 +321,10 @@ async def run_sophia_agent(
         context_aggregator.user(),
         llm,
         response_cache_proc,
+        breath_injector_proc,
         tts,
         latency_proc_tts,
+        phone_eq_proc,
         room_tone_proc,
         transport_output,
         context_aggregator.assistant(),
