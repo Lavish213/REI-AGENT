@@ -11,9 +11,7 @@ SAN_JOAQUIN_ZIPS = [
     "95378",
 ]
 
-RSS_FEEDS = [
-    "https://www.realtor.com/rss/priceReduction/zip/{zip_code}",
-]
+RSS_FEEDS: list[str] = []
 
 
 def scrape_price_reductions(zip_codes: list[str]) -> list[dict]:
@@ -66,6 +64,9 @@ def scrape_price_reductions(zip_codes: list[str]) -> list[dict]:
 
 
 def run_rss_scraper() -> int:
+    if not RSS_FEEDS:
+        logger.info("rss_scraper: no feeds configured, skipping")
+        return 0
     props = scrape_price_reductions(SAN_JOAQUIN_ZIPS)
     count = 0
     for prop in props:

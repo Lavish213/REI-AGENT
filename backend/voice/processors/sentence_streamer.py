@@ -2,7 +2,7 @@ import re
 
 from loguru import logger
 
-from pipecat.frames.frames import Frame, LLMFullResponseEndFrame, LLMTextFrame, TextFrame
+from pipecat.frames.frames import Frame, LLMFullResponseEndFrame, LLMTextFrame, TextFrame, TTSTextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
@@ -39,7 +39,7 @@ class SentenceStreamProcessor(FrameProcessor):
                 sentence = self._buffer[:boundary].rstrip()
                 self._buffer = self._buffer[boundary:]
                 logger.debug("sentence_streamer flushing sentence={!r}", sentence)
-                await self.push_frame(TextFrame(text=sentence), direction)
+                await self.push_frame(TTSTextFrame(text=sentence), direction)
             return
 
         if isinstance(frame, LLMFullResponseEndFrame):
@@ -48,10 +48,10 @@ class SentenceStreamProcessor(FrameProcessor):
             if remaining:
                 if _word_count(remaining) >= 3:
                     logger.debug("sentence_streamer end-flush sentence={!r}", remaining)
-                    await self.push_frame(TextFrame(text=remaining), direction)
+                    await self.push_frame(TTSTextFrame(text=remaining), direction)
                 else:
                     logger.debug("sentence_streamer end-flush short remainder={!r}", remaining)
-                    await self.push_frame(TextFrame(text=remaining), direction)
+                    await self.push_frame(TTSTextFrame(text=remaining), direction)
             await self.push_frame(frame, direction)
             return
 

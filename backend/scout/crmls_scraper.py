@@ -45,7 +45,7 @@ def _build_headers(api_key: str) -> dict:
 
 def _item_to_prop(item: dict, distress_type: str) -> dict:
     list_price = item.get("ListPrice") or 0
-    list_price_cents = int(list_price * 100)
+    list_price_cents = round(list_price * 100)
     days_on_market = item.get("DaysOnMarket") or 0
 
     return {

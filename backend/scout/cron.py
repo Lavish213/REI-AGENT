@@ -18,6 +18,11 @@ from backend.scout.scorer import score_properties
 from backend.alerts.formatter import format_lead_alert
 from backend.alerts.sms import send_sms
 from backend.scout.expired import run_expired_scraper
+from backend.scout.rss_scraper import run_rss_scraper
+from backend.scout.social_scraper import run_social_scraper
+from backend.scout.eviction_scraper import run_eviction_scraper
+from backend.scout.crmls_scraper import run_crmls_scraper
+from backend.alerts.drip import run_daily_drip_triggers
 
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "data")
@@ -104,10 +109,24 @@ def run_scout() -> None:
     )
 
 
+def _safe(fn):
+    def wrapped():
+        try:
+            fn()
+        except Exception as e:
+            logger.error("scheduler job failed fn={} error={}", fn.__name__, str(e))
+    return wrapped
+
+
 def start_scheduler() -> None:
     logger.info("starting scout scheduler every {} hours", INTERVAL_HOURS)
     schedule.every(INTERVAL_HOURS).hours.do(run_scout)
     schedule.every().day.at("07:00").do(run_expired_scraper)
+    schedule.every().day.at("06:00").do(_safe(run_rss_scraper))
+    schedule.every().day.at("07:00").do(_safe(run_social_scraper))
+    schedule.every().day.at("07:30").do(_safe(run_eviction_scraper))
+    schedule.every().day.at("07:00").do(_safe(run_crmls_scraper))
+    schedule.every().day.at("08:00").do(_safe(run_daily_drip_triggers))
     run_scout()
     while True:
         schedule.run_pending()

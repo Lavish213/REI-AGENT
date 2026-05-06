@@ -71,6 +71,10 @@ class SellerMemory:
             }
             if self.price_floor is not None:
                 payload["price_floor"] = self.price_floor
+            if self.birthday is not None:
+                payload["birthday"] = self.birthday
+            if self.wedding_anniversary is not None:
+                payload["wedding_anniversary"] = self.wedding_anniversary
             sb.table("leads").update(payload).eq("id", self.lead_id).execute()
             logger.info("seller_memory saved lead_id={}", self.lead_id)
         except Exception as e:

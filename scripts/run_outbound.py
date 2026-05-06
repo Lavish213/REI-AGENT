@@ -10,6 +10,7 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from loguru import logger
+from backend.compliance.compliance import ComplianceEngine
 from backend.lib.db import get_leads_for_outbound, schedule_callback
 from backend.voice.outbound import call_lead, _is_calling_hours
 
@@ -73,6 +74,7 @@ def run_campaign() -> dict:
     skipped = 0
     failed = 0
     results = []
+    engine = ComplianceEngine()
 
     for i, lead in enumerate(batch):
         if not _is_calling_hours():
@@ -83,6 +85,12 @@ def run_campaign() -> dict:
         prop = lead.get("properties") or {}
         score = prop.get("distress_score", 0)
         address = prop.get("address", "unknown")
+
+        compliance = engine.check_call_allowed(lead_id)
+        if not compliance.allowed:
+            logger.warning("outbound_blocked lead_id={} reason={}", lead_id, compliance.reason)
+            skipped += 1
+            continue
 
         result = call_lead(lead_id)
 

@@ -79,6 +79,13 @@ def _get_phone_list(prop: dict) -> list[str]:
 
 
 def call_lead(lead_id: str, bypass_cooldown: bool = False) -> dict:
+    from backend.compliance.compliance import ComplianceEngine
+    engine = ComplianceEngine()
+    result = engine.check_call_allowed(lead_id)
+    if not result.allowed:
+        logger.warning("outbound_compliance_blocked lead_id={} reason={}", lead_id, result.reason)
+        return {"success": False, "reason": result.reason}
+
     lead = get_lead_with_property(lead_id)
     if not lead:
         logger.error("call_lead lead_not_found lead_id={}", lead_id)

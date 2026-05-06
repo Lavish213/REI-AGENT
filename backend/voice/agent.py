@@ -45,6 +45,7 @@ from backend.voice.processors.response_cache import ResponseCacheProcessor, preg
 from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor
 from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 from backend.voice.processors.fair_housing import FairHousingFilter
+from backend.voice.processors.ai_identity import AIIdentityProcessor
 
 
 SPANISH_MARKERS = [
@@ -188,6 +189,12 @@ async def run_sophia_agent(
 
     spanish_detected = call_context.get("spanish_detected", False)
 
+    lead = call_context.get("lead")
+    seller_memory = None
+    if lead and lead.get("id"):
+        from backend.voice.memory import SellerMemory
+        seller_memory = SellerMemory.load(lead["id"])
+
     if call_context.get("boss_mode"):
         system_prompt = _load_boss_prompt(call_context.get("briefing", "No briefing available."))
     else:
@@ -195,6 +202,11 @@ async def run_sophia_agent(
             call_context.get("property_context_str", "No property context available."),
             spanish=spanish_detected,
         )
+
+    if seller_memory:
+        memory_ctx = seller_memory.to_prompt_context()
+        if memory_ctx:
+            system_prompt = system_prompt + "\n\n" + memory_ctx
 
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
@@ -234,6 +246,7 @@ async def run_sophia_agent(
             api_key=groq_key,
             base_url="https://api.groq.com/openai/v1",
             model="llama-3.3-70b-versatile",
+            max_tokens=80,
         )
         logger.info("voice llm using groq model=llama-3.3-70b-versatile")
     else:
@@ -276,6 +289,7 @@ async def run_sophia_agent(
         logger.debug("emotion detected emotion={}", emotion)
 
     emotion_proc = EmotionDetectorProcessor(on_emotion)
+    ai_identity_proc = AIIdentityProcessor()
     extended_path = _get_extended_prompt_path() if not spanish_detected else None
     context_tracker = ContextTrackerProcessor(
         call_ctx,
@@ -328,6 +342,7 @@ async def run_sophia_agent(
         stt,
         latency_proc_stt,
         emotion_proc,
+        ai_identity_proc,
         context_tracker,
         backchannel_proc,
         filler_proc,
@@ -371,7 +386,7 @@ async def run_sophia_agent(
     except Exception as e:
         logger.error("sophia agent error call_sid={} error={}", call_sid, str(e))
     finally:
-        await _handle_call_end(call_sid, call_context, context, call_ctx)
+        await _handle_call_end(call_sid, call_context, context, call_ctx, seller_memory)
 
 
 async def _handle_call_end(
@@ -379,12 +394,20 @@ async def _handle_call_end(
     call_context: dict,
     context: LLMContext,
     call_ctx=None,
+    seller_memory=None,
 ) -> None:
     logger.info("handling call end call_sid={}", call_sid)
 
     try:
         transcript = _build_transcript(context.messages)
         disposition = call_ctx.disposition if call_ctx else None
+
+        if seller_memory and transcript:
+            try:
+                seller_memory.add_call_summary(f"Call {call_sid[:8]}: {transcript[:200]}")
+                seller_memory.save()
+            except Exception as mem_err:
+                logger.error("seller_memory save failed error={}", str(mem_err))
 
         lead = call_context.get("lead")
         if lead:
