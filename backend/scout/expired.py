@@ -21,16 +21,33 @@ def _upsert_distress(row: dict, distress_type: str) -> None:
     if not apn:
         return
 
-    address = str(row.get("street") or "").strip()
-    city = str(row.get("city") or "").strip()
-    state = str(row.get("state") or "CA").strip()
-    zip_code = str(row.get("zip_code") or "").strip()
-    list_price = int(row.get("list_price") or 0)
-    dom = int(row.get("days_on_market") or 0)
-    beds = row.get("beds")
-    baths = row.get("full_baths")
-    sqft = row.get("sqft")
-    year_built = row.get("year_built")
+    def _safe_str(val, default="") -> str:
+        if val is None or str(val) in ("nan", "<NA>", "NA", "None"):
+            return default
+        return str(val).strip()
+
+    def _safe_int(val, default=0) -> int:
+        try:
+            return int(val) if val is not None and str(val) not in ("nan", "<NA>", "NA", "None") else default
+        except (ValueError, TypeError):
+            return default
+
+    def _safe_float(val) -> float | None:
+        try:
+            return float(val) if val is not None and str(val) not in ("nan", "<NA>", "NA", "None") else None
+        except (ValueError, TypeError):
+            return None
+
+    address = _safe_str(row.get("street"))
+    city = _safe_str(row.get("city"))
+    state = _safe_str(row.get("state"), "CA")
+    zip_code = _safe_str(row.get("zip_code"))
+    list_price = _safe_int(row.get("list_price"))
+    dom = _safe_int(row.get("days_on_market"))
+    beds = _safe_int(row.get("beds")) or None
+    baths = _safe_float(row.get("full_baths"))
+    sqft = _safe_int(row.get("sqft")) or None
+    year_built = _safe_int(row.get("year_built")) or None
 
     existing = (
         client.table("properties")
@@ -67,13 +84,13 @@ def _upsert_distress(row: dict, distress_type: str) -> None:
     }
 
     if beds is not None:
-        payload["beds"] = int(beds)
+        payload["beds"] = beds
     if baths is not None:
-        payload["baths"] = float(baths)
-    if sqft:
-        payload["sqft"] = int(sqft)
-    if year_built:
-        payload["year_built"] = int(year_built)
+        payload["baths"] = baths
+    if sqft is not None:
+        payload["sqft"] = sqft
+    if year_built is not None:
+        payload["year_built"] = year_built
 
     client.table("properties").upsert(payload, on_conflict="apn").execute()
     logger.debug("upserted apn={} distress_type={} price_reduced={}", apn, distress_type, price_reduced)
@@ -107,7 +124,8 @@ def run_expired_scraper() -> None:
 
     for _, row in df.iterrows():
         dom = row.get("days_on_market")
-        agent = str(row.get("agent_name") or "").strip()
+        raw_agent = row.get("agent_name")
+        agent = "" if (raw_agent is None or str(raw_agent) in ("nan", "<NA>", "NA")) else str(raw_agent).strip()
         is_fsbo = not agent
 
         if is_fsbo:
