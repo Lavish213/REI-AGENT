@@ -4,7 +4,6 @@ import json
 import asyncio
 from datetime import datetime, timezone
 from loguru import logger
-import httpx
 
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -166,44 +165,10 @@ async def _build_tts(call_ctx_ref) -> tuple:
     return tts
 
 
-async def _resolve_stt_model(api_key: str, preferred: str, fallback: str) -> str:
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(
-                "https://api.deepgram.com/v1/models",
-                headers={"Authorization": f"Token {api_key}"},
-            )
-        if r.status_code != 200:
-            logger.warning(
-                "deepgram models check failed status={} body={}",
-                r.status_code,
-                r.text[:200],
-            )
-            logger.warning("stt model falling back model={}", fallback)
-            return fallback
-        data = r.json()
-        available = {m.get("name", "") for m in data.get("stt", [])}
-        if preferred in available:
-            logger.info("stt model selected model={}", preferred)
-            return preferred
-        logger.warning(
-            "stt model not available model={} available={} falling back to={}",
-            preferred,
-            available,
-            fallback,
-        )
-        return fallback
-    except Exception as e:
-        logger.warning("stt model resolution error={} using fallback={}", str(e), fallback)
-        return fallback
-
 
 async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService:
-    preferred = "nova-3-general" if spanish else "nova-3"
-    fallback = "nova-2"
     language = "es" if spanish else "en-US"
-
-    model = await _resolve_stt_model(api_key, preferred, fallback)
+    model = "nova-2-general" if spanish else "nova-2"
     logger.info("deepgram stt initializing model={} language={}", model, language)
 
     return DeepgramSTTService(
