@@ -404,7 +404,7 @@ async def run_sophia_agent(
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
         logger.info("client connected call_sid={}", call_sid)
-        await task.queue_frames([context_aggregator.user().get_context_frame()])
+        await task.queue_frames([context_aggregator.user()._get_context_frame()])
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):

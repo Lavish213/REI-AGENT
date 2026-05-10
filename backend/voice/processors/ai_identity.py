@@ -1,6 +1,6 @@
 import re
 from loguru import logger
-from pipecat.frames.frames import Frame, TranscriptionFrame, TTSTextFrame
+from pipecat.frames.frames import AggregationType, Frame, TranscriptionFrame, TTSTextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 _IDENTITY_PATTERNS = re.compile(
@@ -33,7 +33,7 @@ class AIIdentityProcessor(FrameProcessor):
         ):
             self._disclosed = True
             logger.info("ai_identity_question detected — forcing disclosure")
-            await self.push_frame(TTSTextFrame(text=_DISCLOSURE), direction)
+            await self.push_frame(TTSTextFrame(text=_DISCLOSURE, aggregated_by=AggregationType.SENTENCE), direction)
             return
 
         await self.push_frame(frame, direction)
