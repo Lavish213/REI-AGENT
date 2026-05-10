@@ -34,23 +34,6 @@ async def _check_deepgram(key: str) -> dict:
             )
             result = {"status": "error", "reason": f"http_{auth_resp.status_code}"}
 
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            models_resp = await client.get(
-                "https://api.deepgram.com/v1/models",
-                headers={"Authorization": f"Token {key}"},
-            )
-        if models_resp.status_code == 200:
-            models_data = models_resp.json()
-            stt_names = [m.get("name") for m in models_data.get("stt", [])]
-            nova3_ok = "nova-3" in stt_names
-            nova2_ok = "nova-2" in stt_names
-            result["nova-3"] = "available" if nova3_ok else "unavailable"
-            result["nova-2"] = "available" if nova2_ok else "unavailable"
-            logger.info(
-                "deepgram models nova-3={} nova-2={}",
-                result["nova-3"],
-                result["nova-2"],
-            )
         return result
     except Exception as e:
         logger.error("deepgram health check error={}", str(e))

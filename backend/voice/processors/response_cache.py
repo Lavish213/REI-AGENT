@@ -97,6 +97,7 @@ async def pregenerate_response_cache(
             logger.info("response_cache clip ready phrase={!r}", phrase)
         except Exception as e:
             logger.warning("response_cache clip failed phrase={!r} error={}", phrase, str(e))
+        await asyncio.sleep(0.3)
     return clips
 
 

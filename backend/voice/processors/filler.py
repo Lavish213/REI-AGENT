@@ -42,6 +42,7 @@ async def pregenerate_filler_clips(
             logger.info("filler clip ready phrase={}", phrase)
         except Exception as e:
             logger.warning("filler clip failed phrase={} error={}", phrase, str(e))
+        await asyncio.sleep(0.3)
     return clips
 
 

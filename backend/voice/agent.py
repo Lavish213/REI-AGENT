@@ -9,7 +9,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.frames.frames import LLMContextFrame, TranscriptionFrame
+from pipecat.frames.frames import TranscriptionFrame
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
@@ -168,7 +168,7 @@ async def _build_tts(call_ctx_ref) -> tuple:
 
 async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService:
     language = "es" if spanish else "en-US"
-    model = "nova-2-general" if spanish else "nova-2"
+    model = "base"
 
     logger.info(
         "deepgram stt initializing model={} language={}",
@@ -389,7 +389,7 @@ async def run_sophia_agent(
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
         logger.info("client connected call_sid={}", call_sid)
-        await task.queue_frames([LLMContextFrame(context=context)])
+        await task.queue_frames([context_aggregator.user().get_context_frame()])
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):

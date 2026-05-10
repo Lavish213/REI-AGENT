@@ -47,6 +47,7 @@ async def pregenerate_backchannel_clips(
             logger.info("backchannel clip ready phrase={}", phrase)
         except Exception as e:
             logger.warning("backchannel clip failed phrase={} error={}", phrase, str(e))
+        await asyncio.sleep(0.3)
     return clips
 
 

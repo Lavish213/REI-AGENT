@@ -67,7 +67,7 @@ async def handle_inbound_call(request: Request) -> Response:
 
     asyncio.create_task(_preload_and_store(request.app, call_sid, caller_phone))
 
-    logger.info("returning LaML for call sid={}", call_sid)
+    logger.info("signalwire laml response: {}", laml)
     return PlainTextResponse(content=laml, media_type="text/xml")
 
 
