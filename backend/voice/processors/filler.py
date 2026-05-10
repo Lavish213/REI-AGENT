@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 
 import httpx
@@ -12,10 +13,12 @@ FILLER_PHRASES = ["Yeah...", "Mhm...", "Okay so...", "Right...", "Let me think..
 
 
 async def pregenerate_filler_clips(
-    api_key: str,
-    voice_id: str,
-    sample_rate: int,
+    api_key: str = None,
+    voice_id: str = None,
+    sample_rate: int = 16000,
 ) -> dict[str, bytes]:
+    api_key = api_key or os.environ.get("CARTESIA_API_KEY", "")
+    voice_id = voice_id or os.environ.get("CARTESIA_VOICE_ID", "")
     clips = {}
     for phrase in FILLER_PHRASES:
         try:
@@ -47,12 +50,12 @@ async def pregenerate_filler_clips(
 
 
 class FillerGapProcessor(FrameProcessor):
-    def __init__(self, transport_output: FrameProcessor, clips: dict[str, bytes], sample_rate: int):
+    def __init__(self, transport_output: FrameProcessor, sample_rate: int = 16000, clips: dict = None):
         super().__init__()
         self._transport_output = transport_output
-        self._clips = clips
+        self._clips = clips if clips is not None else {}
         self._sample_rate = sample_rate
-        self._phrase_list = list(clips.keys())
+        self._phrase_list = list(self._clips.keys())
         self._last_phrase: str | None = None
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):

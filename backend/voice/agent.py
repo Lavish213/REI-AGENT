@@ -200,6 +200,7 @@ async def run_sophia_agent(
     websocket,
     call_sid: str,
     call_context: dict,
+    startup_clips: dict = None,
 ) -> None:
     logger.info("sophia agent starting call_sid={}", call_sid)
 
@@ -286,19 +287,33 @@ async def run_sophia_agent(
     tts = await _build_tts(call_ctx)
 
     clip_sample_rate = 16000
-    cartesia_api_key = os.environ.get("CARTESIA_API_KEY", "")
-    cartesia_voice_id = os.environ.get("CARTESIA_VOICE_ID", "")
+    _sc = startup_clips or {}
+    backchannel_clips = _sc.get("backchannel") or {}
+    filler_clips = _sc.get("filler") or {}
+    response_cache_clips = _sc.get("response_cache") or {}
 
-    backchannel_clips, filler_clips, response_cache_clips = await asyncio.gather(
-        pregenerate_backchannel_clips(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
-        pregenerate_filler_clips(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
-        pregenerate_response_cache(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
-    )
+    if not backchannel_clips and not filler_clips and not response_cache_clips:
+        cartesia_api_key = os.environ.get("CARTESIA_API_KEY", "")
+        cartesia_voice_id = os.environ.get("CARTESIA_VOICE_ID", "")
+        backchannel_clips, filler_clips, response_cache_clips = await asyncio.gather(
+            pregenerate_backchannel_clips(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
+            pregenerate_filler_clips(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
+            pregenerate_response_cache(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
+        )
+        logger.info("clips generated per-call fallback call_sid={}", call_sid)
+    else:
+        logger.info(
+            "using startup clips call_sid={} backchannel={} filler={} cache={}",
+            call_sid,
+            len(backchannel_clips),
+            len(filler_clips),
+            len(response_cache_clips),
+        )
 
     transport_output = transport.output()
 
-    backchannel_proc = BackchannelProcessor(transport_output, backchannel_clips, clip_sample_rate)
-    filler_proc = FillerGapProcessor(transport_output, filler_clips, clip_sample_rate)
+    backchannel_proc = BackchannelProcessor(transport_output, clip_sample_rate, clips=backchannel_clips)
+    filler_proc = FillerGapProcessor(transport_output, clip_sample_rate, clips=filler_clips)
     interruption_proc = InterruptionAckProcessor()
 
     def on_emotion(emotion: str):
@@ -313,7 +328,7 @@ async def run_sophia_agent(
         extended_prompt_path=extended_path,
     )
 
-    response_cache_proc = ResponseCacheProcessor(transport_output, response_cache_clips, clip_sample_rate)
+    response_cache_proc = ResponseCacheProcessor(transport_output, clip_sample_rate, clips=response_cache_clips)
     sentence_streamer = SentenceStreamProcessor()
     fair_housing_filter = FairHousingFilter()
 

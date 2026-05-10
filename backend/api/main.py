@@ -34,6 +34,28 @@ async def lifespan(app: FastAPI):
     logger.info("REI Agent API starting up")
     logger.info("business={}", os.environ.get("BUSINESS_NAME", "unknown"))
     logger.info("agent={}", os.environ.get("AGENT_NAME", "unknown"))
+
+    from backend.voice.processors.backchannel import pregenerate_backchannel_clips
+    from backend.voice.processors.filler import pregenerate_filler_clips
+    from backend.voice.processors.response_cache import pregenerate_response_cache
+
+    app.state.backchannel_clips = {}
+    app.state.filler_clips = {}
+    app.state.response_cache_clips = {}
+
+    try:
+        app.state.backchannel_clips = await pregenerate_backchannel_clips()
+        app.state.filler_clips = await pregenerate_filler_clips()
+        app.state.response_cache_clips = await pregenerate_response_cache()
+        logger.info(
+            "startup clips ready backchannel={} filler={} cache={}",
+            len(app.state.backchannel_clips),
+            len(app.state.filler_clips),
+            len(app.state.response_cache_clips),
+        )
+    except Exception as e:
+        logger.warning("startup clip generation failed error={} continuing anyway", str(e))
+
     from backend.alerts.drip import start_drip_scheduler, stop_drip_scheduler
     from backend.voice.appointment_scheduler import start_appointment_scheduler, stop_appointment_scheduler
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -113,9 +135,15 @@ async def voice_stream(websocket: WebSocket, call_sid: str):
         "lead": None,
     })
 
+    startup_clips = {
+        "backchannel": getattr(app.state, "backchannel_clips", {}),
+        "filler": getattr(app.state, "filler_clips", {}),
+        "response_cache": getattr(app.state, "response_cache_clips", {}),
+    }
+
     try:
         from backend.voice.agent import run_sophia_agent
-        await run_sophia_agent(websocket, call_sid, call_context)
+        await run_sophia_agent(websocket, call_sid, call_context, startup_clips=startup_clips)
     except Exception as e:
         logger.error("websocket error call_sid={} error={}", call_sid, str(e))
     finally:

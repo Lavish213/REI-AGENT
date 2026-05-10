@@ -1,5 +1,6 @@
 import asyncio
 import difflib
+import os
 import random
 
 import httpx
@@ -85,10 +86,12 @@ async def _generate_clip_cartesia(text: str, api_key: str, voice_id: str, sample
 
 
 async def pregenerate_response_cache(
-    api_key: str,
-    voice_id: str,
-    sample_rate: int,
+    api_key: str = None,
+    voice_id: str = None,
+    sample_rate: int = 16000,
 ) -> dict[str, bytes]:
+    api_key = api_key or os.environ.get("CARTESIA_API_KEY", "")
+    voice_id = voice_id or os.environ.get("CARTESIA_VOICE_ID", "")
     clips: dict[str, bytes] = {}
     for phrase in CACHED_PHRASES:
         try:
@@ -102,12 +105,12 @@ async def pregenerate_response_cache(
 
 
 class ResponseCacheProcessor(FrameProcessor):
-    def __init__(self, transport_output: FrameProcessor, clips: dict[str, bytes], sample_rate: int):
+    def __init__(self, transport_output: FrameProcessor, sample_rate: int = 16000, clips: dict = None):
         super().__init__()
         self._transport_output = transport_output
-        self._clips = clips
+        self._clips = clips if clips is not None else {}
         self._sample_rate = sample_rate
-        self._phrase_keys = list(clips.keys())
+        self._phrase_keys = list(self._clips.keys())
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
