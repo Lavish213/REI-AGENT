@@ -166,38 +166,12 @@ async def _build_tts(call_ctx_ref) -> tuple:
 
 
 
-_DG_TESTED = False
-
-
-async def _test_deepgram_minimal(api_key: str) -> bool:
-    logger.info("deepgram minimal connection test starting params=model:nova-2 encoding:mulaw sample_rate:8000")
-    try:
-        test_stt = DeepgramSTTService(
-            api_key=api_key,
-            settings=DeepgramSTTService.Settings(
-                model="nova-2",
-                encoding="mulaw",
-                sample_rate=8000,
-            ),
-        )
-        logger.info("deepgram minimal test service created successfully")
-        return True
-    except Exception as e:
-        logger.error("deepgram minimal test FAILED error={}", str(e))
-        return False
-
-
 async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService:
-    global _DG_TESTED
     language = "es" if spanish else "en-US"
     model = "nova-2-general" if spanish else "nova-2"
 
-    if not _DG_TESTED:
-        _DG_TESTED = True
-        await _test_deepgram_minimal(api_key)
-
     logger.info(
-        "deepgram stt initializing model={} language={} encoding=mulaw sample_rate=8000 channels=1",
+        "deepgram stt initializing model={} language={}",
         model, language,
     )
 
@@ -207,9 +181,6 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
             settings=DeepgramSTTService.Settings(
                 model=model,
                 language=language,
-                encoding="mulaw",
-                sample_rate=8000,
-                channels=1,
                 punctuate=True,
                 interim_results=False,
                 endpointing=200,
@@ -219,7 +190,7 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
         return stt
     except Exception as e:
         logger.error(
-            "deepgram stt init FAILED error={} params=model:{} language:{} encoding:mulaw sample_rate:8000 channels:1 punctuate:True interim_results:False endpointing:200",
+            "deepgram stt init FAILED error={} params=model:{} language:{} punctuate:True interim_results:False endpointing:200",
             str(e), model, language,
         )
         raise
