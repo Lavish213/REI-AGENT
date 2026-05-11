@@ -37,9 +37,6 @@ from backend.voice.processors.backchannel import BackchannelProcessor, pregenera
 from backend.voice.processors.interruption import InterruptionAckProcessor
 from backend.voice.processors.emotion import EmotionDetectorProcessor
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
-from backend.voice.processors.room_tone import RoomToneProcessor
-from backend.voice.processors.phone_eq import PhoneEQProcessor
-from backend.voice.processors.breath_injector import BreathInjectorProcessor
 from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor
 from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 from backend.voice.processors.fair_housing import FairHousingFilter
@@ -354,10 +351,6 @@ async def run_sophia_agent(
     stt_mute_proc = BotSpeakingSTTMuteProcessor()
     latency_proc_tts = LatencyTrackerProcessor(latency_tracker)
 
-    room_tone_proc = RoomToneProcessor()
-    phone_eq_proc = PhoneEQProcessor()
-    breath_injector_proc = BreathInjectorProcessor()
-
     messages = [
         {
             "role": "system",
@@ -400,8 +393,6 @@ async def run_sophia_agent(
         fair_housing_filter,
         tts,
         latency_proc_tts,
-        phone_eq_proc,
-        room_tone_proc,
         transport_output,
         context_aggregator.assistant(),
     ])
