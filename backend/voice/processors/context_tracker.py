@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -155,15 +156,13 @@ class ContextTrackerProcessor(FrameProcessor):
                     compressed = compress_context(self._llm_context.messages, self._ctx.current_phase)
                     self._llm_context.messages = compressed
             prefix = self._ctx.build_context_prefix()
-            if prefix:
-                try:
-                    frame = TranscriptionFrame(
-                        text=f"{prefix}\n\n{frame.text}",
-                        user_id=frame.user_id,
-                        timestamp=frame.timestamp,
-                    )
-                except Exception:
-                    pass
+            if prefix and self._llm_context and self._llm_context.messages:
+                sys_msg = self._llm_context.messages[0]
+                content = sys_msg.get("content", "")
+                content = re.sub(r'\s*\[CONTEXT:[^\]]*\]', '', content).rstrip()
+                sys_msg["content"] = content + f"\n\n{prefix}"
+                logger.debug("context_tracker injected into system msg prefix={}", prefix)
+            logger.info("llm input turn={} text={!r}", self._ctx.turn_count, frame.text)
 
         await self.push_frame(frame, direction)
 
