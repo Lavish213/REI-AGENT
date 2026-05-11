@@ -91,35 +91,29 @@ def render_voicemail_script(lead: dict, prop: dict, script_num: int, language: s
     )
 
 
-def _generate_cartesia_mp3(text: str) -> bytes | None:
-    api_key = os.environ.get("CARTESIA_API_KEY", "")
-    voice_id = os.environ.get("CARTESIA_VOICE_ID", "")
+def _generate_elevenlabs_mp3(text: str) -> bytes | None:
+    api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "")
     if not api_key or not voice_id:
         return None
     try:
         resp = httpx.post(
-            "https://api.cartesia.ai/tts/bytes",
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
             headers={
-                "X-API-Key": api_key,
-                "Cartesia-Version": "2024-06-10",
+                "xi-api-key": api_key,
                 "Content-Type": "application/json",
             },
+            params={"output_format": "mp3_44100_128"},
             json={
-                "model_id": "sonic-2024-10-19",
-                "transcript": text,
-                "voice": {"mode": "id", "id": voice_id},
-                "output_format": {
-                    "container": "wav",
-                    "encoding": "pcm_s16le",
-                    "sample_rate": 22050,
-                },
+                "text": text,
+                "model_id": os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5"),
             },
             timeout=20.0,
         )
         resp.raise_for_status()
         return resp.content
     except Exception as e:
-        logger.warning("cartesia_voicemail_gen_failed error={}", str(e))
+        logger.warning("elevenlabs_voicemail_gen_failed error={}", str(e))
         return None
 
 
@@ -127,11 +121,11 @@ def _upload_voicemail_to_storage(audio_bytes: bytes, lead_id: str, script_num: i
     try:
         from backend.lib.db import _get_client
         client = _get_client()
-        filename = f"voicemail_{lead_id}_script{script_num}.wav"
+        filename = f"voicemail_{lead_id}_script{script_num}.mp3"
         client.storage.from_("voicemails").upload(
             filename,
             audio_bytes,
-            {"content-type": "audio/wav", "x-upsert": "true"},
+            {"content-type": "audio/mpeg", "x-upsert": "true"},
         )
         public_url = client.storage.from_("voicemails").get_public_url(filename)
         logger.info("voicemail_uploaded lead_id={} script={} url={}", lead_id, script_num, public_url)
@@ -162,7 +156,7 @@ def build_ringless_voicemail_laml(
     except Exception:
         pass
 
-    audio_bytes = _generate_cartesia_mp3(script_text)
+    audio_bytes = _generate_elevenlabs_mp3(script_text)
     if audio_bytes:
         public_url = _upload_voicemail_to_storage(audio_bytes, lead_id, script_num)
         if public_url:

@@ -12,7 +12,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.frames.frames import TranscriptionFrame
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
@@ -34,14 +34,12 @@ from backend.qa.grader import grade_call
 from backend.lib.db import insert_call, update_lead_stage, update_lead_for_disposition
 from backend.voice.orpheus_tts import OrpheusTTSService
 from backend.voice.processors.backchannel import BackchannelProcessor, pregenerate_backchannel_clips
-from backend.voice.processors.filler import FillerGapProcessor, pregenerate_filler_clips
 from backend.voice.processors.interruption import InterruptionAckProcessor
 from backend.voice.processors.emotion import EmotionDetectorProcessor
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
 from backend.voice.processors.room_tone import RoomToneProcessor
 from backend.voice.processors.phone_eq import PhoneEQProcessor
 from backend.voice.processors.breath_injector import BreathInjectorProcessor
-from backend.voice.processors.response_cache import ResponseCacheProcessor, pregenerate_response_cache
 from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor
 from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 from backend.voice.processors.fair_housing import FairHousingFilter
@@ -183,17 +181,15 @@ async def _build_tts(call_ctx_ref) -> tuple:
         )
         logger.info("using orpheus tts via together ai")
     else:
-        tts = CartesiaTTSService(
-            api_key=os.environ["CARTESIA_API_KEY"],
-            settings=CartesiaTTSService.Settings(
-                voice=os.environ["CARTESIA_VOICE_ID"],
-                generation_config=GenerationConfig(
-                    speed=_rate_for_emotion(getattr(call_ctx_ref, "current_emotion", None)),
-                    emotion="positivity:high",
-                ),
+        tts = ElevenLabsTTSService(
+            api_key=os.environ["ELEVENLABS_API_KEY"],
+            settings=ElevenLabsTTSService.Settings(
+                voice=os.environ["ELEVENLABS_VOICE_ID"],
+                model=os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5"),
             ),
+            sample_rate=16000,
         )
-        logger.info("using cartesia tts fallback")
+        logger.info("using elevenlabs tts voice_id={}", os.environ.get("ELEVENLABS_VOICE_ID", ""))
 
     return tts
 
@@ -321,31 +317,22 @@ async def run_sophia_agent(
     clip_sample_rate = 16000
     _sc = startup_clips or {}
     backchannel_clips = _sc.get("backchannel") or {}
-    filler_clips = _sc.get("filler") or {}
-    response_cache_clips = _sc.get("response_cache") or {}
 
-    if not backchannel_clips and not filler_clips and not response_cache_clips:
-        cartesia_api_key = os.environ.get("CARTESIA_API_KEY", "")
-        cartesia_voice_id = os.environ.get("CARTESIA_VOICE_ID", "")
-        backchannel_clips, filler_clips, response_cache_clips = await asyncio.gather(
-            pregenerate_backchannel_clips(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
-            pregenerate_filler_clips(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
-            pregenerate_response_cache(cartesia_api_key, cartesia_voice_id, clip_sample_rate),
-        )
-        logger.info("clips generated per-call fallback call_sid={}", call_sid)
+    if not backchannel_clips:
+        elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+        elevenlabs_voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "")
+        backchannel_clips = await pregenerate_backchannel_clips(elevenlabs_api_key, elevenlabs_voice_id, clip_sample_rate)
+        logger.info("backchannel clips generated per-call fallback call_sid={}", call_sid)
     else:
         logger.info(
-            "using startup clips call_sid={} backchannel={} filler={} cache={}",
+            "using startup clips call_sid={} backchannel={}",
             call_sid,
             len(backchannel_clips),
-            len(filler_clips),
-            len(response_cache_clips),
         )
 
     transport_output = transport.output()
 
     backchannel_proc = BackchannelProcessor(transport_output, clip_sample_rate, clips=backchannel_clips)
-    filler_proc = FillerGapProcessor(transport_output, clip_sample_rate, clips=filler_clips)
     interruption_proc = InterruptionAckProcessor()
 
     def on_emotion(emotion: str):
@@ -360,12 +347,10 @@ async def run_sophia_agent(
         extended_prompt_path=extended_path,
     )
 
-    response_cache_proc = ResponseCacheProcessor(transport_output, clip_sample_rate, clips=response_cache_clips)
     sentence_streamer = SentenceStreamProcessor()
     fair_housing_filter = FairHousingFilter()
 
     latency_tracker = LatencyTracker()
-    latency_proc_stt = LatencyTrackerProcessor(latency_tracker)
     stt_mute_proc = BotSpeakingSTTMuteProcessor()
     latency_proc_tts = LatencyTrackerProcessor(latency_tracker)
 
@@ -406,7 +391,6 @@ async def run_sophia_agent(
         transport.input(),
         stt,
         stt_mute_proc,
-        latency_proc_stt,
         emotion_proc,
         context_tracker,
         backchannel_proc,

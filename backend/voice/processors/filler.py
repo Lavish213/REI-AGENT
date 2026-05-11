@@ -17,29 +17,22 @@ async def pregenerate_filler_clips(
     voice_id: str = None,
     sample_rate: int = 16000,
 ) -> dict[str, bytes]:
-    api_key = api_key or os.environ.get("CARTESIA_API_KEY", "")
-    voice_id = voice_id or os.environ.get("CARTESIA_VOICE_ID", "")
+    api_key = api_key or os.environ.get("ELEVENLABS_API_KEY", "")
+    voice_id = voice_id or os.environ.get("ELEVENLABS_VOICE_ID", "")
     clips = {}
     for phrase in FILLER_PHRASES:
         try:
-            url = "https://api.cartesia.ai/tts/bytes"
+            url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
             headers = {
-                "X-API-Key": api_key,
-                "Cartesia-Version": "2024-06-10",
+                "xi-api-key": api_key,
                 "Content-Type": "application/json",
             }
             payload = {
-                "model_id": "sonic-2024-10-19",
-                "transcript": phrase,
-                "voice": {"mode": "id", "id": voice_id},
-                "output_format": {
-                    "container": "raw",
-                    "encoding": "pcm_s16le",
-                    "sample_rate": sample_rate,
-                },
+                "text": phrase,
+                "model_id": os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5"),
             }
             async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(url, headers=headers, json=payload)
+                resp = await client.post(url, headers=headers, json=payload, params={"output_format": f"pcm_{sample_rate}"})
                 resp.raise_for_status()
                 clips[phrase] = resp.content
             logger.info("filler clip ready phrase={}", phrase)

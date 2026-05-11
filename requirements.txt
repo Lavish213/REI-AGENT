@@ -4,7 +4,7 @@ supabase
 anthropic
 deepgram-sdk
 signalwire
-pipecat-ai[cartesia,deepgram,silero,anthropic]
+pipecat-ai[elevenlabs,deepgram,silero,anthropic]
 loguru
 python-dotenv
 httpx

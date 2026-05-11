@@ -71,10 +71,10 @@ async def health_check():
         checks["deepgram"] = f"error: {str(e)[:50]}"
 
     try:
-        cartesia_key = os.environ.get("CARTESIA_API_KEY", "")
-        checks["cartesia"] = "configured" if cartesia_key else "missing"
+        elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY", "")
+        checks["elevenlabs"] = "configured" if elevenlabs_key else "missing"
     except Exception as e:
-        checks["cartesia"] = f"error: {str(e)[:50]}"
+        checks["elevenlabs"] = f"error: {str(e)[:50]}"
 
     def _is_ok(v) -> bool:
         if isinstance(v, dict):

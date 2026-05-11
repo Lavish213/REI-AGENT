@@ -36,22 +36,14 @@ async def lifespan(app: FastAPI):
     logger.info("agent={}", os.environ.get("AGENT_NAME", "unknown"))
 
     from backend.voice.processors.backchannel import pregenerate_backchannel_clips
-    from backend.voice.processors.filler import pregenerate_filler_clips
-    from backend.voice.processors.response_cache import pregenerate_response_cache
 
     app.state.backchannel_clips = {}
-    app.state.filler_clips = {}
-    app.state.response_cache_clips = {}
 
     try:
         app.state.backchannel_clips = await pregenerate_backchannel_clips()
-        app.state.filler_clips = await pregenerate_filler_clips()
-        app.state.response_cache_clips = await pregenerate_response_cache()
         logger.info(
-            "startup clips ready backchannel={} filler={} cache={}",
+            "startup clips ready backchannel={}",
             len(app.state.backchannel_clips),
-            len(app.state.filler_clips),
-            len(app.state.response_cache_clips),
         )
     except Exception as e:
         logger.warning("startup clip generation failed error={} continuing anyway", str(e))
@@ -137,8 +129,6 @@ async def voice_stream(websocket: WebSocket, call_sid: str):
 
     startup_clips = {
         "backchannel": getattr(app.state, "backchannel_clips", {}),
-        "filler": getattr(app.state, "filler_clips", {}),
-        "response_cache": getattr(app.state, "response_cache_clips", {}),
     }
 
     try:
