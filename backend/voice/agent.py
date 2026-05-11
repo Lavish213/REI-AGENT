@@ -46,6 +46,7 @@ from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrac
 from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 from backend.voice.processors.fair_housing import FairHousingFilter
 from backend.voice.processors.ai_identity import AIIdentityProcessor
+from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor
 
 
 SPANISH_MARKERS = [
@@ -365,6 +366,7 @@ async def run_sophia_agent(
 
     latency_tracker = LatencyTracker()
     latency_proc_stt = LatencyTrackerProcessor(latency_tracker)
+    stt_mute_proc = BotSpeakingSTTMuteProcessor()
     latency_proc_tts = LatencyTrackerProcessor(latency_tracker)
 
     room_tone_proc = RoomToneProcessor()
@@ -403,6 +405,7 @@ async def run_sophia_agent(
     pipeline = Pipeline([
         transport.input(),
         stt,
+        stt_mute_proc,
         latency_proc_stt,
         emotion_proc,
         ai_identity_proc,

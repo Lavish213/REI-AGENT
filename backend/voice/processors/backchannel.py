@@ -5,7 +5,7 @@ import random
 import httpx
 from loguru import logger
 
-from pipecat.frames.frames import Frame, OutputAudioRawFrame, UserStartedSpeakingFrame, UserStoppedSpeakingFrame
+from pipecat.frames.frames import BotStartedSpeakingFrame, BotStoppedSpeakingFrame, Frame, OutputAudioRawFrame, UserStartedSpeakingFrame, UserStoppedSpeakingFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
@@ -61,6 +61,7 @@ class BackchannelProcessor(FrameProcessor):
         self._clips = clips if clips is not None else {}
         self._sample_rate = sample_rate
         self._speaking = False
+        self._bot_speaking = False
         self._speaking_task: asyncio.Task | None = None
         self._phrase_list = list(self._clips.keys())
         self._last_phrase: str | None = None
@@ -68,7 +69,13 @@ class BackchannelProcessor(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, UserStartedSpeakingFrame):
+        if isinstance(frame, BotStartedSpeakingFrame):
+            self._bot_speaking = True
+
+        elif isinstance(frame, BotStoppedSpeakingFrame):
+            self._bot_speaking = False
+
+        elif isinstance(frame, UserStartedSpeakingFrame):
             self._speaking = True
             if self._speaking_task:
                 self._speaking_task.cancel()
@@ -85,7 +92,7 @@ class BackchannelProcessor(FrameProcessor):
     async def _monitor(self):
         try:
             await asyncio.sleep(4.0)
-            while self._speaking:
+            while self._speaking and not self._bot_speaking:
                 if self._clips:
                     await self._inject()
                 interval = random.uniform(4.0, 8.0)
@@ -94,7 +101,7 @@ class BackchannelProcessor(FrameProcessor):
             pass
 
     async def _inject(self):
-        if not self._phrase_list:
+        if not self._phrase_list or self._bot_speaking:
             return
         candidates = [p for p in self._phrase_list if p != self._last_phrase]
         if not candidates:
