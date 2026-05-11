@@ -6,7 +6,7 @@ from pipecat.frames.frames import AggregationType, Frame, LLMFullResponseEndFram
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
-_BOUNDARY_PATTERN = re.compile(r"(?<=[.?!—])\s+|(?<=[.?!—])$")
+_BOUNDARY_PATTERN = re.compile(r"(?<=[.?!])\s+|(?<=[.?!])$")
 
 
 def _word_count(text: str) -> int:
@@ -16,7 +16,7 @@ def _word_count(text: str) -> int:
 def _find_sentence_boundary(text: str) -> int:
     for m in _BOUNDARY_PATTERN.finditer(text):
         candidate = text[: m.start() + 1].rstrip()
-        if _word_count(candidate) >= 3:
+        if _word_count(candidate) >= 1:
             return m.end()
     return -1
 
