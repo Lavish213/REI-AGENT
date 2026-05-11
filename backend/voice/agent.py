@@ -360,7 +360,7 @@ async def run_sophia_agent(
     )
 
     response_cache_proc = ResponseCacheProcessor(transport_output, clip_sample_rate, clips=response_cache_clips)
-    sentence_streamer = SentenceStreamProcessor(thought_filter=_is_internal_thought, cleaner=_clean_llm_output)
+    sentence_streamer = SentenceStreamProcessor()
     fair_housing_filter = FairHousingFilter()
 
     latency_tracker = LatencyTracker()
