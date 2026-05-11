@@ -55,6 +55,38 @@ SPANISH_MARKERS = [
 ]
 
 _MD_STRIP_PATTERN = re.compile(r"^#{1,3}\s+|[*`]|^---+$", re.MULTILINE)
+_THINKING_PATTERN = re.compile(r"<thinking>.*?</thinking>", re.DOTALL | re.IGNORECASE)
+
+_INTERNAL_STARTS = (
+    "the caller", "i need to", "i should", "my goal",
+    "react first", "ask permission", "they seem", "i want to",
+    "let me think", "i'll handle", "i'm going to",
+    "note:", "step ", "phase ",
+)
+
+
+def _is_internal_thought(text: str) -> bool:
+    if not text or not text.strip():
+        return True
+    lower = text.strip().lower()
+    if "<thinking>" in lower or "</thinking>" in lower:
+        return True
+    if re.match(r"^\d+[\.\)]\s", lower):
+        return True
+    if lower.startswith(("- ", "* ", "• ")):
+        return True
+    if "\n\n" in text:
+        return True
+    for pattern in _INTERNAL_STARTS:
+        if lower.startswith(pattern):
+            return True
+    return False
+
+
+def _clean_llm_output(text: str) -> str:
+    text = _THINKING_PATTERN.sub("", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def _detect_spanish(text: str) -> bool:
@@ -163,7 +195,6 @@ async def _build_tts(call_ctx_ref) -> tuple:
         logger.info("using cartesia tts fallback")
 
     return tts
-
 
 
 async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService:
@@ -329,7 +360,7 @@ async def run_sophia_agent(
     )
 
     response_cache_proc = ResponseCacheProcessor(transport_output, clip_sample_rate, clips=response_cache_clips)
-    sentence_streamer = SentenceStreamProcessor()
+    sentence_streamer = SentenceStreamProcessor(thought_filter=_is_internal_thought, cleaner=_clean_llm_output)
     fair_housing_filter = FairHousingFilter()
 
     latency_tracker = LatencyTracker()

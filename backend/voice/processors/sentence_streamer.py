@@ -56,3 +56,4 @@ class SentenceStreamProcessor(FrameProcessor):
             return
 
         await self.push_frame(frame, direction)
+
