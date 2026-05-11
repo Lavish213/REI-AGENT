@@ -154,7 +154,7 @@ class ContextTrackerProcessor(FrameProcessor):
                 if len(self._llm_context.messages) > 6:
                     from backend.voice.context import compress_context
                     compressed = compress_context(self._llm_context.messages, self._ctx.current_phase)
-                    self._llm_context.messages = compressed
+                    self._llm_context.set_messages(compressed)
             prefix = self._ctx.build_context_prefix()
             if prefix and self._llm_context and self._llm_context.messages:
                 sys_msg = self._llm_context.messages[0]
