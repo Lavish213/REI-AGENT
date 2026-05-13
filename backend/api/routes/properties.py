@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Query
+import io
+
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi.concurrency import run_in_threadpool
 from loguru import logger
 from backend.lib.db import (
     get_properties_by_score,
@@ -34,7 +37,6 @@ async def list_properties(
 async def get_property(property_id: str):
     prop = get_property_by_id(property_id)
     if not prop:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Property not found")
     return prop
 
@@ -52,7 +54,6 @@ async def update_property_status(property_id: str, status: str):
 async def trigger_comps(property_id: str):
     prop = get_property_by_id(property_id)
     if not prop:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Property not found")
 
     from backend.comps.redfin import get_comps
@@ -80,3 +81,78 @@ async def trigger_comps(property_id: str):
 
     logger.info("comps triggered property_id={} arv={}", property_id, result.get("arv"))
     return {"property_id": property_id, **result, "comp_count": len(comps)}
+
+
+@router.post("/properties/upload")
+async def upload_properties_csv(
+    file: UploadFile = File(...),
+    min_score: int = Query(default=0),
+    create_leads: bool = Query(default=True),
+):
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a .csv")
+
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+
+    try:
+        csv_text = contents.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        csv_text = contents.decode("latin-1")
+
+    def _process(csv_text: str, min_score: int, create_leads: bool) -> dict:
+        from backend.scout.parser import parse_csv
+        from backend.scout.scorer import calculate_distress_score
+        from backend.lib.db import insert_lead, get_lead_by_property
+
+        properties = parse_csv(io.StringIO(csv_text))
+        logger.info("csv_upload parsed={}", len(properties))
+
+        upserted = 0
+        scored = 0
+        leads_created = 0
+        skipped_score = 0
+        errors = 0
+
+        for prop in properties:
+            try:
+                score_result = calculate_distress_score(prop)
+                if score_result.get("disqualified"):
+                    errors += 1
+                    continue
+
+                prop["distress_score"] = score_result["score"]
+                prop["distress_type"] = score_result.get("distress_type", prop.get("distress_type", "unknown"))
+
+                upsert_property(prop)
+                upserted += 1
+
+                if score_result["score"] < min_score:
+                    skipped_score += 1
+                    continue
+
+                scored += 1
+
+                if create_leads and prop.get("id"):
+                    existing = get_lead_by_property(prop["id"])
+                    if not existing:
+                        insert_lead(prop["id"])
+                        leads_created += 1
+
+            except Exception as e:
+                logger.warning("csv_upload row_error error={}", str(e))
+                errors += 1
+
+        return {
+            "parsed": len(properties),
+            "upserted": upserted,
+            "scored": scored,
+            "leads_created": leads_created,
+            "skipped_score": skipped_score,
+            "errors": errors,
+        }
+
+    result = await run_in_threadpool(_process, csv_text, min_score, create_leads)
+    logger.info("csv_upload complete result={}", result)
+    return {"success": True, **result}

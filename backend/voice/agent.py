@@ -151,9 +151,9 @@ def _build_tools_schema() -> ToolsSchema:
     return ToolsSchema(standard_tools=schemas)
 
 
-def _make_tool_handler(tool_name: str, call_ctx=None):
+def _make_tool_handler(tool_name: str, call_ctx=None, lf_trace=None):
     async def handler(params: FunctionCallParams) -> None:
-        result = execute_tool(tool_name, dict(params.arguments), call_ctx=call_ctx)
+        result = execute_tool(tool_name, dict(params.arguments), call_ctx=call_ctx, lf_trace=lf_trace)
         await params.result_callback(result)
     return handler
 
@@ -226,6 +226,9 @@ async def run_sophia_agent(
     startup_clips: dict = None,
 ) -> None:
     logger.info("sophia agent starting call_sid={}", call_sid)
+
+    from backend.observability import trace_call_start
+    lf_trace = trace_call_start(call_sid, call_context)
 
     stream_sid = call_sid
     try:
@@ -306,7 +309,7 @@ async def run_sophia_agent(
     call_ctx = CallContext()
 
     for tool in SOPHIA_TOOLS:
-        llm.register_function(tool["name"], _make_tool_handler(tool["name"], call_ctx))
+        llm.register_function(tool["name"], _make_tool_handler(tool["name"], call_ctx, lf_trace))
 
     tts = await _build_tts(call_ctx)
 
@@ -423,7 +426,7 @@ async def run_sophia_agent(
     except Exception as e:
         logger.error("sophia agent error call_sid={} error={}", call_sid, str(e))
     finally:
-        await _handle_call_end(call_sid, call_context, context, call_ctx, seller_memory)
+        await _handle_call_end(call_sid, call_context, context, call_ctx, seller_memory, lf_trace)
 
 
 async def _handle_call_end(
@@ -432,6 +435,7 @@ async def _handle_call_end(
     context: LLMContext,
     call_ctx=None,
     seller_memory=None,
+    lf_trace=None,
 ) -> None:
     logger.info("handling call end call_sid={}", call_sid)
 
@@ -467,6 +471,10 @@ async def _handle_call_end(
             asyncio.create_task(
                 _run_transcript_intel_async(transcript, lead["id"], call_sid)
             )
+
+        from backend.observability import trace_call_end
+        turn_count = call_ctx.turn_count if call_ctx else 0
+        trace_call_end(lf_trace, call_sid, disposition, len(transcript), turn_count)
 
     except Exception as e:
         logger.error("handle_call_end error call_sid={} error={}", call_sid, str(e))

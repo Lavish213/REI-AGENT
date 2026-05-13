@@ -107,20 +107,28 @@ SOPHIA_TOOLS = [
 ]
 
 
-def execute_tool(tool_name: str, tool_input: dict, call_ctx=None) -> str:
+def execute_tool(tool_name: str, tool_input: dict, call_ctx=None, lf_trace=None) -> str:
     logger.info("execute_tool name={} input={}", tool_name, tool_input)
 
     if tool_name == "book_appointment":
-        return _book_appointment(tool_input)
-    if tool_name == "send_followup_sms":
-        return _send_followup_sms(tool_input)
-    if tool_name == "set_disposition":
-        return _set_disposition(tool_input, call_ctx)
-    if tool_name == "end_call":
-        return _end_call(tool_input)
+        result = _book_appointment(tool_input)
+    elif tool_name == "send_followup_sms":
+        result = _send_followup_sms(tool_input)
+    elif tool_name == "set_disposition":
+        result = _set_disposition(tool_input, call_ctx)
+    elif tool_name == "end_call":
+        result = _end_call(tool_input)
+    else:
+        logger.warning("unknown tool called name={}", tool_name)
+        result = "Tool not found"
 
-    logger.warning("unknown tool called name={}", tool_name)
-    return "Tool not found"
+    try:
+        from backend.observability import trace_tool_call
+        trace_tool_call(lf_trace, tool_name, tool_input, result)
+    except Exception:
+        pass
+
+    return result
 
 
 def _book_appointment(inp: dict) -> str:

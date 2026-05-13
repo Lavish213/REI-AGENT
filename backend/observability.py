@@ -14,6 +14,121 @@ def setup_logging() -> None:
     logger.info("logging configured level={}", log_level)
 
 
+def _get_langfuse():
+    try:
+        from langfuse import Langfuse
+        public_key = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
+        secret_key = os.environ.get("LANGFUSE_SECRET_KEY", "")
+        if not public_key or not secret_key:
+            return None
+        return Langfuse(
+            public_key=public_key,
+            secret_key=secret_key,
+            host=os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        )
+    except Exception as e:
+        logger.warning("langfuse init failed error={}", str(e))
+        return None
+
+
+_langfuse = None
+
+
+def get_langfuse():
+    global _langfuse
+    if _langfuse is None:
+        _langfuse = _get_langfuse()
+    return _langfuse
+
+
+def trace_call_start(call_sid: str, call_context: dict) -> object | None:
+    lf = get_langfuse()
+    if not lf:
+        return None
+    try:
+        lead = call_context.get("lead") or {}
+        prop = lead.get("properties") or {}
+        trace = lf.trace(
+            id=call_sid,
+            name="sophia_call",
+            metadata={
+                "call_sid": call_sid,
+                "lead_id": lead.get("id"),
+                "address": prop.get("address"),
+                "distress_score": prop.get("distress_score"),
+                "boss_mode": call_context.get("boss_mode", False),
+                "is_outbound": call_context.get("is_outbound", False),
+            },
+        )
+        logger.debug("langfuse trace_start call_sid={}", call_sid)
+        return trace
+    except Exception as e:
+        logger.warning("langfuse trace_start failed call_sid={} error={}", call_sid, str(e))
+        return None
+
+
+def trace_call_end(
+    trace,
+    call_sid: str,
+    disposition: str | None,
+    transcript_length: int,
+    turn_count: int,
+) -> None:
+    if not trace:
+        return
+    try:
+        trace.update(
+            output={
+                "disposition": disposition,
+                "transcript_length": transcript_length,
+                "turn_count": turn_count,
+            },
+        )
+        lf = get_langfuse()
+        if lf:
+            lf.flush()
+        logger.debug("langfuse trace_end call_sid={} disposition={}", call_sid, disposition)
+    except Exception as e:
+        logger.warning("langfuse trace_end failed call_sid={} error={}", call_sid, str(e))
+
+
+def trace_tool_call(
+    trace,
+    tool_name: str,
+    tool_input: dict,
+    tool_result: str,
+) -> None:
+    if not trace:
+        return
+    try:
+        trace.event(
+            name=f"tool_{tool_name}",
+            metadata={"tool_name": tool_name, "input": tool_input, "result": tool_result[:200]},
+        )
+    except Exception as e:
+        logger.warning("langfuse trace_tool failed tool={} error={}", tool_name, str(e))
+
+
+def trace_llm_turn(
+    trace,
+    turn: int,
+    user_text: str,
+    assistant_text: str,
+    latency_ms: int,
+) -> None:
+    if not trace:
+        return
+    try:
+        trace.generation(
+            name=f"turn_{turn}",
+            input=user_text[:500],
+            output=assistant_text[:500],
+            metadata={"turn": turn, "latency_ms": latency_ms},
+        )
+    except Exception as e:
+        logger.warning("langfuse trace_llm_turn failed turn={} error={}", turn, str(e))
+
+
 def log_call_trace(
     call_sid: str,
     turn: int,
