@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -7,7 +7,6 @@ from loguru import logger
 from backend.lib.db import (
     get_pending_appointment_leads,
     update_appt_reminder_flags,
-    update_lead_stage,
 )
 from backend.alerts.sms import send_drip_sms
 

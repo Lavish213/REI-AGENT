@@ -1,11 +1,9 @@
-import os
-import asyncio
 from collections.abc import AsyncGenerator
 
 import httpx
 from loguru import logger
 
-from pipecat.frames.frames import Frame, TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame
+from pipecat.frames.frames import Frame, TTSStartedFrame, TTSStoppedFrame
 from pipecat.services.tts_service import TTSService
 
 

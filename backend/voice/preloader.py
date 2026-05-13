@@ -1,10 +1,8 @@
-import os
 from datetime import datetime, timedelta, timezone
 from loguru import logger
 
 from backend.lib.db import (
     get_property_by_phone,
-    get_comps_by_property,
     get_lead_by_property,
     _get_client as _db,
 )
@@ -12,7 +10,7 @@ from backend.comps.redfin import get_comps
 from backend.comps.calculator import calculate_arv
 from backend.comps.cache import get_cached_comps, set_cached_comps
 from backend.comps.homeharvest import get_comps as hh_get_comps
-from backend.lib.db import update_property_arv, insert_comp
+from backend.lib.db import update_property_arv
 from backend.lib.osm import enrich_property_full
 
 

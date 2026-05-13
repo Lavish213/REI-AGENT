@@ -1,15 +1,10 @@
 import asyncio
-import os
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from loguru import logger
 from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-
-if TYPE_CHECKING:
-    from pipecat.processors.aggregators.llm_context import LLMContext
 
 
 @dataclass

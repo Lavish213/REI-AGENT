@@ -6,7 +6,6 @@ from loguru import logger
 from anthropic import Anthropic
 
 from backend.qa.grader import grade_call
-from backend.lib.db import insert_call
 
 
 _client: Anthropic | None = None
@@ -161,7 +160,7 @@ async def run_simulation(
         "role": "assistant",
         "content": "San Joaquin House Buyers, this is Sophia!",
     })
-    full_transcript.append(f"SOPHIA: San Joaquin House Buyers, this is Sophia!")
+    full_transcript.append("SOPHIA: San Joaquin House Buyers, this is Sophia!")
 
     seller_messages.append({
         "role": "user",

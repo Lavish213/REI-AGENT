@@ -1,13 +1,9 @@
 import os
 import asyncio
-import json
-from datetime import datetime, timezone
 from loguru import logger
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import PlainTextResponse
 from fastapi.concurrency import run_in_threadpool
-
-from backend.lib.db import insert_call, update_lead_stage
 
 
 router = APIRouter()

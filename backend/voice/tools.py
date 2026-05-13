@@ -203,7 +203,6 @@ def _set_disposition(inp: dict, call_ctx) -> str:
 
 def _end_call(inp: dict) -> str:
     reason = inp.get("reason", "other")
-    summary = inp.get("summary", "")
     lead_id = inp.get("lead_id", "")
 
     stage_map = {

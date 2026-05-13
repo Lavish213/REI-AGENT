@@ -9,7 +9,6 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.frames.frames import TranscriptionFrame
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
@@ -27,11 +26,10 @@ from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.services.llm_service import FunctionCallParams
-from pipecat.processors.frame_processor import FrameDirection
 
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.qa.grader import grade_call
-from backend.lib.db import insert_call, update_lead_stage, update_lead_for_disposition
+from backend.lib.db import insert_call, update_lead_for_disposition
 from backend.voice.orpheus_tts import OrpheusTTSService
 from backend.voice.processors.backchannel import BackchannelProcessor, pregenerate_backchannel_clips
 from backend.voice.processors.interruption import InterruptionAckProcessor
@@ -269,6 +267,7 @@ async def run_sophia_agent(
         websocket=websocket,
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
+            audio_in_sample_rate=16000,
             audio_out_enabled=True,
             add_wav_header=False,
             serializer=TwilioFrameSerializer(
@@ -384,7 +383,9 @@ async def run_sophia_agent(
         transport.input(),
         stt,
         stt_mute_proc,
+        interruption_proc,
         emotion_proc,
+        ai_identity_proc,
         context_tracker,
         backchannel_proc,
         context_aggregator.user(),

@@ -57,7 +57,6 @@ class PhoneEQProcessor(FrameProcessor):
         knee_db = 6.0
         attack = 0.01
         release = 0.1
-        threshold_lin = 10.0 ** (threshold_db / 20.0)
         out = np.empty_like(samples)
         gain_db = self._comp_gain_db
         for i in range(len(samples)):

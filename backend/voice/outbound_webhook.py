@@ -1,4 +1,3 @@
-import os
 import asyncio
 from datetime import datetime, timezone
 
@@ -176,9 +175,9 @@ def _build_outbound_context(
 ) -> str:
     if not lead or not prop:
         return (
-            f"OUTBOUND CALL CONTEXT\n"
-            f"You called this person. Introduce yourself warmly.\n"
-            f"Greet as: Hey [name]! This is Sophia from San Joaquin House Buyers..."
+            "OUTBOUND CALL CONTEXT\n"
+            "You called this person. Introduce yourself warmly.\n"
+            "Greet as: Hey [name]! This is Sophia from San Joaquin House Buyers..."
         )
 
     score = prop.get("distress_score", 0)
