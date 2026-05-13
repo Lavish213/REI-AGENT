@@ -23,8 +23,8 @@ const stageBadge: Record<string, string> = {
 export default async function LeadsPage() {
   const { data: leads, error } = await supabase
     .from('leads')
-    .select('id, address, distress_score, composite_score, arv, mao, stage, status, last_contact, callable')
-    .order('distress_score', { ascending: false })
+    .select('id, address, distress_score, composite_score, arv, mao, stage, status, last_contact, callable, motivation_level, timeline_urgency, followup_urgency, is_hot_lead, call_summary')
+    .order('followup_urgency', { ascending: false })
     .limit(100)
 
   const rows = leads ?? []
@@ -51,14 +51,16 @@ export default async function LeadsPage() {
               <th className="px-4 py-3 text-right">ARV</th>
               <th className="px-4 py-3 text-right">MAO</th>
               <th className="px-4 py-3">Stage</th>
-              <th className="px-4 py-3">Last Contact</th>
+              <th className="px-4 py-3 text-center">Motiv</th>
+              <th className="px-4 py-3">Timeline</th>
+              <th className="px-4 py-3 text-center">Urgency</th>
               <th className="px-4 py-3 text-center">Callable</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-500">No leads found</td>
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-500">No leads found</td>
               </tr>
             ) : (
               rows.map((lead: any) => {
@@ -70,30 +72,64 @@ export default async function LeadsPage() {
                   score >= 80 ? 'text-red-400' :
                   score >= 60 ? 'text-yellow-400' : 'text-gray-300'
 
+                const motivation = lead.motivation_level
+                const motivColor = motivation == null ? 'text-gray-500' :
+                  motivation >= 8 ? 'text-red-400' :
+                  motivation >= 6 ? 'text-yellow-400' : 'text-gray-400'
+
+                const timeline = lead.timeline_urgency
+                const timelineColor: Record<string, string> = {
+                  immediate: 'text-red-400', weeks: 'text-yellow-400',
+                  months: 'text-blue-300', unknown: 'text-gray-500',
+                }
+
+                const urgency = lead.followup_urgency
+                const urgencyColor = urgency == null ? 'text-gray-500' :
+                  urgency >= 8 ? 'text-red-400' :
+                  urgency >= 5 ? 'text-yellow-400' : 'text-gray-400'
+
                 return (
-                  <tr key={lead.id} className="border-b border-gray-700 hover:bg-gray-750">
-                    <td className="px-4 py-3 max-w-xs truncate">{lead.address ?? '—'}</td>
-                    <td className={`px-4 py-3 text-right font-mono font-semibold ${scoreColor}`}>
-                      {score ?? '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-300">{formatCurrency(lead.arv)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-green-400">{formatCurrency(lead.mao)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${badgeClass}`}>
-                        {stage.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-400">{formatDate(lead.last_contact)}</td>
-                    <td className="px-4 py-3 text-center">
-                      {lead.callable === false ? (
-                        <span className="text-red-400 text-xs">No</span>
-                      ) : lead.callable === true ? (
-                        <span className="text-green-400 text-xs">Yes</span>
-                      ) : (
-                        <span className="text-gray-500 text-xs">—</span>
-                      )}
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={lead.id} className="border-b border-gray-700/50 hover:bg-gray-750">
+                      <td className="px-4 py-2 max-w-xs truncate">
+                        {lead.is_hot_lead && <span className="text-red-400 text-xs mr-1">🔥</span>}
+                        {lead.address ?? '—'}
+                      </td>
+                      <td className={`px-4 py-2 text-right font-mono font-semibold ${scoreColor}`}>
+                        {score ?? '—'}
+                      </td>
+                      <td className="px-4 py-2 text-right font-mono text-gray-300">{formatCurrency(lead.arv)}</td>
+                      <td className="px-4 py-2 text-right font-mono text-green-400">{formatCurrency(lead.mao)}</td>
+                      <td className="px-4 py-2">
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${badgeClass}`}>
+                          {stage.replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                      <td className={`px-4 py-2 text-center font-mono font-semibold ${motivColor}`}>
+                        {motivation ?? '—'}
+                      </td>
+                      <td className={`px-4 py-2 text-xs capitalize ${timelineColor[timeline] ?? 'text-gray-500'}`}>
+                        {timeline ?? '—'}
+                      </td>
+                      <td className={`px-4 py-2 text-center font-mono font-semibold ${urgencyColor}`}>
+                        {urgency ?? '—'}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {lead.callable === false ? (
+                          <span className="text-red-400 text-xs">No</span>
+                        ) : lead.callable === true ? (
+                          <span className="text-green-400 text-xs">Yes</span>
+                        ) : (
+                          <span className="text-gray-500 text-xs">—</span>
+                        )}
+                      </td>
+                    </tr>
+                    {lead.call_summary && (
+                      <tr key={`${lead.id}-summary`} className="border-b border-gray-700/30">
+                        <td colSpan={9} className="px-4 pb-2 text-xs text-gray-500 italic">{lead.call_summary}</td>
+                      </tr>
+                    )}
+                  </>
                 )
               })
             )}

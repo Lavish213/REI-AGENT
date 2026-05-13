@@ -86,10 +86,12 @@ def update_lead_stage(lead_id: str, stage: str) -> None:
     logger.info("update_lead_stage lead_id={} stage={}", lead_id, stage)
 
 
-def insert_call(data: dict) -> None:
+def insert_call(data: dict) -> str | None:
     client = _get_client()
-    client.table("calls").insert(data).execute()
-    logger.info("insert_call lead_id={}", data.get("lead_id"))
+    response = client.table("calls").insert(data).execute()
+    call_id = response.data[0]["id"] if response.data else None
+    logger.info("insert_call lead_id={} call_id={}", data.get("lead_id"), call_id)
+    return call_id
 
 
 def insert_sms(data: dict) -> None:
@@ -467,6 +469,7 @@ def update_lead_transcript_intel(lead_id: str, intel: dict) -> None:
     data: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
     field_map = {
         "motivation_level": "motivation_level",
+        "seller_motivation": "seller_motivation",
         "price_floor": "price_floor",
         "timeline_urgency": "timeline_urgency",
         "hot_topics": "hot_topics",
@@ -625,3 +628,103 @@ def update_engagement_score(lead_id: str, event_type: str) -> None:
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", lead_id).execute()
     logger.info("update_engagement_score lead_id={} event={} composite={}", lead_id, event_type, composite)
+
+
+def insert_transcript_chunks(call_id: str, lead_id: str | None, chunks: list[dict]) -> None:
+    if not chunks:
+        return
+    client = _get_client()
+    rows = [
+        {
+            "call_id": call_id,
+            "lead_id": lead_id,
+            "speaker": c["speaker"],
+            "text": c["text"],
+            "chunk_type": c.get("chunk_type", "final"),
+            "sequence_order": c["sequence_order"],
+            "confidence": c.get("confidence"),
+        }
+        for c in chunks
+    ]
+    client.table("transcript_chunks").insert(rows).execute()
+    logger.info("insert_transcript_chunks call_id={} count={}", call_id, len(rows))
+
+
+def get_transcript_chunks(call_id: str) -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("transcript_chunks")
+        .select("*")
+        .eq("call_id", call_id)
+        .order("sequence_order")
+        .execute()
+    )
+    logger.debug("get_transcript_chunks call_id={} count={}", call_id, len(response.data))
+    return response.data
+
+
+def reconstruct_transcript_from_chunks(call_id: str) -> str:
+    chunks = get_transcript_chunks(call_id)
+    if not chunks:
+        return ""
+    lines = [f"{c['speaker']}: {c['text']}" for c in chunks]
+    return "\n".join(lines)
+
+
+def insert_call_event(
+    call_id: str,
+    lead_id: str | None,
+    event_type: str,
+    payload: dict | None = None,
+) -> None:
+    client = _get_client()
+    client.table("call_events").insert({
+        "call_id": call_id,
+        "lead_id": lead_id,
+        "event_type": event_type,
+        "payload": payload or {},
+    }).execute()
+    logger.debug("insert_call_event type={} call_id={}", event_type, call_id)
+
+
+def update_call_intel(call_id: str, intel: dict) -> None:
+    client = _get_client()
+    call_fields = {
+        "seller_name": "seller_name",
+        "property_address": "property_address_mentioned",
+        "asking_price": "asking_price",
+        "occupancy": "occupancy",
+        "property_condition": "property_condition",
+        "distress_indicators": "distress_indicators",
+        "objections": "objections",
+        "appointment_interest": "appointment_interest",
+        "next_step": "next_step",
+        "followup_priority": "followup_priority",
+        "extraction_confidence": "extraction_confidence",
+        "seller_motivation": "seller_motivation",
+        "motivation_confidence": "motivation_confidence",
+        "timeline": "timeline",
+        "lead_score": "lead_score",
+        "call_summary": "call_summary",
+    }
+    data: dict = {}
+    for src, dst in call_fields.items():
+        val = intel.get(src)
+        if val is not None:
+            data[dst] = val
+    if not data:
+        return
+    client.table("calls").update(data).eq("id", call_id).execute()
+    logger.info("update_call_intel call_id={}", call_id)
+
+
+def update_lead_intel_scores(lead_id: str, scores: dict) -> None:
+    client = _get_client()
+    data: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    for key in ("followup_urgency", "is_hot_lead", "conversation_quality"):
+        val = scores.get(key)
+        if val is not None:
+            data[key] = val
+    if len(data) > 1:
+        client.table("leads").update(data).eq("id", lead_id).execute()
+        logger.info("update_lead_intel_scores lead_id={} hot={}", lead_id, scores.get("is_hot_lead"))

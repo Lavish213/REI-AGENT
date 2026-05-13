@@ -454,13 +454,22 @@ async def _handle_call_end(
         if lead:
             call_data = {
                 "lead_id": lead["id"],
+                "property_id": lead.get("property_id"),
                 "signalwire_call_id": call_sid,
                 "direction": "inbound",
                 "transcript": transcript,
                 "call_disposition": disposition,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
-            insert_call(call_data)
+            call_id_db = insert_call(call_data)
+
+            if call_id_db:
+                chunks = _build_transcript_chunks(context.messages)
+                if chunks:
+                    from backend.lib.db import insert_transcript_chunks
+                    insert_transcript_chunks(call_id_db, lead["id"], chunks)
+                from backend.voice.events import emit_event, TRANSCRIPT_COMPLETED
+                emit_event(TRANSCRIPT_COMPLETED, call_id_db, lead["id"], {"chunk_count": len(chunks)})
 
             if disposition:
                 update_lead_for_disposition(lead["id"], disposition)
@@ -469,7 +478,7 @@ async def _handle_call_end(
                 _run_qa_async(transcript, lead["id"], call_sid)
             )
             asyncio.create_task(
-                _run_transcript_intel_async(transcript, lead["id"], call_sid)
+                _run_transcript_intel_async(transcript, lead["id"], call_sid, call_id_db)
             )
 
         from backend.observability import trace_call_end
@@ -488,10 +497,12 @@ async def _run_qa_async(transcript: str, lead_id: str, call_sid: str) -> None:
         logger.error("QA grading failed call_sid={} error={}", call_sid, str(e))
 
 
-async def _run_transcript_intel_async(transcript: str, lead_id: str, call_sid: str) -> None:
+async def _run_transcript_intel_async(
+    transcript: str, lead_id: str, call_sid: str, call_id_db: str | None = None
+) -> None:
     try:
         from backend.qa.transcript_intel import analyze_transcript
-        await asyncio.to_thread(analyze_transcript, transcript, lead_id, call_sid)
+        await asyncio.to_thread(analyze_transcript, transcript, lead_id, call_sid, call_id_db)
         logger.info("transcript_intel complete call_sid={}", call_sid)
     except Exception as e:
         logger.error("transcript_intel failed call_sid={} error={}", call_sid, str(e))
@@ -508,3 +519,25 @@ def _build_transcript(messages: list[dict]) -> str:
             speaker = "SELLER" if role == "user" else "SOPHIA"
             lines.append(f"{speaker}: {content}")
     return "\n".join(lines)
+
+
+def _build_transcript_chunks(messages: list[dict]) -> list[dict]:
+    chunks = []
+    seq = 0
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if not isinstance(content, str) or role not in ("user", "assistant"):
+            continue
+        if content == "[call started]":
+            continue
+        speaker = "SELLER" if role == "user" else "SOPHIA"
+        chunks.append({
+            "speaker": speaker,
+            "text": content,
+            "chunk_type": "final",
+            "sequence_order": seq,
+            "confidence": None,
+        })
+        seq += 1
+    return chunks
