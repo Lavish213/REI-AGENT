@@ -40,6 +40,9 @@ from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 from backend.voice.processors.fair_housing import FairHousingFilter
 from backend.voice.processors.ai_identity import AIIdentityProcessor
 from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor
+from backend.voice.processors.filler import FillerGapProcessor
+from backend.voice.processors.breath_injector import BreathInjectorProcessor
+from backend.voice.processors.phone_eq import PhoneEQProcessor
 
 
 SPANISH_MARKERS = [
@@ -286,6 +289,11 @@ async def run_sophia_agent(
 
     groq_key = os.environ.get("GROQ_API_KEY")
     if groq_key:
+        logger.warning(
+            "GROQ_API_KEY is set: tool calls silently fail with Groq llama models. "
+            "Sophia will speak but cannot set_disposition, schedule_followup, or use other tools. "
+            "Unset GROQ_API_KEY and set ANTHROPIC_API_KEY for full tool support."
+        )
         from pipecat.services.openai.llm import OpenAILLMService
         llm = OpenAILLMService(
             api_key=groq_key,
@@ -316,6 +324,7 @@ async def run_sophia_agent(
     clip_sample_rate = 16000
     _sc = startup_clips or {}
     backchannel_clips = _sc.get("backchannel") or {}
+    filler_clips = _sc.get("filler") or {}
 
     if not backchannel_clips:
         elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY", "")
@@ -324,9 +333,10 @@ async def run_sophia_agent(
         logger.info("backchannel clips generated per-call fallback call_sid={}", call_sid)
     else:
         logger.info(
-            "using startup clips call_sid={} backchannel={}",
+            "using startup clips call_sid={} backchannel={} filler={}",
             call_sid,
             len(backchannel_clips),
+            len(filler_clips),
         )
 
     transport_output = transport.output()
@@ -352,6 +362,9 @@ async def run_sophia_agent(
     latency_tracker = LatencyTracker()
     stt_mute_proc = BotSpeakingSTTMuteProcessor()
     latency_proc_tts = LatencyTrackerProcessor(latency_tracker)
+    filler_gap_proc = FillerGapProcessor(transport_output, clip_sample_rate, clips=filler_clips)
+    breath_injector_proc = BreathInjectorProcessor()
+    phone_eq_proc = PhoneEQProcessor()
 
     messages = [
         {
@@ -387,6 +400,7 @@ async def run_sophia_agent(
         stt,
         stt_mute_proc,
         interruption_proc,
+        filler_gap_proc,
         emotion_proc,
         ai_identity_proc,
         context_tracker,
@@ -396,6 +410,8 @@ async def run_sophia_agent(
         sentence_streamer,
         fair_housing_filter,
         tts,
+        breath_injector_proc,
+        phone_eq_proc,
         latency_proc_tts,
         transport_output,
         context_aggregator.assistant(),

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import LiveActivity from '@/components/LiveActivity'
 
 const API = process.env.NEXT_PUBLIC_API_URL || ''
 
@@ -33,6 +34,7 @@ export default async function MorningBriefingPage() {
     apptTodayRes,
     recentCallsRes,
     pipelineData,
+    liveEventsRes,
   ] = await Promise.all([
     supabase
       .from('leads')
@@ -57,6 +59,11 @@ export default async function MorningBriefingPage() {
       .order('created_at', { ascending: false })
       .limit(8),
     fetchPipeline(),
+    supabase
+      .from('call_events')
+      .select('id, event_type, payload, created_at, lead_id')
+      .order('created_at', { ascending: false })
+      .limit(10),
   ])
 
   const hotCount = hotLeadsRes.count ?? 0
@@ -65,6 +72,7 @@ export default async function MorningBriefingPage() {
   const apptCount = apptTodayRes.count ?? 0
   const recentCalls = recentCallsRes.data ?? []
   const pipeline = pipelineData?.pipeline ?? {}
+  const liveEvents = liveEventsRes.data ?? []
 
   const dispColor: Record<string, string> = {
     HOT: 'text-red-400', WARM: 'text-yellow-400',
@@ -199,6 +207,10 @@ export default async function MorningBriefingPage() {
             View all calls →
           </a>
         </section>
+      </div>
+
+      <div className="mt-6">
+        <LiveActivity initialEvents={liveEvents as any} />
       </div>
     </main>
   )

@@ -38,17 +38,22 @@ async def lifespan(app: FastAPI):
     logger.info("agent={}", os.environ.get("AGENT_NAME", "unknown"))
 
     from backend.voice.processors.backchannel import pregenerate_backchannel_clips
+    from backend.voice.processors.filler import pregenerate_filler_clips
 
     app.state.backchannel_clips = {}
+    app.state.filler_clips = {}
 
     try:
         app.state.backchannel_clips = await pregenerate_backchannel_clips()
-        logger.info(
-            "startup clips ready backchannel={}",
-            len(app.state.backchannel_clips),
-        )
+        logger.info("startup clips ready backchannel={}", len(app.state.backchannel_clips))
     except Exception as e:
-        logger.warning("startup clip generation failed error={} continuing anyway", str(e))
+        logger.warning("backchannel clip generation failed error={} continuing anyway", str(e))
+
+    try:
+        app.state.filler_clips = await pregenerate_filler_clips()
+        logger.info("startup clips ready filler={}", len(app.state.filler_clips))
+    except Exception as e:
+        logger.warning("filler clip generation failed error={} continuing anyway", str(e))
 
     from backend.alerts.drip import start_drip_scheduler, stop_drip_scheduler
     from backend.voice.appointment_scheduler import start_appointment_scheduler, stop_appointment_scheduler
@@ -133,6 +138,7 @@ async def voice_stream(websocket: WebSocket, call_sid: str):
 
     startup_clips = {
         "backchannel": getattr(app.state, "backchannel_clips", {}),
+        "filler": getattr(app.state, "filler_clips", {}),
     }
 
     try:
