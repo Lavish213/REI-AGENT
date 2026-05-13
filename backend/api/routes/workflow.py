@@ -26,6 +26,12 @@ class NotesRequest(BaseModel):
     notes: str
 
 
+class WalkthroughRequest(BaseModel):
+    state: str  # none / scheduled / completed / missed / cancelled
+    notes: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
 # ── Read endpoints ────────────────────────────────────────────────
 
 @router.get("/workflow/activity")
@@ -225,6 +231,28 @@ async def pause_workflow(lead_id: str):
 
 
 # ── Followup action endpoints ─────────────────────────────────────
+
+@router.post("/workflow/leads/{lead_id}/walkthrough")
+async def update_walkthrough(lead_id: str, req: WalkthroughRequest):
+    from backend.lib.db import update_walkthrough_state, _get_client
+    from backend.voice.events import emit_event, WORKFLOW_UPDATED
+
+    valid_states = ("none", "scheduled", "completed", "missed", "cancelled")
+    if req.state not in valid_states:
+        raise HTTPException(status_code=400, detail=f"state must be one of {valid_states}")
+
+    client = _get_client()
+    if not client.table("leads").select("id").eq("id", lead_id).limit(1).execute().data:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    update_walkthrough_state(lead_id, req.state, req.notes, req.completed_at)
+    emit_event(WORKFLOW_UPDATED, None, lead_id, {
+        "action": "walkthrough_updated",
+        "walkthrough_state": req.state,
+    })
+    logger.info("walkthrough_update lead_id={} state={}", lead_id, req.state)
+    return {"success": True, "lead_id": lead_id, "walkthrough_state": req.state}
+
 
 @router.post("/workflow/followups/{followup_id}/complete")
 async def complete_followup(followup_id: str):

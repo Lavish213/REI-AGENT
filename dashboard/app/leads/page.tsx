@@ -55,6 +55,7 @@ export default async function LeadsPage() {
               <th className="px-4 py-3">Timeline</th>
               <th className="px-4 py-3 text-center">Urgency</th>
               <th className="px-4 py-3 text-center">Callable</th>
+              <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody>
@@ -123,10 +124,13 @@ export default async function LeadsPage() {
                           <span className="text-gray-500 text-xs">—</span>
                         )}
                       </td>
+                      <td className="px-4 py-2 text-right">
+                        <a href={`/leads/${lead.id}`} className="text-xs text-blue-400 hover:underline">View →</a>
+                      </td>
                     </tr>
                     {lead.call_summary && (
                       <tr key={`${lead.id}-summary`} className="border-b border-gray-700/30">
-                        <td colSpan={9} className="px-4 pb-2 text-xs text-gray-500 italic">{lead.call_summary}</td>
+                        <td colSpan={10} className="px-4 pb-2 text-xs text-gray-500 italic">{lead.call_summary}</td>
                       </tr>
                     )}
                   </>

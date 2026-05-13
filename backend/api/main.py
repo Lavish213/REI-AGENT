@@ -17,6 +17,7 @@ from backend.api.routes import (
     evals,
     analytics,
     workflow,
+    offers,
 )
 from backend.voice.webhook import router as voice_router
 from backend.voice.outbound_webhook import router as outbound_router
@@ -114,6 +115,7 @@ app.include_router(sms.router, prefix="/api", tags=["sms"])
 app.include_router(evals.router, prefix="/api", tags=["evals"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
 app.include_router(workflow.router, prefix="/api", tags=["workflow"])
+app.include_router(offers.router, prefix="/api", tags=["offers"])
 app.include_router(voice_router, prefix="/api", tags=["voice"])
 app.include_router(outbound_router, prefix="/api", tags=["outbound"])
 

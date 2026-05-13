@@ -926,3 +926,199 @@ def update_operator_notes(lead_id: str, notes: str) -> None:
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", lead_id).execute()
     logger.info("update_operator_notes lead_id={}", lead_id)
+
+
+# ──────────────────────────────────────────────────────────────────
+# Batch E — Offers + Walkthroughs + Analytics
+# ──────────────────────────────────────────────────────────────────
+
+def create_offer(
+    lead_id: str,
+    arv_used: int | None,
+    repair_estimate: int = 2500000,
+    offer_amount: int | None = None,
+    property_id: str | None = None,
+    notes: str | None = None,
+    created_by: str = "operator",
+) -> str | None:
+    """Create offer record. MAO = (arv_used * 0.70) - repair_estimate."""
+    client = _get_client()
+    now = datetime.now(timezone.utc).isoformat()
+    mao_calculated: int | None = None
+    if arv_used is not None:
+        mao_calculated = int(arv_used * 0.70) - repair_estimate
+
+    response = client.table("offers").insert({
+        "lead_id": lead_id,
+        "property_id": property_id,
+        "arv_used": arv_used,
+        "repair_estimate": repair_estimate,
+        "mao_calculated": mao_calculated,
+        "offer_amount": offer_amount if offer_amount is not None else mao_calculated,
+        "offer_status": "draft",
+        "notes": notes,
+        "created_by": created_by,
+        "created_at": now,
+        "updated_at": now,
+    }).execute()
+    offer_id = response.data[0]["id"] if response.data else None
+    logger.info("create_offer lead_id={} mao={} id={}", lead_id, mao_calculated, offer_id)
+    return offer_id
+
+
+def get_offer_by_id(offer_id: str) -> dict | None:
+    client = _get_client()
+    response = (
+        client.table("offers")
+        .select("*")
+        .eq("id", offer_id)
+        .limit(1)
+        .execute()
+    )
+    return response.data[0] if response.data else None
+
+
+def get_offers_for_lead(lead_id: str) -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("offers")
+        .select("*")
+        .eq("lead_id", lead_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    logger.debug("get_offers_for_lead lead_id={} count={}", lead_id, len(response.data))
+    return response.data
+
+
+def update_offer_status(offer_id: str, status: str, notes: str | None = None) -> None:
+    client = _get_client()
+    data: dict = {
+        "offer_status": status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if notes is not None:
+        data["notes"] = notes
+    client.table("offers").update(data).eq("id", offer_id).execute()
+    logger.info("update_offer_status id={} status={}", offer_id, status)
+
+
+def update_walkthrough_state(
+    lead_id: str,
+    state: str,
+    notes: str | None = None,
+    completed_at: str | None = None,
+) -> None:
+    client = _get_client()
+    data: dict = {
+        "walkthrough_state": state,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if notes is not None:
+        data["walkthrough_notes"] = notes
+    if completed_at is not None:
+        data["walkthrough_completed_at"] = completed_at
+    elif state == "completed" and completed_at is None:
+        data["walkthrough_completed_at"] = datetime.now(timezone.utc).isoformat()
+    client.table("leads").update(data).eq("id", lead_id).execute()
+    logger.info("update_walkthrough_state lead_id={} state={}", lead_id, state)
+
+
+def get_workflow_analytics() -> dict:
+    """Comprehensive analytics snapshot for the analytics dashboard."""
+    client = _get_client()
+    now = datetime.now(timezone.utc)
+
+    # Pipeline by workflow state
+    workflow_states = [
+        "new_lead", "active_contact", "followup_required",
+        "appointment_pending", "appointment_confirmed",
+        "negotiation", "under_review", "dead_lead", "closed",
+    ]
+    workflow_pipeline: dict[str, int] = {}
+    for state in workflow_states:
+        r = client.table("leads").select("id", count="exact").eq("workflow_state", state).execute()
+        workflow_pipeline[state] = r.count or 0
+
+    # Stage pipeline (legacy)
+    stages = ["new", "contacted", "offer_made", "walkthrough_booked", "under_contract", "closed", "dead"]
+    stage_pipeline: dict[str, int] = {}
+    for stage in stages:
+        r = client.table("leads").select("id", count="exact").eq("stage", stage).execute()
+        stage_pipeline[stage] = r.count or 0
+
+    # Disposition breakdown from calls (last 30 days)
+    cutoff_30d = (now - timedelta(days=30)).isoformat()
+    calls_resp = (
+        client.table("calls")
+        .select("call_disposition")
+        .gte("created_at", cutoff_30d)
+        .execute()
+    )
+    disposition_counts: dict[str, int] = {"HOT": 0, "WARM": 0, "COLD": 0, "DEAD": 0, "unknown": 0}
+    for call in (calls_resp.data or []):
+        d = (call.get("call_disposition") or "unknown").upper()
+        if d not in disposition_counts:
+            d = "unknown"
+        disposition_counts[d] += 1
+
+    # Hot leads
+    hot_resp = (
+        client.table("leads")
+        .select("id", count="exact")
+        .eq("is_hot_lead", True)
+        .neq("workflow_state", "dead_lead")
+        .execute()
+    )
+    hot_count = hot_resp.count or 0
+
+    # Followup queue by priority
+    followup_resp = client.table("followups").select("priority").eq("state", "pending").execute()
+    followup_by_priority: dict[str, int] = {"high": 0, "medium": 0, "low": 0}
+    for f in (followup_resp.data or []):
+        p = f.get("priority", "low")
+        followup_by_priority[p] = followup_by_priority.get(p, 0) + 1
+
+    # Calls this week
+    cutoff_7d = (now - timedelta(days=7)).isoformat()
+    calls_week_resp = (
+        client.table("calls")
+        .select("id", count="exact")
+        .gte("created_at", cutoff_7d)
+        .execute()
+    )
+    calls_this_week = calls_week_resp.count or 0
+
+    # Offer pipeline
+    offer_resp = client.table("offers").select("offer_status, offer_amount").execute()
+    offer_by_status: dict[str, int] = {}
+    offer_pipeline_value = 0
+    for o in (offer_resp.data or []):
+        s = o.get("offer_status", "draft")
+        offer_by_status[s] = offer_by_status.get(s, 0) + 1
+        if s in ("sent", "countered", "accepted"):
+            offer_pipeline_value += o.get("offer_amount") or 0
+
+    # Conversion: active → appointment
+    active = sum(workflow_pipeline.get(s, 0) for s in ("active_contact", "followup_required"))
+    appt = workflow_pipeline.get("appointment_pending", 0) + workflow_pipeline.get("appointment_confirmed", 0)
+    conversion_rate = round(appt / max(1, active + appt) * 100, 1)
+
+    total_active = sum(
+        v for k, v in workflow_pipeline.items()
+        if k not in ("dead_lead", "closed")
+    )
+
+    return {
+        "workflow_pipeline": workflow_pipeline,
+        "stage_pipeline": stage_pipeline,
+        "disposition_30d": disposition_counts,
+        "hot_leads": hot_count,
+        "followup_queue": followup_by_priority,
+        "calls_this_week": calls_this_week,
+        "offer_pipeline": offer_by_status,
+        "offer_pipeline_value_cents": offer_pipeline_value,
+        "active_leads": total_active,
+        "conversion_rate_pct": conversion_rate,
+        "total_closed": workflow_pipeline.get("closed", 0),
+    }

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Query
-from loguru import logger
+from loguru import logger  # noqa: F401 — used in revenue-pipeline
 
 router = APIRouter()
 
@@ -80,6 +80,14 @@ async def get_score_distribution():
         distribution[label] = response.count or 0
 
     return {"distribution": distribution}
+
+
+@router.get("/analytics/workflow")
+async def get_workflow_analytics():
+    """Comprehensive workflow + pipeline analytics for the operator dashboard."""
+    from backend.lib.db import get_workflow_analytics
+    data = get_workflow_analytics()
+    return data
 
 
 @router.get("/analytics/revenue-pipeline")
