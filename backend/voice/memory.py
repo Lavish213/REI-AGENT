@@ -86,24 +86,104 @@ class SellerMemory:
             self.call_summaries = self.call_summaries[-10:]
 
     def to_prompt_context(self) -> str:
-        if not self.call_summaries and not self.hot_topics:
+        has_data = any([
+            self.call_summaries, self.hot_topics, self.objections_raised,
+            self.price_floor, self.timeline_mentioned, self.motivation_level,
+            self.best_callback_time, self.next_best_action, self.competitor_mentions,
+            self.spouse_name,
+        ])
+        if not has_data:
             return ""
 
-        parts = ["PREVIOUS CALL CONTEXT:"]
+        call_count = len(self.call_summaries)
+        parts = [f"SELLER MEMORY ({call_count} prior call{'s' if call_count != 1 else ''}):"]
+
+        # Multi-call arc — most recent first, max 3
         if self.call_summaries:
-            parts.append(f"Last call summary: {self.call_summaries[-1]}")
+            recent = self.call_summaries[-3:]
+            if len(recent) == 1:
+                parts.append(f"Last call: {recent[-1]}")
+            else:
+                parts.append(f"Most recent: {recent[-1]}")
+                parts.append(f"Previous: {recent[-2]}")
+
+        # Price floor — critical negotiation context
         if self.price_floor:
             dollar = self.price_floor // 100
-            parts.append(f"Price floor: ${dollar:,}")
-        if self.hot_topics:
-            parts.append(f"Hot topics: {', '.join(self.hot_topics[-5:])}")
+            parts.append(f"Price floor they mentioned: ${dollar:,} — don't go below this without Alanzo")
+
+        # Objections — Sophia should anticipate these
+        if self.objections_raised:
+            recent_obj = self.objections_raised[-4:]
+            parts.append(f"Objections they've raised: {'; '.join(recent_obj)}")
+
+        # Competitor mentions
+        if self.competitor_mentions:
+            parts.append(f"Other buyers they've talked to: {', '.join(self.competitor_mentions[-3:])}")
+
+        # Timeline
         if self.timeline_mentioned:
             parts.append(f"Their timeline: {self.timeline_mentioned}")
+
+        # Motivation
         if self.motivation_level:
-            parts.append(f"Motivation: {self.motivation_level}/10")
+            parts.append(f"Motivation level: {self.motivation_level}/10")
+
+        # Hot topics — things they care about
+        if self.hot_topics:
+            parts.append(f"Topics they care about: {', '.join(self.hot_topics[-5:])}")
+
+        # Personal details — rapport building
+        if self.spouse_name:
+            parts.append(f"Spouse/partner: {self.spouse_name} — reference naturally if relevant")
+
+        # Callback preference
         if self.best_callback_time:
-            parts.append(f"Best time to call: {self.best_callback_time}")
+            parts.append(f"Best time to reach them: {self.best_callback_time}")
+
+        # Next action
         if self.next_best_action:
-            parts.append(f"Notes: {self.next_best_action}")
-        parts.append("Reference this naturally. Never say 'according to my notes.' Just remember like a real person would.")
+            parts.append(f"Operator note: {self.next_best_action}")
+
+        parts.append(
+            "\nUse this memory naturally. Sound like you remember them personally. "
+            "Never say 'according to my records' or 'our last call notes.' "
+            "Reference it like: 'Wasn't repairs the main thing you were worried about?' "
+            "or 'You mentioned your timeline was pretty soon, right?'"
+        )
         return "\n".join(parts)
+
+    def update_from_intel(self, intel: dict) -> None:
+        """
+        Merge structured transcript intel into memory fields.
+        Called after each call's transcript analysis completes.
+        """
+        if intel.get("objections"):
+            for obj in intel["objections"]:
+                if obj and obj not in self.objections_raised:
+                    self.objections_raised.append(obj)
+            if len(self.objections_raised) > 15:
+                self.objections_raised = self.objections_raised[-15:]
+
+        if intel.get("hot_topics"):
+            for topic in intel["hot_topics"]:
+                if topic and topic not in self.hot_topics:
+                    self.hot_topics.append(topic)
+            if len(self.hot_topics) > 15:
+                self.hot_topics = self.hot_topics[-15:]
+
+        if intel.get("competitor_mentions"):
+            for comp in intel["competitor_mentions"]:
+                if comp and comp not in self.competitor_mentions:
+                    self.competitor_mentions.append(comp)
+
+        if intel.get("timeline_mentioned") and not self.timeline_mentioned:
+            self.timeline_mentioned = intel["timeline_mentioned"]
+
+        if intel.get("motivation_level") and intel["motivation_level"] > 0:
+            self.motivation_level = intel["motivation_level"]
+
+        if intel.get("price_floor") and (
+            self.price_floor is None or intel["price_floor"] < self.price_floor
+        ):
+            self.price_floor = intel["price_floor"]

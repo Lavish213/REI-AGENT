@@ -84,6 +84,7 @@ export default async function MorningBriefingPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Operations</h1>
         <div className="flex gap-3 text-sm">
+          <a href="/live" className="text-green-400 hover:underline">Live →</a>
           <a href="/analytics" className="text-blue-400 hover:underline">Analytics →</a>
           <a href="/workflow" className="text-blue-400 hover:underline">Workflow →</a>
           <a href="/calls" className="text-blue-400 hover:underline">Calls →</a>

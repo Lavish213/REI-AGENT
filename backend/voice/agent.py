@@ -43,6 +43,8 @@ from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor
 from backend.voice.processors.filler import FillerGapProcessor
 from backend.voice.processors.breath_injector import BreathInjectorProcessor
 from backend.voice.processors.phone_eq import PhoneEQProcessor
+from backend.voice.processors.ai_softener import AISoftenerProcessor
+from backend.voice.processors.silence_detector import SilenceDetectorProcessor
 
 
 SPANISH_MARKERS = [
@@ -365,6 +367,8 @@ async def run_sophia_agent(
     filler_gap_proc = FillerGapProcessor(transport_output, clip_sample_rate, clips=filler_clips)
     breath_injector_proc = BreathInjectorProcessor()
     phone_eq_proc = PhoneEQProcessor()
+    ai_softener_proc = AISoftenerProcessor()
+    silence_detector = SilenceDetectorProcessor()
 
     messages = [
         {
@@ -399,6 +403,7 @@ async def run_sophia_agent(
         transport.input(),
         stt,
         stt_mute_proc,
+        silence_detector,
         interruption_proc,
         filler_gap_proc,
         emotion_proc,
@@ -408,6 +413,7 @@ async def run_sophia_agent(
         context_aggregator.user(),
         llm,
         sentence_streamer,
+        ai_softener_proc,
         fair_housing_filter,
         tts,
         breath_injector_proc,
@@ -424,6 +430,12 @@ async def run_sophia_agent(
             enable_usage_metrics=True,
         ),
     )
+
+    async def _silence_recovery(recovery_text: str) -> None:
+        context.messages.append({"role": "user", "content": recovery_text})
+        await task.queue_frames([context_aggregator.user()._get_context_frame()])
+
+    silence_detector.set_recovery_callback(_silence_recovery)
 
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):

@@ -18,6 +18,7 @@ from backend.api.routes import (
     analytics,
     workflow,
     offers,
+    live,
 )
 from backend.voice.webhook import router as voice_router
 from backend.voice.outbound_webhook import router as outbound_router
@@ -121,12 +122,14 @@ app.include_router(evals.router, prefix="/api", tags=["evals"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
 app.include_router(workflow.router, prefix="/api", tags=["workflow"])
 app.include_router(offers.router, prefix="/api", tags=["offers"])
+app.include_router(live.router, prefix="/api", tags=["live"])
 app.include_router(voice_router, prefix="/api", tags=["voice"])
 app.include_router(outbound_router, prefix="/api", tags=["outbound"])
 
 
 @app.websocket("/voice/stream/{call_sid}")
 async def voice_stream(websocket: WebSocket, call_sid: str):
+    from datetime import datetime, timezone
     await websocket.accept()
 
     contexts = getattr(app.state, "call_contexts", {})
@@ -135,6 +138,14 @@ async def voice_stream(websocket: WebSocket, call_sid: str):
         "owner_first_name": "there",
         "lead": None,
     })
+
+    # Track active call for live monitoring
+    if not hasattr(app.state, "call_started_at"):
+        app.state.call_started_at = {}
+    app.state.call_started_at[call_sid] = datetime.now(timezone.utc).isoformat()
+    if not hasattr(app.state, "call_contexts"):
+        app.state.call_contexts = {}
+    app.state.call_contexts[call_sid] = call_context
 
     startup_clips = {
         "backchannel": getattr(app.state, "backchannel_clips", {}),
@@ -147,6 +158,9 @@ async def voice_stream(websocket: WebSocket, call_sid: str):
     except Exception as e:
         logger.error("websocket error call_sid={} error={}", call_sid, str(e))
     finally:
+        # Remove from active call tracking
+        getattr(app.state, "call_contexts", {}).pop(call_sid, None)
+        getattr(app.state, "call_started_at", {}).pop(call_sid, None)
         try:
             await websocket.close()
         except Exception:

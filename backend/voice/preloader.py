@@ -12,6 +12,7 @@ from backend.comps.cache import get_cached_comps, set_cached_comps
 from backend.comps.homeharvest import get_comps as hh_get_comps
 from backend.lib.db import update_property_arv
 from backend.lib.osm import enrich_property_full
+from backend.voice.geo_phrases import get_geo_phrases, format_geo_phrases_for_prompt
 
 
 def preload_call_context(caller_phone: str) -> dict:
@@ -218,7 +219,10 @@ def _build_property_context_str(ctx: dict, osm_data: dict | None = None) -> str:
     else:
         comps_block = "Comps: none found — ARV based on assessed value"
 
-    return f"""
+    geo_phrases = get_geo_phrases(osm, prop.get("city", ""))
+    geo_phrases_block = format_geo_phrases_for_prompt(geo_phrases) if geo_phrases else ""
+
+    base = f"""
 CALLER PROPERTY CONTEXT
 =======================
 Owner: {owner} (call them {first_name})
@@ -258,6 +262,11 @@ Never reveal the MAO number directly
 If seller says they need more than MAO: escalate to Alanzo
 If confidence is low: widen your range and caveat with walkthrough
 """.strip()
+
+    if geo_phrases_block:
+        base = base + "\n\n" + geo_phrases_block
+
+    return base
 
 
 def _build_unknown_caller_context(phone: str) -> str:

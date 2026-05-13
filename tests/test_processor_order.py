@@ -190,7 +190,7 @@ class TestSellerMemory:
         m.hot_topics = ["divorce", "timeline urgent"]
         m.motivation_level = 8
         ctx = m.to_prompt_context()
-        assert "PREVIOUS CALL CONTEXT" in ctx
+        assert "SELLER MEMORY" in ctx
         assert "$250,000" in ctx
         assert "divorce" in ctx
         assert "8/10" in ctx

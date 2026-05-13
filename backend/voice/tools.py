@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytz
 from loguru import logger
 
-from backend.lib.db import update_lead_stage, update_lead_appointment, insert_sms
+from backend.lib.db import update_lead_stage, update_lead_appointment, insert_sms, create_followup
 from backend.alerts.sms import send_sms
 
 _PACIFIC = pytz.timezone("America/Los_Angeles")
@@ -83,6 +83,33 @@ SOPHIA_TOOLS = [
         },
     },
     {
+        "name": "schedule_followup",
+        "description": "Schedule a followup task for this lead. Use when seller asks to be called back, needs time to think, or when next steps are agreed. Creates an operator task.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "lead_id": {
+                    "type": "string",
+                    "description": "The lead ID",
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": ["high", "medium", "low"],
+                    "description": "Followup urgency. high=seller asked us to call back soon or HOT lead. medium=general callback. low=check-in.",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "What to follow up about — what seller said, agreed on, or what changed",
+                },
+                "callback_time": {
+                    "type": "string",
+                    "description": "When seller wants callback, e.g. 'tomorrow afternoon', 'Monday morning', 'this weekend'",
+                },
+            },
+            "required": ["lead_id", "priority", "notes"],
+        },
+    },
+    {
         "name": "end_call",
         "description": "End the call cleanly. Call this when conversation is complete.",
         "input_schema": {
@@ -116,6 +143,8 @@ def execute_tool(tool_name: str, tool_input: dict, call_ctx=None, lf_trace=None)
         result = _send_followup_sms(tool_input)
     elif tool_name == "set_disposition":
         result = _set_disposition(tool_input, call_ctx)
+    elif tool_name == "schedule_followup":
+        result = _schedule_followup(tool_input)
     elif tool_name == "end_call":
         result = _end_call(tool_input)
     else:
@@ -207,6 +236,27 @@ def _set_disposition(inp: dict, call_ctx) -> str:
         call_ctx.disposition = disposition
     logger.info("set_disposition disposition={}", disposition)
     return f"Disposition set to {disposition}."
+
+
+def _schedule_followup(inp: dict) -> str:
+    lead_id = inp.get("lead_id", "")
+    priority = inp.get("priority", "medium")
+    notes = inp.get("notes", "")
+    callback_time = inp.get("callback_time", "")
+
+    if callback_time:
+        notes = f"{notes} | Callback: {callback_time}" if notes else f"Callback: {callback_time}"
+
+    followup_id = create_followup(
+        lead_id=lead_id,
+        priority=priority,
+        followup_type="call",
+        notes=notes,
+        created_by="sophia",
+    )
+
+    logger.info("schedule_followup lead_id={} priority={} id={}", lead_id, priority, followup_id)
+    return f"Followup scheduled ({priority} priority). Notes: {notes}"
 
 
 def _end_call(inp: dict) -> str:
