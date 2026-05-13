@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Query, HTTPException
-from loguru import logger
 
 router = APIRouter()
 
@@ -30,7 +29,7 @@ async def send_manual_sms(to: str, body: str, lead_id: str = ""):
 
 @router.post("/sms/drip/{lead_id}")
 async def trigger_drip(lead_id: str):
-    from backend.lib.db import _get_client, get_lead_by_property
+    from backend.lib.db import _get_client
     client = _get_client()
 
     response = (
@@ -46,7 +45,6 @@ async def trigger_drip(lead_id: str):
     lead = response.data[0]
     prop = lead.get("properties", {})
 
-    from backend.lib.db import _get_client as get_contacts
     contacts = client.table("contacts").select("phone").eq(
         "property_id", prop.get("id", "")
     ).limit(1).execute()

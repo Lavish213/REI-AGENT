@@ -12,7 +12,7 @@ from backend.comps.cache import get_cached_comps, set_cached_comps
 from backend.comps.homeharvest import get_comps as hh_get_comps
 from backend.lib.db import update_property_arv
 from backend.lib.osm import enrich_property_full
-from backend.voice.geo_phrases import get_geo_phrases, format_geo_phrases_for_prompt
+from backend.voice.geo_phrases import get_geo_phrases, format_geo_phrases_for_prompt, get_local_slang
 
 
 def preload_call_context(caller_phone: str) -> dict:
@@ -219,8 +219,10 @@ def _build_property_context_str(ctx: dict, osm_data: dict | None = None) -> str:
     else:
         comps_block = "Comps: none found — ARV based on assessed value"
 
-    geo_phrases = get_geo_phrases(osm, prop.get("city", ""))
-    geo_phrases_block = format_geo_phrases_for_prompt(geo_phrases) if geo_phrases else ""
+    city = prop.get("city", "")
+    geo_phrases = get_geo_phrases(osm, city)
+    slang = get_local_slang(city, osm.get("neighborhood", ""))
+    geo_phrases_block = format_geo_phrases_for_prompt(geo_phrases, slang) if (geo_phrases or slang) else ""
 
     base = f"""
 CALLER PROPERTY CONTEXT

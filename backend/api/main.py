@@ -146,6 +146,10 @@ async def voice_stream(websocket: WebSocket, call_sid: str):
     if not hasattr(app.state, "call_contexts"):
         app.state.call_contexts = {}
     app.state.call_contexts[call_sid] = call_context
+    if not hasattr(app.state, "call_metrics"):
+        app.state.call_metrics = {}
+    # Placeholder — agent.py registers CallContext reference here once created
+    app.state.call_metrics[call_sid] = None
 
     startup_clips = {
         "backchannel": getattr(app.state, "backchannel_clips", {}),
@@ -154,13 +158,18 @@ async def voice_stream(websocket: WebSocket, call_sid: str):
 
     try:
         from backend.voice.agent import run_sophia_agent
-        await run_sophia_agent(websocket, call_sid, call_context, startup_clips=startup_clips)
+        await run_sophia_agent(
+            websocket, call_sid, call_context,
+            startup_clips=startup_clips,
+            metrics_store=app.state.call_metrics,
+        )
     except Exception as e:
         logger.error("websocket error call_sid={} error={}", call_sid, str(e))
     finally:
         # Remove from active call tracking
         getattr(app.state, "call_contexts", {}).pop(call_sid, None)
         getattr(app.state, "call_started_at", {}).pop(call_sid, None)
+        getattr(app.state, "call_metrics", {}).pop(call_sid, None)
         try:
             await websocket.close()
         except Exception:

@@ -45,6 +45,7 @@ from backend.voice.processors.breath_injector import BreathInjectorProcessor
 from backend.voice.processors.phone_eq import PhoneEQProcessor
 from backend.voice.processors.ai_softener import AISoftenerProcessor
 from backend.voice.processors.silence_detector import SilenceDetectorProcessor
+from backend.voice.processors.humanized_latency import HumanizedLatencyProcessor
 
 
 SPANISH_MARKERS = [
@@ -229,6 +230,7 @@ async def run_sophia_agent(
     call_sid: str,
     call_context: dict,
     startup_clips: dict = None,
+    metrics_store: dict = None,
 ) -> None:
     logger.info("sophia agent starting call_sid={}", call_sid)
 
@@ -270,6 +272,9 @@ async def run_sophia_agent(
         memory_ctx = seller_memory.to_prompt_context()
         if memory_ctx:
             system_prompt = system_prompt + "\n\n" + memory_ctx
+
+    from backend.voice.prompt_budget import apply_budget
+    system_prompt = apply_budget(system_prompt)
 
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
@@ -318,6 +323,10 @@ async def run_sophia_agent(
 
     call_ctx = CallContext()
 
+    # Register runtime metrics for live operator overlay (G23)
+    if metrics_store is not None:
+        metrics_store[call_sid] = call_ctx
+
     for tool in SOPHIA_TOOLS:
         llm.register_function(tool["name"], _make_tool_handler(tool["name"], call_ctx, lf_trace))
 
@@ -364,11 +373,17 @@ async def run_sophia_agent(
     latency_tracker = LatencyTracker()
     stt_mute_proc = BotSpeakingSTTMuteProcessor()
     latency_proc_tts = LatencyTrackerProcessor(latency_tracker)
-    filler_gap_proc = FillerGapProcessor(transport_output, clip_sample_rate, clips=filler_clips)
+    def _get_seller_energy() -> str:
+        return call_ctx.seller_energy
+
+    filler_gap_proc = FillerGapProcessor(
+        transport_output, clip_sample_rate, clips=filler_clips, energy_getter=_get_seller_energy,
+    )
     breath_injector_proc = BreathInjectorProcessor()
     phone_eq_proc = PhoneEQProcessor()
     ai_softener_proc = AISoftenerProcessor()
     silence_detector = SilenceDetectorProcessor()
+    humanized_latency_proc = HumanizedLatencyProcessor(energy_getter=_get_seller_energy)
 
     messages = [
         {
@@ -414,6 +429,7 @@ async def run_sophia_agent(
         llm,
         sentence_streamer,
         ai_softener_proc,
+        humanized_latency_proc,
         fair_housing_filter,
         tts,
         breath_injector_proc,

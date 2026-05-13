@@ -6,7 +6,6 @@ router = APIRouter()
 
 @router.post("/evals/run")
 async def run_evals(count: int = Query(default=5)):
-    import asyncio
     from backend.voice.simulator import run_batch_simulations
     results = await run_batch_simulations(count=count)
     passed = sum(1 for r in results if r.get("overall_score", 0) >= 7.0)

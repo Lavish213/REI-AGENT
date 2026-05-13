@@ -87,11 +87,47 @@ export default async function LivePage() {
                           ES
                         </span>
                       )}
+                      {call.metrics?.phase && (
+                        <span className="text-xs px-1.5 py-0.5 bg-gray-700 text-gray-300 rounded font-mono">
+                          {call.metrics.phase}
+                        </span>
+                      )}
+                      {call.metrics?.seller_energy && call.metrics.seller_energy !== 'calm' && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          call.metrics.seller_energy === 'motivated' ? 'bg-green-900/40 text-green-300' :
+                          call.metrics.seller_energy === 'emotional' ? 'bg-yellow-900/40 text-yellow-300' :
+                          call.metrics.seller_energy === 'skeptical' ? 'bg-orange-900/40 text-orange-300' :
+                          call.metrics.seller_energy === 'rushed' ? 'bg-red-900/40 text-red-300' :
+                          'bg-gray-700 text-gray-400'
+                        }`}>
+                          {call.metrics.seller_energy}
+                        </span>
+                      )}
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      {call.owner_first_name && `${call.owner_first_name} · `}
-                      Stage: {call.lead_stage ?? '—'}
+                    <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-2">
+                      {call.owner_first_name && <span>{call.owner_first_name}</span>}
+                      {call.lead_stage && <span>Stage: {call.lead_stage}</span>}
+                      {call.metrics?.turn_count != null && (
+                        <span>Turn {call.metrics.turn_count}</span>
+                      )}
+                      {call.metrics?.disposition && (
+                        <span className={
+                          call.metrics.disposition === 'HOT' ? 'text-red-400' :
+                          call.metrics.disposition === 'WARM' ? 'text-yellow-400' :
+                          call.metrics.disposition === 'COLD' ? 'text-blue-300' : 'text-gray-500'
+                        }>
+                          {call.metrics.disposition}
+                        </span>
+                      )}
+                      {call.metrics?.situation_label && call.metrics.situation_label !== 'unknown' && (
+                        <span className="text-purple-400">{call.metrics.situation_label.replace(/_/g, ' ')}</span>
+                      )}
                     </div>
+                    {call.metrics?.objections_raised?.length > 0 && (
+                      <div className="text-xs text-orange-400/70 mt-0.5">
+                        Objections: {call.metrics.objections_raised.join(', ')}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm font-mono text-green-400">

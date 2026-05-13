@@ -137,11 +137,73 @@ def get_geo_phrases(osm_data: dict, city: str = "") -> list[str]:
     return phrases[:3]
 
 
-def format_geo_phrases_for_prompt(phrases: list[str]) -> str:
+# ── Local slang + regional shorthand (G21) ────────────────────────────────────
+
+# City/area nicknames and local shorthand
+_LOCAL_SLANG: dict[str, list[str]] = {
+    "stockton": [
+        "Stockton" , "the 209", "Stock-town", "S-Town",
+        "downtown Stockton", "South Stock",
+    ],
+    "south stockton": ["South Stock", "the south side"],
+    "tracy":    ["Tracy", "out toward Tracy", "Tracy side"],
+    "lodi":     ["Lodi", "wine country"],
+    "manteca":  ["Manteca", "out in Manteca"],
+    "modesto":  ["Modesto", "Mo-Town"],
+    "sacramento": ["Sac", "South Sac", "downtown Sac"],
+    "san jose": ["South Bay", "the Bay Area", "SJ"],
+    "san francisco": ["SF", "the city", "The Bay"],
+    "fresno":   ["Fresno", "the Central Valley"],
+    "the bay area": ["the Bay", "Bay Area folks"],
+}
+
+# Commute reference phrases
+_COMMUTE_PHRASES = [
+    "lot of Bay Area people looking out this way",
+    "good spot for Bay Area commuters",
+    "ACE train area — attracts Bay Area buyers",
+    "people are moving out from the Bay",
+]
+
+# Investor shorthand
+_INVESTOR_SHORTHAND = [
+    "in our buy box",
+    "good wholesale area",
+    "flip-friendly neighborhood",
+    "solid buy-and-hold market",
+    "distressed seller inventory is high there",
+]
+
+
+def get_local_slang(city: str, neighborhood: str = "") -> list[str]:
     """
-    Formats geo phrases for injection into the system prompt.
+    Returns local nicknames and shorthand for a city/neighborhood.
+    These can be dropped into Sophia's speech naturally.
     """
-    if not phrases:
+    city_lower = city.lower().strip()
+    nbhd_lower = neighborhood.lower().strip()
+
+    results: list[str] = []
+
+    # Check neighborhood first (more specific)
+    for key, terms in _LOCAL_SLANG.items():
+        if nbhd_lower and key in nbhd_lower:
+            results.extend(terms[:2])
+            break
+
+    # City nicknames
+    city_terms = _LOCAL_SLANG.get(city_lower, [])
+    if city_terms and not results:
+        results.extend(city_terms[:2])
+
+    return results[:3]
+
+
+def format_geo_phrases_for_prompt(phrases: list[str], slang: list[str] | None = None) -> str:
+    """
+    Formats geo phrases (and optional slang terms) for injection into the system prompt.
+    """
+    if not phrases and not slang:
         return ""
     lines = [
         "SOPHIA LOCAL GEOGRAPHIC FAMILIARITY",
@@ -149,4 +211,6 @@ def format_geo_phrases_for_prompt(phrases: list[str]) -> str:
     ]
     for p in phrases:
         lines.append(f'- "{p}"')
+    if slang:
+        lines.append(f'Local nicknames you can drop in: {", ".join(slang)}')
     return "\n".join(lines)
