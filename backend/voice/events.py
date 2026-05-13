@@ -1,6 +1,7 @@
 from typing import Optional
 from loguru import logger
 
+# Batch C — transcript + intelligence events
 TRANSCRIPT_COMPLETED = "transcript_completed"
 SUMMARY_GENERATED = "summary_generated"
 LEAD_SCORED = "lead_scored"
@@ -9,10 +10,22 @@ MOTIVATION_DETECTED = "motivation_detected"
 APPOINTMENT_DETECTED = "appointment_detected"
 FOLLOWUP_REQUIRED = "followup_required"
 
+# Batch D — workflow + orchestration events
+WORKFLOW_CREATED = "workflow_created"
+WORKFLOW_UPDATED = "workflow_updated"
+FOLLOWUP_CREATED = "followup_created"
+APPOINTMENT_CREATED = "appointment_created"
+APPOINTMENT_CONFIRMED = "appointment_confirmed"
+LEAD_ESCALATED = "lead_escalated"
+OPERATOR_ACTION = "operator_action"
+PIPELINE_STAGE_CHANGED = "pipeline_stage_changed"
+CALLBACK_SCHEDULED = "callback_scheduled"
+HOT_LEAD_DETECTED = "hot_lead_detected"
+
 
 def emit_event(
     event_type: str,
-    call_id: str,
+    call_id: Optional[str],
     lead_id: Optional[str] = None,
     payload: Optional[dict] = None,
 ) -> None:

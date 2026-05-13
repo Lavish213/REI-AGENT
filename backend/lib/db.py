@@ -728,3 +728,201 @@ def update_lead_intel_scores(lead_id: str, scores: dict) -> None:
     if len(data) > 1:
         client.table("leads").update(data).eq("id", lead_id).execute()
         logger.info("update_lead_intel_scores lead_id={} hot={}", lead_id, scores.get("is_hot_lead"))
+
+
+# ──────────────────────────────────────────────────────────────────
+# Batch D — Workflow + Followup runtime
+# ──────────────────────────────────────────────────────────────────
+
+def insert_workflow_transition(
+    lead_id: str,
+    state: str,
+    trigger_source: str = "system",
+    triggered_by: str | None = None,
+    metadata: dict | None = None,
+) -> bool:
+    """Append workflow transition to audit log, update leads.workflow_state.
+    Returns True if the state actually changed."""
+    client = _get_client()
+    now = datetime.now(timezone.utc).isoformat()
+
+    current = client.table("leads").select("workflow_state").eq("id", lead_id).limit(1).execute()
+    previous_state = (current.data[0].get("workflow_state") or "new_lead") if current.data else "new_lead"
+    state_changed = previous_state != state
+
+    client.table("workflows").insert({
+        "lead_id": lead_id,
+        "state": state,
+        "previous_state": previous_state,
+        "trigger_source": trigger_source,
+        "triggered_by": triggered_by,
+        "metadata": metadata or {},
+    }).execute()
+
+    client.table("leads").update({
+        "workflow_state": state,
+        "workflow_updated_at": now,
+        "updated_at": now,
+    }).eq("id", lead_id).execute()
+
+    logger.info(
+        "workflow_transition lead_id={} {}→{} source={}",
+        lead_id, previous_state, state, trigger_source,
+    )
+    return state_changed
+
+
+def get_lead_workflow_history(lead_id: str, limit: int = 20) -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("workflows")
+        .select("*")
+        .eq("lead_id", lead_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return response.data
+
+
+def create_followup(
+    lead_id: str,
+    call_id: str | None = None,
+    priority: str = "medium",
+    followup_type: str = "call",
+    notes: str | None = None,
+    scheduled_at: str | None = None,
+    created_by: str = "system",
+) -> str | None:
+    client = _get_client()
+    response = client.table("followups").insert({
+        "lead_id": lead_id,
+        "call_id": call_id,
+        "priority": priority,
+        "followup_type": followup_type,
+        "state": "pending",
+        "notes": notes,
+        "scheduled_at": scheduled_at,
+        "created_by": created_by,
+    }).execute()
+    followup_id = response.data[0]["id"] if response.data else None
+    logger.info("create_followup lead_id={} priority={} id={}", lead_id, priority, followup_id)
+    return followup_id
+
+
+def get_pending_followups(limit: int = 50) -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("followups")
+        .select("*, leads(id, address, workflow_state, is_hot_lead, motivation_level)")
+        .eq("state", "pending")
+        .order("priority")
+        .order("created_at")
+        .limit(limit)
+        .execute()
+    )
+    rows = response.data
+    priority_rank = {"high": 0, "medium": 1, "low": 2}
+    rows.sort(key=lambda r: (priority_rank.get(r.get("priority", "low"), 3), r.get("created_at", "")))
+    logger.debug("get_pending_followups count={}", len(rows))
+    return rows
+
+
+def complete_followup(followup_id: str) -> None:
+    client = _get_client()
+    client.table("followups").update({
+        "state": "completed",
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", followup_id).execute()
+    logger.info("complete_followup id={}", followup_id)
+
+
+def cancel_followup(followup_id: str) -> None:
+    client = _get_client()
+    client.table("followups").update({"state": "cancelled"}).eq("id", followup_id).execute()
+    logger.info("cancel_followup id={}", followup_id)
+
+
+def get_hot_leads_queue(limit: int = 25) -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("leads")
+        .select("id, workflow_state, stage, motivation_level, timeline_urgency, followup_urgency, call_summary, is_hot_lead, properties(address, distress_score, estimated_arv, mao)")
+        .eq("is_hot_lead", True)
+        .neq("workflow_state", "dead_lead")
+        .neq("stage", "dead")
+        .order("followup_urgency", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    logger.debug("get_hot_leads_queue count={}", len(response.data))
+    return response.data
+
+
+def get_appointment_queue(limit: int = 25) -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("leads")
+        .select("id, appointment_at, workflow_state, stage, appt_day_before_sent, appt_morning_sent, appt_no_show_sent, properties(address)")
+        .in_("stage", ["walkthrough_booked"])
+        .not_.is_("appointment_at", "null")
+        .order("appointment_at")
+        .limit(limit)
+        .execute()
+    )
+    logger.debug("get_appointment_queue count={}", len(response.data))
+    return response.data
+
+
+def get_workflow_activity(limit: int = 50) -> list[dict]:
+    client = _get_client()
+    response = (
+        client.table("call_events")
+        .select("id, event_type, payload, created_at, lead_id, call_id")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    logger.debug("get_workflow_activity count={}", len(response.data))
+    return response.data
+
+
+def get_pipeline_by_workflow_state() -> dict:
+    client = _get_client()
+    states = [
+        "new_lead", "active_contact", "followup_required",
+        "appointment_pending", "appointment_confirmed",
+        "negotiation", "under_review", "dead_lead", "closed",
+    ]
+    result = {}
+    for state in states:
+        resp = (
+            client.table("leads")
+            .select("id", count="exact")
+            .eq("workflow_state", state)
+            .execute()
+        )
+        result[state] = resp.count or 0
+    return result
+
+
+def escalate_lead(lead_id: str, notes: str | None = None) -> None:
+    client = _get_client()
+    data: dict = {
+        "escalated": True,
+        "priority_callback": True,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if notes:
+        data["operator_notes"] = notes
+    client.table("leads").update(data).eq("id", lead_id).execute()
+    logger.info("escalate_lead lead_id={}", lead_id)
+
+
+def update_operator_notes(lead_id: str, notes: str) -> None:
+    client = _get_client()
+    client.table("leads").update({
+        "operator_notes": notes,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", lead_id).execute()
+    logger.info("update_operator_notes lead_id={}", lead_id)

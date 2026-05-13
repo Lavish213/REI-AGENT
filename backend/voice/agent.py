@@ -478,7 +478,7 @@ async def _handle_call_end(
                 _run_qa_async(transcript, lead["id"], call_sid)
             )
             asyncio.create_task(
-                _run_transcript_intel_async(transcript, lead["id"], call_sid, call_id_db)
+                _run_transcript_intel_async(transcript, lead["id"], call_sid, call_id_db, disposition)
             )
 
         from backend.observability import trace_call_end
@@ -498,11 +498,18 @@ async def _run_qa_async(transcript: str, lead_id: str, call_sid: str) -> None:
 
 
 async def _run_transcript_intel_async(
-    transcript: str, lead_id: str, call_sid: str, call_id_db: str | None = None
+    transcript: str,
+    lead_id: str,
+    call_sid: str,
+    call_id_db: str | None = None,
+    disposition: str | None = None,
 ) -> None:
     try:
         from backend.qa.transcript_intel import analyze_transcript
-        await asyncio.to_thread(analyze_transcript, transcript, lead_id, call_sid, call_id_db)
+        intel = await asyncio.to_thread(analyze_transcript, transcript, lead_id, call_sid, call_id_db)
+        if intel and call_id_db and lead_id:
+            from backend.workflows.engine import trigger_from_call_outcome
+            await asyncio.to_thread(trigger_from_call_outcome, call_id_db, lead_id, disposition, intel)
         logger.info("transcript_intel complete call_sid={}", call_sid)
     except Exception as e:
         logger.error("transcript_intel failed call_sid={} error={}", call_sid, str(e))
