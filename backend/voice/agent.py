@@ -13,7 +13,8 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService  # noqa: F401 (kept for restore)
+from pipecat.services.cartesia.tts import CartesiaTTSService  # TEMP: isolation test
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
@@ -175,24 +176,37 @@ def _rate_for_emotion(emotion: str | None) -> float:
 async def _build_tts(call_ctx_ref) -> tuple:
     use_orpheus = bool(os.environ.get("TOGETHER_AI_API_KEY"))
 
-    if use_orpheus:
+    # TEMP: Cartesia isolation test — bypass ElevenLabs and Orpheus
+    # Restore by removing this block and uncommenting ElevenLabs below.
+    tts = CartesiaTTSService(
+        api_key=os.environ["CARTESIA_API_KEY"],
+        voice_id=os.environ["CARTESIA_VOICE_ID"],
+        sample_rate=16000,
+        encoding="pcm_s16le",
+        container="raw",
+    )
+    logger.warning("CARTESIA_ISOLATION_TEST active — ElevenLabs bypassed")
+    return tts
+
+    # --- RESTORE BLOCK START (unreachable during isolation test) ---
+    if use_orpheus:  # noqa: E741,W0101
         tts = OrpheusTTSService(
             api_key=os.environ["TOGETHER_AI_API_KEY"],
             voice="leah",
         )
         logger.info("using orpheus tts via together ai")
     else:
-        tts = ElevenLabsTTSService(
-            api_key=os.environ["ELEVENLABS_API_KEY"],
-            settings=ElevenLabsTTSService.Settings(
-                voice=os.environ["ELEVENLABS_VOICE_ID"],
-                model=os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5"),
-            ),
-            sample_rate=16000,
-        )
+        # tts = ElevenLabsTTSService(
+        #     api_key=os.environ["ELEVENLABS_API_KEY"],
+        #     settings=ElevenLabsTTSService.Settings(
+        #         voice=os.environ["ELEVENLABS_VOICE_ID"],
+        #         model=os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5"),
+        #     ),
+        #     sample_rate=16000,
+        # )
         logger.info("using elevenlabs tts voice_id={}", os.environ.get("ELEVENLABS_VOICE_ID", ""))
-
     return tts
+    # --- RESTORE BLOCK END ---
 
 
 async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService:
@@ -234,6 +248,18 @@ class _OutboundAudioDebugLogger(FrameProcessor):
                 len(frame.audio),
                 frame.sample_rate,
             )
+        await self.push_frame(frame, direction)
+
+
+class AudioTypeProbe(FrameProcessor):
+    async def process_frame(self, frame, direction):
+        logger.info(
+            "FRAME_PROBE type={} sample_rate={} channels={} has_audio={}",
+            type(frame).__name__,
+            getattr(frame, "sample_rate", None),
+            getattr(frame, "num_channels", None),
+            hasattr(frame, "audio"),
+        )
         await self.push_frame(frame, direction)
 
 
@@ -466,6 +492,7 @@ async def run_sophia_agent(
     silence_detector = SilenceDetectorProcessor()
     humanized_latency_proc = HumanizedLatencyProcessor(energy_getter=_get_seller_energy)
     audio_debug_proc = AudioDebugProcessor()
+    audio_type_probe = AudioTypeProbe()
 
     messages = [
         {
@@ -516,6 +543,7 @@ async def run_sophia_agent(
         tts,
         latency_proc_tts,
         audio_debug_proc,
+        audio_type_probe,
         transport_output,
         context_aggregator.assistant(),
     ])
