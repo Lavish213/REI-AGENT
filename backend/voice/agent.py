@@ -13,8 +13,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService  # noqa: F401 (kept for restore)
-from pipecat.services.cartesia.tts import CartesiaHttpTTSService  # TEMP: isolation test (HTTP, not WS)
+from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
@@ -33,20 +32,21 @@ from pipecat.services.llm_service import FunctionCallParams
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.qa.grader import grade_call
 from backend.lib.db import insert_call, update_lead_for_disposition
-from backend.voice.orpheus_tts import OrpheusTTSService
-from backend.voice.processors.backchannel import BackchannelProcessor, pregenerate_backchannel_clips
-from backend.voice.processors.interruption import InterruptionAckProcessor
-from backend.voice.processors.emotion import EmotionDetectorProcessor
-from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
-from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor
-from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
-from backend.voice.processors.fair_housing import FairHousingFilter
-from backend.voice.processors.ai_identity import AIIdentityProcessor
-from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor
-from backend.voice.processors.filler import FillerGapProcessor
-from backend.voice.processors.ai_softener import AISoftenerProcessor
-from backend.voice.processors.silence_detector import SilenceDetectorProcessor
-from backend.voice.processors.humanized_latency import HumanizedLatencyProcessor
+# ISOLATION TEST: imports kept for re-enable after base audio confirmed  # noqa: F401
+from backend.voice.orpheus_tts import OrpheusTTSService  # noqa: F401
+from backend.voice.processors.backchannel import BackchannelProcessor, pregenerate_backchannel_clips  # noqa: F401
+from backend.voice.processors.interruption import InterruptionAckProcessor  # noqa: F401
+from backend.voice.processors.emotion import EmotionDetectorProcessor  # noqa: F401
+from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor  # noqa: F401
+from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor  # noqa: F401
+from backend.voice.processors.sentence_streamer import SentenceStreamProcessor  # noqa: F401
+from backend.voice.processors.fair_housing import FairHousingFilter  # noqa: F401
+from backend.voice.processors.ai_identity import AIIdentityProcessor  # noqa: F401
+from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor  # noqa: F401
+from backend.voice.processors.filler import FillerGapProcessor  # noqa: F401
+from backend.voice.processors.ai_softener import AISoftenerProcessor  # noqa: F401
+from backend.voice.processors.silence_detector import SilenceDetectorProcessor  # noqa: F401
+from backend.voice.processors.humanized_latency import HumanizedLatencyProcessor  # noqa: F401
 
 
 SPANISH_MARKERS = [
@@ -173,40 +173,21 @@ def _rate_for_emotion(emotion: str | None) -> float:
     return 0.97
 
 
-async def _build_tts(call_ctx_ref) -> tuple:
-    use_orpheus = bool(os.environ.get("TOGETHER_AI_API_KEY"))
-
-    # TEMP: Cartesia HTTP isolation test — bypasses ElevenLabs WS and Cartesia WS (HTTP only)
-    # Restore by removing this block and uncommenting ElevenLabs below.
-    tts = CartesiaHttpTTSService(
+async def _build_tts(call_ctx_ref):
+    tts = CartesiaTTSService(
         api_key=os.environ["CARTESIA_API_KEY"],
-        voice_id=os.environ["CARTESIA_VOICE_ID"],
-        sample_rate=16000,
-        encoding="pcm_s16le",
-        container="raw",
+        settings=CartesiaTTSService.Settings(
+            voice=os.environ["CARTESIA_VOICE_ID"],
+            generation_config=GenerationConfig(
+                speed=_rate_for_emotion(
+                    getattr(call_ctx_ref, "current_emotion", None)
+                ),
+                emotion="positivity:high",
+            ),
+        ),
     )
-    logger.warning("CARTESIA_HTTP_ISOLATION_TEST active — ElevenLabs bypassed, using HTTP TTS")
+    logger.info("using cartesia tts")
     return tts
-
-    # --- RESTORE BLOCK START (unreachable during isolation test) ---
-    if use_orpheus:  # noqa: E741,W0101
-        tts = OrpheusTTSService(
-            api_key=os.environ["TOGETHER_AI_API_KEY"],
-            voice="leah",
-        )
-        logger.info("using orpheus tts via together ai")
-    else:
-        # tts = ElevenLabsTTSService(
-        #     api_key=os.environ["ELEVENLABS_API_KEY"],
-        #     settings=ElevenLabsTTSService.Settings(
-        #         voice=os.environ["ELEVENLABS_VOICE_ID"],
-        #         model=os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5"),
-        #     ),
-        #     sample_rate=16000,
-        # )
-        logger.info("using elevenlabs tts voice_id={}", os.environ.get("ELEVENLABS_VOICE_ID", ""))
-    return tts
-    # --- RESTORE BLOCK END ---
 
 
 async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService:
@@ -248,6 +229,23 @@ class _OutboundAudioDebugLogger(FrameProcessor):
                 len(frame.audio),
                 frame.sample_rate,
             )
+        await self.push_frame(frame, direction)
+
+
+class TTSFrameProbe(FrameProcessor):
+    async def process_frame(self, frame, direction):
+        logger.warning(
+            "TTS_PROBE frame={} direction={}",
+            type(frame).__name__,
+            direction,
+        )
+        if hasattr(frame, "audio"):
+            logger.warning(
+                "TTS_AUDIO size={} sample_rate={}",
+                len(frame.audio),
+                getattr(frame, "sample_rate", "unknown"),
+            )
+        await super().process_frame(frame, direction)
         await self.push_frame(frame, direction)
 
 
@@ -392,7 +390,7 @@ async def run_sophia_agent(
             audio_out_enabled=True,
             audio_out_sample_rate=16000,
             add_wav_header=False,
-            serializer=_LoggingTwilioSerializer(
+            serializer=TwilioFrameSerializer(
                 stream_sid=stream_sid,
                 params=TwilioFrameSerializer.InputParams(
                     auto_hang_up=False,
@@ -441,58 +439,9 @@ async def run_sophia_agent(
 
     tts = await _build_tts(call_ctx)
 
-    clip_sample_rate = 16000
-    _sc = startup_clips or {}
-    backchannel_clips = _sc.get("backchannel") or {}
-    filler_clips = _sc.get("filler") or {}
-
-    if not backchannel_clips:
-        elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY", "")
-        elevenlabs_voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "")
-        backchannel_clips = await pregenerate_backchannel_clips(elevenlabs_api_key, elevenlabs_voice_id, clip_sample_rate)
-        logger.info("backchannel clips generated per-call fallback call_sid={}", call_sid)
-    else:
-        logger.info(
-            "using startup clips call_sid={} backchannel={} filler={}",
-            call_sid,
-            len(backchannel_clips),
-            len(filler_clips),
-        )
-
     transport_output = transport.output()
 
-    backchannel_proc = BackchannelProcessor(transport_output, clip_sample_rate, clips=backchannel_clips)
-    interruption_proc = InterruptionAckProcessor()
-
-    def on_emotion(emotion: str):
-        call_ctx.current_emotion = emotion
-        logger.debug("emotion detected emotion={}", emotion)
-
-    emotion_proc = EmotionDetectorProcessor(on_emotion)
-    ai_identity_proc = AIIdentityProcessor()
-    extended_path = _get_extended_prompt_path() if not spanish_detected else None
-    context_tracker = ContextTrackerProcessor(
-        call_ctx,
-        extended_prompt_path=extended_path,
-    )
-
-    sentence_streamer = SentenceStreamProcessor()
-    fair_housing_filter = FairHousingFilter()
-
-    latency_tracker = LatencyTracker()
-    stt_mute_proc = BotSpeakingSTTMuteProcessor()
-    latency_proc_tts = LatencyTrackerProcessor(latency_tracker)
-    def _get_seller_energy() -> str:
-        return call_ctx.seller_energy
-
-    filler_gap_proc = FillerGapProcessor(
-        transport_output, clip_sample_rate, clips=filler_clips, energy_getter=_get_seller_energy,
-    )
-    ai_softener_proc = AISoftenerProcessor()
-    silence_detector = SilenceDetectorProcessor()
-    humanized_latency_proc = HumanizedLatencyProcessor(energy_getter=_get_seller_energy)
-    audio_debug_proc = AudioDebugProcessor()
-    audio_type_probe = AudioTypeProbe()
+    tts_frame_probe = TTSFrameProbe()
 
     messages = [
         {
@@ -506,8 +455,6 @@ async def run_sophia_agent(
     ]
 
     context = LLMContext(messages=messages, tools=_build_tools_schema())
-    if not spanish_detected:
-        context_tracker._llm_context = context
 
     context_aggregator = LLMContextAggregatorPair(
         context,
@@ -523,27 +470,15 @@ async def run_sophia_agent(
         ),
     )
 
+    # MINIMAL pipeline — all custom processors disabled for audio isolation test
+    # Re-enable one-by-one after base audio confirmed working
     pipeline = Pipeline([
         transport.input(),
         stt,
-        stt_mute_proc,
-        silence_detector,
-        interruption_proc,
-        filler_gap_proc,
-        emotion_proc,
-        ai_identity_proc,
-        context_tracker,
-        backchannel_proc,
         context_aggregator.user(),
         llm,
-        sentence_streamer,
-        ai_softener_proc,
-        humanized_latency_proc,
-        fair_housing_filter,
         tts,
-        latency_proc_tts,
-        audio_debug_proc,
-        audio_type_probe,
+        tts_frame_probe,
         transport_output,
         context_aggregator.assistant(),
     ])
@@ -556,21 +491,8 @@ async def run_sophia_agent(
         ),
     )
 
-    async def _silence_recovery(recovery_text: str) -> None:
-        context.messages.append({"role": "user", "content": recovery_text})
-        await task.queue_frames([context_aggregator.user()._get_context_frame()])
-
-    silence_detector.set_recovery_callback(_silence_recovery)
-
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
-        ws_client = transport._output._client
-        logger.warning(
-            "WS_CONNECT_STATE is_connected={} is_closing={} call_sid={}",
-            ws_client.is_connected,
-            ws_client.is_closing,
-            call_sid,
-        )
         logger.info("client connected call_sid={}", call_sid)
         await task.queue_frames([context_aggregator.user()._get_context_frame()])
 
