@@ -278,13 +278,22 @@ async def run_sophia_agent(
     stream_sid = call_sid
     try:
         for i in range(10):
-            raw = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
+            message = await asyncio.wait_for(websocket.receive(), timeout=5.0)
+            if "text" in message:
+                raw = message["text"]
+            elif "bytes" in message:
+                raw = message["bytes"].decode("utf-8")
+            else:
+                logger.warning("unknown websocket frame type frame={}", message)
+                continue
+            logger.info(
+                "raw_ws_message i={} type={} preview={}",
+                i,
+                "text" if "text" in message else "bytes",
+                raw[:500],
+            )
             msg = json.loads(raw)
             event_type = msg.get("event")
-            logger.info(
-                "raw_ws_message i={} event={} keys={} raw={}",
-                i, event_type, list(msg.keys()), raw[:500],
-            )
             if event_type == "start":
                 start_obj = msg.get("start", {})
                 logger.info("start_object keys={} value={}", list(start_obj.keys()), str(start_obj)[:300])
