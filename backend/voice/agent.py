@@ -237,6 +237,22 @@ class _OutboundAudioDebugLogger(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+class AudioDebugProcessor(FrameProcessor):
+    async def process_frame(self, frame, direction):
+        from pipecat.frames.frames import OutputAudioRawFrame, TTSAudioRawFrame
+        if isinstance(frame, (AudioRawFrame, OutputAudioRawFrame, TTSAudioRawFrame)) or hasattr(frame, "audio"):
+            logger.warning(
+                "AUDIO_DEBUG_BEFORE_TRANSPORT frame_type={} direction={} has_audio={} size={} sample_rate={}",
+                type(frame).__name__,
+                direction,
+                hasattr(frame, "audio"),
+                len(frame.audio) if hasattr(frame, "audio") else "no_audio",
+                getattr(frame, "sample_rate", None),
+            )
+        await super().process_frame(frame, direction)
+        await self.push_frame(frame, direction)
+
+
 class _LoggingTwilioSerializer(TwilioFrameSerializer):
     _first_media_logged = False
 
@@ -449,6 +465,7 @@ async def run_sophia_agent(
     ai_softener_proc = AISoftenerProcessor()
     silence_detector = SilenceDetectorProcessor()
     humanized_latency_proc = HumanizedLatencyProcessor(energy_getter=_get_seller_energy)
+    audio_debug_proc = AudioDebugProcessor()
 
     messages = [
         {
@@ -498,6 +515,7 @@ async def run_sophia_agent(
         fair_housing_filter,
         tts,
         latency_proc_tts,
+        audio_debug_proc,
         transport_output,
         context_aggregator.assistant(),
     ])
@@ -518,6 +536,13 @@ async def run_sophia_agent(
 
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
+        ws_client = transport._output._client
+        logger.warning(
+            "WS_CONNECT_STATE is_connected={} is_closing={} call_sid={}",
+            ws_client.is_connected,
+            ws_client.is_closing,
+            call_sid,
+        )
         logger.info("client connected call_sid={}", call_sid)
         await task.queue_frames([context_aggregator.user()._get_context_frame()])
 
