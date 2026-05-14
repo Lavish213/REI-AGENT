@@ -237,6 +237,32 @@ class _OutboundAudioDebugLogger(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+class _LoggingTwilioSerializer(TwilioFrameSerializer):
+    async def serialize(self, frame):
+        result = await super().serialize(frame)
+        if isinstance(frame, AudioRawFrame):
+            if result:
+                try:
+                    parsed = json.loads(result)
+                    media_payload = parsed.get("media", {}).get("payload", "")
+                    logger.info(
+                        "serializer_send event={} streamSid={} payload_len={} preview={}",
+                        parsed.get("event"),
+                        parsed.get("streamSid"),
+                        len(media_payload),
+                        media_payload[:20],
+                    )
+                except Exception as e:
+                    logger.info("serializer_send raw_len={} error={}", len(str(result)), str(e))
+            else:
+                logger.warning(
+                    "serializer_returned_none bytes={} sample_rate={}",
+                    len(frame.audio),
+                    frame.sample_rate,
+                )
+        return result
+
+
 async def run_sophia_agent(
     websocket,
     call_sid: str,
@@ -251,14 +277,34 @@ async def run_sophia_agent(
 
     stream_sid = call_sid
     try:
-        for _ in range(5):
+        for i in range(10):
             raw = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
             msg = json.loads(raw)
-            if msg.get("event") == "start":
-                stream_sid = msg.get("streamSid", call_sid)
-                logger.info("stream started stream_sid={}", stream_sid)
+            event_type = msg.get("event")
+            logger.info(
+                "raw_ws_message i={} event={} keys={} raw={}",
+                i, event_type, list(msg.keys()), raw[:500],
+            )
+            if event_type == "start":
+                start_obj = msg.get("start", {})
+                logger.info("start_object keys={} value={}", list(start_obj.keys()), str(start_obj)[:300])
+                top_level_sid = msg.get("streamSid")
+                nested_sid = start_obj.get("streamSid")
+                if top_level_sid:
+                    stream_sid = top_level_sid
+                    source_used = "top_level"
+                elif nested_sid:
+                    stream_sid = nested_sid
+                    source_used = "nested_start"
+                else:
+                    stream_sid = call_sid
+                    source_used = "fallback_call_sid"
+                logger.info(
+                    "resolved_stream_sid={} call_sid={} source={}",
+                    stream_sid, call_sid, source_used,
+                )
                 break
-            logger.debug("pre-start event={}", msg.get("event"))
+            logger.info("pre-start event={} keys={}", event_type, list(msg.keys()))
     except asyncio.TimeoutError:
         logger.warning("timed out waiting for start event using call_sid as fallback")
     except Exception as e:
@@ -288,14 +334,22 @@ async def run_sophia_agent(
     from backend.voice.prompt_budget import apply_budget
     system_prompt = apply_budget(system_prompt)
 
+    if stream_sid == call_sid:
+        logger.warning(
+            "stream_sid_fallback stream_sid equals call_sid={} start_event may not have been received outbound media will likely be dropped",
+            call_sid,
+        )
+    logger.info("transport init stream_sid={} call_sid={}", stream_sid, call_sid)
+
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_in_sample_rate=16000,
             audio_out_enabled=True,
+            audio_out_sample_rate=16000,
             add_wav_header=False,
-            serializer=TwilioFrameSerializer(
+            serializer=_LoggingTwilioSerializer(
                 stream_sid=stream_sid,
                 params=TwilioFrameSerializer.InputParams(
                     auto_hang_up=False,
