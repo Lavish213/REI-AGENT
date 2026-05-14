@@ -5,7 +5,9 @@ import asyncio
 from datetime import datetime, timezone
 from loguru import logger
 
+from pipecat.frames.frames import AudioRawFrame
 from pipecat.pipeline.pipeline import Pipeline
+from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -41,8 +43,6 @@ from backend.voice.processors.fair_housing import FairHousingFilter
 from backend.voice.processors.ai_identity import AIIdentityProcessor
 from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor
 from backend.voice.processors.filler import FillerGapProcessor
-from backend.voice.processors.breath_injector import BreathInjectorProcessor
-from backend.voice.processors.phone_eq import PhoneEQProcessor
 from backend.voice.processors.ai_softener import AISoftenerProcessor
 from backend.voice.processors.silence_detector import SilenceDetectorProcessor
 from backend.voice.processors.humanized_latency import HumanizedLatencyProcessor
@@ -225,6 +225,18 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
         raise
 
 
+class _OutboundAudioDebugLogger(FrameProcessor):
+    async def process_frame(self, frame, direction):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, AudioRawFrame):
+            logger.info(
+                "outbound audio frame bytes={} sample_rate={}",
+                len(frame.audio),
+                frame.sample_rate,
+            )
+        await self.push_frame(frame, direction)
+
+
 async def run_sophia_agent(
     websocket,
     call_sid: str,
@@ -379,8 +391,7 @@ async def run_sophia_agent(
     filler_gap_proc = FillerGapProcessor(
         transport_output, clip_sample_rate, clips=filler_clips, energy_getter=_get_seller_energy,
     )
-    breath_injector_proc = BreathInjectorProcessor()
-    phone_eq_proc = PhoneEQProcessor()
+    outbound_audio_logger = _OutboundAudioDebugLogger()
     ai_softener_proc = AISoftenerProcessor()
     silence_detector = SilenceDetectorProcessor()
     humanized_latency_proc = HumanizedLatencyProcessor(energy_getter=_get_seller_energy)
@@ -432,9 +443,8 @@ async def run_sophia_agent(
         humanized_latency_proc,
         fair_housing_filter,
         tts,
-        breath_injector_proc,
-        phone_eq_proc,
         latency_proc_tts,
+        outbound_audio_logger,
         transport_output,
         context_aggregator.assistant(),
     ])

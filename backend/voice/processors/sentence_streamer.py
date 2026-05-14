@@ -18,7 +18,7 @@ def _word_count(text: str) -> int:
 def _find_hard_boundary(text: str) -> int:
     for m in _HARD_BOUNDARY.finditer(text):
         candidate = text[: m.start() + 1].rstrip()
-        if _word_count(candidate) >= 1:
+        if _word_count(candidate) >= 5:
             return m.end()
     return -1
 
