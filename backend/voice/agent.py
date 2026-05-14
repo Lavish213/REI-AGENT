@@ -239,24 +239,23 @@ class _OutboundAudioDebugLogger(FrameProcessor):
 
 class _LoggingTwilioSerializer(TwilioFrameSerializer):
     async def serialize(self, frame):
+        logger.warning("SERIALIZER_FRAME_TYPE {}", type(frame).__name__)
         result = await super().serialize(frame)
         if isinstance(frame, AudioRawFrame):
             if result:
                 try:
                     parsed = json.loads(result)
-                    media_payload = parsed.get("media", {}).get("payload", "")
-                    logger.info(
-                        "serializer_send event={} streamSid={} payload_len={} preview={}",
+                    logger.warning(
+                        "SERIALIZER_SEND event={} streamSid={} payload_len={}",
                         parsed.get("event"),
                         parsed.get("streamSid"),
-                        len(media_payload),
-                        media_payload[:20],
+                        len(parsed.get("media", {}).get("payload", "")),
                     )
                 except Exception as e:
-                    logger.info("serializer_send raw_len={} error={}", len(str(result)), str(e))
+                    logger.warning("SERIALIZER_SEND_PARSE_ERROR error={}", str(e))
             else:
                 logger.warning(
-                    "serializer_returned_none bytes={} sample_rate={}",
+                    "SERIALIZER_RETURNED_NONE bytes={} sample_rate={}",
                     len(frame.audio),
                     frame.sample_rate,
                 )
@@ -270,54 +269,55 @@ async def run_sophia_agent(
     startup_clips: dict = None,
     metrics_store: dict = None,
 ) -> None:
+    logger.warning("VOICE_BUILD commit=cea0314 binary-frame-fix-loaded")
     logger.info("sophia agent starting call_sid={}", call_sid)
 
     from backend.observability import trace_call_start
     lf_trace = trace_call_start(call_sid, call_context)
 
     stream_sid = call_sid
+    stream_sid_source = "fallback_call_sid"
+    logger.warning("ENTERING_STREAMSID_HANDSHAKE call_sid={}", call_sid)
     try:
         for i in range(10):
+            logger.warning("HANDSHAKE_LOOP_ITERATION i={}", i)
             message = await asyncio.wait_for(websocket.receive(), timeout=5.0)
+            logger.warning("RAW_MESSAGE_KEYS {}", list(message.keys()))
             if "text" in message:
                 raw = message["text"]
             elif "bytes" in message:
                 raw = message["bytes"].decode("utf-8")
             else:
-                logger.warning("unknown websocket frame type frame={}", message)
+                logger.warning("UNKNOWN_FRAME_TYPE keys={}", list(message.keys()))
                 continue
-            logger.info(
-                "raw_ws_message i={} type={} preview={}",
-                i,
-                "text" if "text" in message else "bytes",
-                raw[:500],
-            )
+            logger.warning("RAW_MESSAGE_PREVIEW {}", raw[:500])
             msg = json.loads(raw)
             event_type = msg.get("event")
+            logger.warning("PARSED_EVENT_TYPE {}", event_type)
             if event_type == "start":
                 start_obj = msg.get("start", {})
-                logger.info("start_object keys={} value={}", list(start_obj.keys()), str(start_obj)[:300])
                 top_level_sid = msg.get("streamSid")
                 nested_sid = start_obj.get("streamSid")
                 if top_level_sid:
                     stream_sid = top_level_sid
-                    source_used = "top_level"
+                    stream_sid_source = "top_level"
                 elif nested_sid:
                     stream_sid = nested_sid
-                    source_used = "nested_start"
+                    stream_sid_source = "nested_start"
                 else:
                     stream_sid = call_sid
-                    source_used = "fallback_call_sid"
-                logger.info(
-                    "resolved_stream_sid={} call_sid={} source={}",
-                    stream_sid, call_sid, source_used,
-                )
+                    stream_sid_source = "fallback_call_sid"
                 break
-            logger.info("pre-start event={} keys={}", event_type, list(msg.keys()))
+            logger.warning("PRE_START_EVENT type={}", event_type)
     except asyncio.TimeoutError:
-        logger.warning("timed out waiting for start event using call_sid as fallback")
+        logger.warning("HANDSHAKE_TIMEOUT call_sid={}", call_sid)
     except Exception as e:
-        logger.warning("could not read start event error={}", str(e))
+        logger.warning("HANDSHAKE_ERROR error={}", str(e))
+
+    logger.warning(
+        "FINAL_STREAM_ROUTING resolved_stream_sid={} call_sid={} source={}",
+        stream_sid, call_sid, stream_sid_source,
+    )
 
     spanish_detected = call_context.get("spanish_detected", False)
 
@@ -343,11 +343,6 @@ async def run_sophia_agent(
     from backend.voice.prompt_budget import apply_budget
     system_prompt = apply_budget(system_prompt)
 
-    if stream_sid == call_sid:
-        logger.warning(
-            "stream_sid_fallback stream_sid equals call_sid={} start_event may not have been received outbound media will likely be dropped",
-            call_sid,
-        )
     logger.info("transport init stream_sid={} call_sid={}", stream_sid, call_sid)
 
     transport = FastAPIWebsocketTransport(
