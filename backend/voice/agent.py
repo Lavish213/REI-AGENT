@@ -238,24 +238,27 @@ class _OutboundAudioDebugLogger(FrameProcessor):
 
 
 class _LoggingTwilioSerializer(TwilioFrameSerializer):
+    _first_media_logged = False
+
     async def serialize(self, frame):
-        logger.warning("SERIALIZER_FRAME_TYPE {}", type(frame).__name__)
         result = await super().serialize(frame)
         if isinstance(frame, AudioRawFrame):
             if result:
-                try:
-                    parsed = json.loads(result)
-                    logger.warning(
-                        "SERIALIZER_SEND event={} streamSid={} payload_len={}",
-                        parsed.get("event"),
-                        parsed.get("streamSid"),
-                        len(parsed.get("media", {}).get("payload", "")),
-                    )
-                except Exception as e:
-                    logger.warning("SERIALIZER_SEND_PARSE_ERROR error={}", str(e))
+                if not self.__class__._first_media_logged:
+                    try:
+                        parsed = json.loads(result)
+                        logger.info(
+                            "first_media_packet event={} streamSid={} payload_len={}",
+                            parsed.get("event"),
+                            parsed.get("streamSid"),
+                            len(parsed.get("media", {}).get("payload", "")),
+                        )
+                    except Exception:
+                        pass
+                    self.__class__._first_media_logged = True
             else:
                 logger.warning(
-                    "SERIALIZER_RETURNED_NONE bytes={} sample_rate={}",
+                    "serializer_none bytes={} sample_rate={}",
                     len(frame.audio),
                     frame.sample_rate,
                 )
@@ -269,7 +272,6 @@ async def run_sophia_agent(
     startup_clips: dict = None,
     metrics_store: dict = None,
 ) -> None:
-    logger.warning("VOICE_BUILD commit=cea0314 binary-frame-fix-loaded")
     logger.info("sophia agent starting call_sid={}", call_sid)
 
     from backend.observability import trace_call_start
@@ -277,23 +279,19 @@ async def run_sophia_agent(
 
     stream_sid = call_sid
     stream_sid_source = "fallback_call_sid"
-    logger.warning("ENTERING_STREAMSID_HANDSHAKE call_sid={}", call_sid)
     try:
         for i in range(10):
-            logger.warning("HANDSHAKE_LOOP_ITERATION i={}", i)
             message = await asyncio.wait_for(websocket.receive(), timeout=5.0)
-            logger.warning("RAW_MESSAGE_KEYS {}", list(message.keys()))
             if "text" in message:
                 raw = message["text"]
             elif "bytes" in message:
                 raw = message["bytes"].decode("utf-8")
             else:
-                logger.warning("UNKNOWN_FRAME_TYPE keys={}", list(message.keys()))
+                logger.warning("ws_unknown_frame_type keys={}", list(message.keys()))
                 continue
-            logger.warning("RAW_MESSAGE_PREVIEW {}", raw[:500])
             msg = json.loads(raw)
             event_type = msg.get("event")
-            logger.warning("PARSED_EVENT_TYPE {}", event_type)
+            logger.debug("ws_event i={} type={}", i, event_type)
             if event_type == "start":
                 start_obj = msg.get("start", {})
                 top_level_sid = msg.get("streamSid")
@@ -308,14 +306,13 @@ async def run_sophia_agent(
                     stream_sid = call_sid
                     stream_sid_source = "fallback_call_sid"
                 break
-            logger.warning("PRE_START_EVENT type={}", event_type)
     except asyncio.TimeoutError:
-        logger.warning("HANDSHAKE_TIMEOUT call_sid={}", call_sid)
+        logger.warning("ws_start_event_timeout call_sid={}", call_sid)
     except Exception as e:
-        logger.warning("HANDSHAKE_ERROR error={}", str(e))
+        logger.warning("ws_start_event_error error={}", str(e))
 
-    logger.warning(
-        "FINAL_STREAM_ROUTING resolved_stream_sid={} call_sid={} source={}",
+    logger.info(
+        "stream_routing stream_sid={} call_sid={} source={}",
         stream_sid, call_sid, stream_sid_source,
     )
 
@@ -449,7 +446,6 @@ async def run_sophia_agent(
     filler_gap_proc = FillerGapProcessor(
         transport_output, clip_sample_rate, clips=filler_clips, energy_getter=_get_seller_energy,
     )
-    outbound_audio_logger = _OutboundAudioDebugLogger()
     ai_softener_proc = AISoftenerProcessor()
     silence_detector = SilenceDetectorProcessor()
     humanized_latency_proc = HumanizedLatencyProcessor(energy_getter=_get_seller_energy)
@@ -502,7 +498,6 @@ async def run_sophia_agent(
         fair_housing_filter,
         tts,
         latency_proc_tts,
-        outbound_audio_logger,
         transport_output,
         context_aggregator.assistant(),
     ])
