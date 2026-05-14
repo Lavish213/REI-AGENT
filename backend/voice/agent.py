@@ -14,7 +14,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService  # noqa: F401 (kept for restore)
-from pipecat.services.cartesia.tts import CartesiaTTSService  # TEMP: isolation test
+from pipecat.services.cartesia.tts import CartesiaHttpTTSService  # TEMP: isolation test (HTTP, not WS)
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
@@ -176,16 +176,16 @@ def _rate_for_emotion(emotion: str | None) -> float:
 async def _build_tts(call_ctx_ref) -> tuple:
     use_orpheus = bool(os.environ.get("TOGETHER_AI_API_KEY"))
 
-    # TEMP: Cartesia isolation test — bypass ElevenLabs and Orpheus
+    # TEMP: Cartesia HTTP isolation test — bypasses ElevenLabs WS and Cartesia WS (HTTP only)
     # Restore by removing this block and uncommenting ElevenLabs below.
-    tts = CartesiaTTSService(
+    tts = CartesiaHttpTTSService(
         api_key=os.environ["CARTESIA_API_KEY"],
         voice_id=os.environ["CARTESIA_VOICE_ID"],
         sample_rate=16000,
         encoding="pcm_s16le",
         container="raw",
     )
-    logger.warning("CARTESIA_ISOLATION_TEST active — ElevenLabs bypassed")
+    logger.warning("CARTESIA_HTTP_ISOLATION_TEST active — ElevenLabs bypassed, using HTTP TTS")
     return tts
 
     # --- RESTORE BLOCK START (unreachable during isolation test) ---
