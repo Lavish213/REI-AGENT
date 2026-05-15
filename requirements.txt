@@ -11,6 +11,7 @@ httpx
 beautifulsoup4
 pdfplumber
 schedule
+numpy
 pandas
 Pillow
 pytest

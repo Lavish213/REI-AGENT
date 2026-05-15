@@ -218,9 +218,19 @@ class _OpenAIRestTTSService:
                     yield TTSStoppedFrame(context_id=context_id)
                     return
 
+                content_type = resp.headers.get("content-type", "unknown")
+                if "mpeg" in content_type or "mp3" in content_type:
+                    logger.error(
+                        "OPENAI_TTS_FORMAT_MISMATCH content_type={} — got compressed audio not raw PCM. "
+                        "response_format=pcm was not honored. Cannot resample MP3 bytes as PCM.",
+                        content_type,
+                    )
+                    yield TTSStoppedFrame(context_id=context_id)
+                    return
+
                 logger.warning(
-                    "OPENAI_TTS_BYTES raw={} resampling 24000->16000",
-                    len(resp.content),
+                    "OPENAI_TTS_BYTES raw={} content_type={} resampling 24000->16000",
+                    len(resp.content), content_type,
                 )
                 pcm_bytes = self._resample_24k_to_16k(resp.content)
                 logger.warning(
