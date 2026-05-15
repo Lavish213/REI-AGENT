@@ -13,7 +13,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
+from backend.voice.orpheus_tts import OrpheusTTSService
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
@@ -33,7 +33,6 @@ from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.qa.grader import grade_call
 from backend.lib.db import insert_call, update_lead_for_disposition
 # ISOLATION TEST: imports kept for re-enable after base audio confirmed  # noqa: F401
-from backend.voice.orpheus_tts import OrpheusTTSService  # noqa: F401
 from backend.voice.processors.backchannel import BackchannelProcessor, pregenerate_backchannel_clips  # noqa: F401
 from backend.voice.processors.interruption import InterruptionAckProcessor  # noqa: F401
 from backend.voice.processors.emotion import EmotionDetectorProcessor  # noqa: F401
@@ -174,19 +173,10 @@ def _rate_for_emotion(emotion: str | None) -> float:
 
 
 async def _build_tts(call_ctx_ref):
-    tts = CartesiaTTSService(
-        api_key=os.environ["CARTESIA_API_KEY"],
-        settings=CartesiaTTSService.Settings(
-            voice=os.environ["CARTESIA_VOICE_ID"],
-            generation_config=GenerationConfig(
-                speed=_rate_for_emotion(
-                    getattr(call_ctx_ref, "current_emotion", None)
-                ),
-                emotion="positivity:high",
-            ),
-        ),
+    tts = OrpheusTTSService(
+        api_key=os.environ["TOGETHER_AI_API_KEY"],
     )
-    logger.info("using cartesia tts")
+    logger.info("using orpheus tts via together ai")
     return tts
 
 
