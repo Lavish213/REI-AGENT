@@ -13,7 +13,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from backend.voice.orpheus_tts import OrpheusTTSService
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
@@ -32,20 +32,10 @@ from pipecat.services.llm_service import FunctionCallParams
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.qa.grader import grade_call
 from backend.lib.db import insert_call, update_lead_for_disposition
-# ISOLATION TEST: imports kept for re-enable after base audio confirmed  # noqa: F401
-from backend.voice.processors.backchannel import BackchannelProcessor, pregenerate_backchannel_clips  # noqa: F401
-from backend.voice.processors.interruption import InterruptionAckProcessor  # noqa: F401
-from backend.voice.processors.emotion import EmotionDetectorProcessor  # noqa: F401
-from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor  # noqa: F401
-from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor  # noqa: F401
-from backend.voice.processors.sentence_streamer import SentenceStreamProcessor  # noqa: F401
-from backend.voice.processors.fair_housing import FairHousingFilter  # noqa: F401
-from backend.voice.processors.ai_identity import AIIdentityProcessor  # noqa: F401
-from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor  # noqa: F401
-from backend.voice.processors.filler import FillerGapProcessor  # noqa: F401
-from backend.voice.processors.ai_softener import AISoftenerProcessor  # noqa: F401
-from backend.voice.processors.silence_detector import SilenceDetectorProcessor  # noqa: F401
-from backend.voice.processors.humanized_latency import HumanizedLatencyProcessor  # noqa: F401
+from backend.voice.processors.context_tracker import CallContext
+
+
+VOICE_MODE = os.getenv("VOICE_MODE", "baseline")
 
 
 SPANISH_MARKERS = [
@@ -164,19 +154,21 @@ def _make_tool_handler(tool_name: str, call_ctx=None, lf_trace=None):
     return handler
 
 
-def _rate_for_emotion(emotion: str | None) -> float:
-    if emotion in ("frustrated", "sad"):
-        return 0.92
-    if emotion in ("interested",):
-        return 1.0
-    return 0.97
-
-
 async def _build_tts(call_ctx_ref):
-    tts = OrpheusTTSService(
-        api_key=os.environ["TOGETHER_AI_API_KEY"],
+    api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "")
+    if not api_key:
+        logger.error("ELEVENLABS_API_KEY missing — TTS will fail")
+    if not voice_id:
+        logger.error("ELEVENLABS_VOICE_ID missing — TTS will fail")
+    model = os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
+    tts = ElevenLabsTTSService(
+        api_key=api_key,
+        voice_id=voice_id,
+        model=model,
+        sample_rate=16000,
     )
-    logger.info("using orpheus tts via together ai")
+    logger.info("using elevenlabs baseline tts voice_id={}", voice_id)
     return tts
 
 
@@ -223,18 +215,24 @@ class _OutboundAudioDebugLogger(FrameProcessor):
 
 
 class TTSFrameProbe(FrameProcessor):
+    _TTS_FRAME_TYPES = frozenset([
+        "TTSAudioRawFrame",
+        "OutputAudioRawFrame",
+        "TTSStartedFrame",
+        "TTSStoppedFrame",
+        "ErrorFrame",
+    ])
+
     async def process_frame(self, frame, direction):
-        logger.warning(
-            "TTS_PROBE frame={} direction={}",
-            type(frame).__name__,
-            direction,
-        )
-        if hasattr(frame, "audio"):
-            logger.warning(
-                "TTS_AUDIO size={} sample_rate={}",
-                len(frame.audio),
-                getattr(frame, "sample_rate", "unknown"),
-            )
+        frame_type = type(frame).__name__
+        if frame_type in self._TTS_FRAME_TYPES:
+            logger.warning("TTS_PROBE frame={} direction={}", frame_type, direction)
+            if hasattr(frame, "audio"):
+                logger.warning(
+                    "TTS_AUDIO size={} sample_rate={}",
+                    len(frame.audio),
+                    getattr(frame, "sample_rate", "unknown"),
+                )
         await super().process_frame(frame, direction)
         await self.push_frame(frame, direction)
 
