@@ -265,31 +265,82 @@ class AudioDebugProcessor(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+class _LoggingWebSocket:
+    def __init__(self, ws):
+        self._ws = ws
+        self._send_count = 0
+
+    async def send_text(self, data: str) -> None:
+        self._send_count += 1
+        try:
+            parsed = json.loads(data)
+            event = parsed.get("event", "unknown")
+            if event == "media":
+                payload_len = len(parsed.get("media", {}).get("payload", ""))
+                if self._send_count <= 3:
+                    logger.warning(
+                        "WS_SEND_TEXT count={} event=media payload_len={}",
+                        self._send_count, payload_len,
+                    )
+                elif self._send_count == 4:
+                    logger.warning("WS_SEND_TEXT media packets continuing count>3 suppressing further logs")
+            else:
+                logger.warning("WS_SEND_TEXT count={} event={}", self._send_count, event)
+        except Exception as parse_err:
+            logger.warning("WS_SEND_TEXT count={} parse_error={} len={}", self._send_count, parse_err, len(data))
+        try:
+            await self._ws.send_text(data)
+        except Exception as send_err:
+            logger.error("WS_SEND_TEXT_FAILED count={} error={}", self._send_count, str(send_err))
+            raise
+
+    def __getattr__(self, name):
+        return getattr(self._ws, name)
+
+
 class _LoggingTwilioSerializer(TwilioFrameSerializer):
-    _first_media_logged = False
+    _packet_count = 0
 
     async def serialize(self, frame):
-        result = await super().serialize(frame)
+        frame_type = type(frame).__name__
         if isinstance(frame, AudioRawFrame):
-            if result:
-                if not self.__class__._first_media_logged:
-                    try:
-                        parsed = json.loads(result)
-                        logger.info(
-                            "first_media_packet event={} streamSid={} payload_len={}",
-                            parsed.get("event"),
-                            parsed.get("streamSid"),
-                            len(parsed.get("media", {}).get("payload", "")),
-                        )
-                    except Exception:
-                        pass
-                    self.__class__._first_media_logged = True
-            else:
-                logger.warning(
-                    "serializer_none bytes={} sample_rate={}",
+            self.__class__._packet_count += 1
+            count = self.__class__._packet_count
+            logger.warning(
+                "SERIALIZER_ENTER frame_type={} count={} bytes={} sample_rate={}",
+                frame_type,
+                count,
+                len(frame.audio),
+                getattr(frame, "sample_rate", "unknown"),
+            )
+
+        result = await super().serialize(frame)
+
+        if isinstance(frame, AudioRawFrame):
+            if result is None:
+                logger.error(
+                    "SERIALIZER_NONE frame_type={} count={} bytes={} sample_rate={} — likely sample rate or encoding mismatch",
+                    frame_type,
+                    self.__class__._packet_count,
                     len(frame.audio),
-                    frame.sample_rate,
+                    getattr(frame, "sample_rate", "unknown"),
                 )
+            else:
+                try:
+                    parsed = json.loads(result)
+                    event = parsed.get("event", "unknown")
+                    payload_len = len(parsed.get("media", {}).get("payload", ""))
+                    if self.__class__._packet_count <= 3:
+                        logger.warning(
+                            "SERIALIZER_OK count={} event={} streamSid={} payload_len={}",
+                            self.__class__._packet_count,
+                            event,
+                            parsed.get("streamSid", "?"),
+                            payload_len,
+                        )
+                except Exception as e:
+                    logger.warning("SERIALIZER_JSON_PARSE_FAILED error={}", str(e))
+
         return result
 
 
@@ -370,8 +421,11 @@ async def run_sophia_agent(
 
     logger.info("transport init stream_sid={} call_sid={}", stream_sid, call_sid)
 
+    logging_ws = _LoggingWebSocket(websocket)
+    logger.warning("WS_PROXY installed call_sid={}", call_sid)
+
     transport = FastAPIWebsocketTransport(
-        websocket=websocket,
+        websocket=logging_ws,
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_in_sample_rate=16000,
