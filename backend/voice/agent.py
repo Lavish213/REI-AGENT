@@ -155,6 +155,7 @@ def _make_tool_handler(tool_name: str, call_ctx=None, lf_trace=None):
 
 
 async def _build_tts(call_ctx_ref):
+    from pipecat.services.elevenlabs.tts import output_format_from_sample_rate
     api_key = os.environ.get("ELEVENLABS_API_KEY", "")
     voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "")
     if not api_key:
@@ -162,10 +163,17 @@ async def _build_tts(call_ctx_ref):
     if not voice_id:
         logger.error("ELEVENLABS_VOICE_ID missing — TTS will fail")
     model = os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
+    resolved_format = output_format_from_sample_rate(16000)
+    logger.warning(
+        "elevenlabs tts init voice_id={} model={} sample_rate=16000 resolved_output_format={}",
+        voice_id, model, resolved_format,
+    )
     tts = ElevenLabsTTSService(
         api_key=api_key,
-        voice_id=voice_id,
-        model=model,
+        settings=ElevenLabsTTSService.Settings(
+            voice=voice_id,
+            model=model,
+        ),
         sample_rate=16000,
     )
     logger.info("using elevenlabs baseline tts voice_id={}", voice_id)
