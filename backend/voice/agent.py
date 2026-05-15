@@ -390,7 +390,7 @@ async def run_sophia_agent(
             audio_out_enabled=True,
             audio_out_sample_rate=16000,
             add_wav_header=False,
-            serializer=TwilioFrameSerializer(
+            serializer=_LoggingTwilioSerializer(
                 stream_sid=stream_sid,
                 params=TwilioFrameSerializer.InputParams(
                     auto_hang_up=False,

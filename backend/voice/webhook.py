@@ -57,7 +57,7 @@ async def handle_inbound_call(request: Request) -> Response:
     laml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
-        <Stream url="{ws_url}/voice/stream/{call_sid}" />
+        <Stream url="{ws_url}/voice/stream/{call_sid}" track="both_tracks" />
     </Connect>
 </Response>"""
 

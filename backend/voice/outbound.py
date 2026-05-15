@@ -206,12 +206,12 @@ def build_voicemail_laml(lead: dict, prop: dict, language: str = "en") -> str:
 
 def build_outbound_answer_laml(lead_id: str) -> str:
     railway_url = os.environ.get("RAILWAY_STATIC_URL") or os.environ.get("PUBLIC_URL", "")
-    stream_url = f"{railway_url}/voice/outbound-stream/{lead_id}"
+    stream_url = f"{railway_url}/api/voice/outbound-stream/{lead_id}"
     ws_url = stream_url.replace("https://", "wss://").replace("http://", "ws://")
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
-        <Stream url="{ws_url}" />
+        <Stream url="{ws_url}" track="both_tracks" />
     </Connect>
 </Response>"""
