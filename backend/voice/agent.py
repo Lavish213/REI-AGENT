@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import base64
 import asyncio
 from datetime import datetime, timezone
 from loguru import logger
@@ -154,6 +155,106 @@ def _make_tool_handler(tool_name: str, call_ctx=None, lf_trace=None):
     return handler
 
 
+class _InstrumentedElevenLabsTTSService(ElevenLabsTTSService):
+    """Subclass that logs every raw ElevenLabs WebSocket message at WARNING level
+    before Pipecat parses it, so we can see exactly what arrives in Railway logs.
+    The full parsing logic below is reproduced verbatim from pipecat source."""
+
+    async def _receive_messages(self):
+        from pipecat.frames.frames import TTSAudioRawFrame
+        from pipecat.services.elevenlabs.tts import (
+            _strip_leading_space,
+            calculate_word_times,
+        )
+
+        async for message in self._get_websocket():
+            msg = json.loads(message)
+
+            # RAW INSTRUMENTATION — log everything at WARNING so it appears in Railway
+            received_ctx_id = msg.get("contextId")
+            all_keys = list(msg.keys())
+            has_audio = "audio" in msg
+            has_audio_b64 = "audio_base64" in msg
+            has_alignment = "normalizedAlignment" in msg
+            is_final_val = msg.get("isFinal")
+            has_error = "error" in msg or "message" in msg
+            audio_bytes = len(base64.b64decode(msg["audio"])) if has_audio else 0
+            ctx_available = self.audio_context_available(received_ctx_id)
+            active_ctx = self.get_active_audio_context_id()
+
+            logger.warning(
+                "EL_WS_RAW contextId={} keys={} has_audio={} audio_bytes={} "
+                "has_audio_base64={} has_alignment={} isFinal={} has_error={} "
+                "ctx_available={} active_ctx={}",
+                received_ctx_id,
+                all_keys,
+                has_audio,
+                audio_bytes,
+                has_audio_b64,
+                has_alignment,
+                is_final_val,
+                has_error,
+                ctx_available,
+                active_ctx,
+            )
+            if has_error:
+                logger.warning(
+                    "EL_WS_ERROR error={} message={}",
+                    msg.get("error"),
+                    msg.get("message"),
+                )
+
+            # --- Verbatim pipecat parse logic below ---
+            if msg.get("isFinal") is True:
+                continue
+
+            if not self.audio_context_available(received_ctx_id):
+                if self.get_active_audio_context_id() == received_ctx_id:
+                    logger.warning(
+                        "EL_WS_CTX_RECREATE contextId={} — delayed message, recreating",
+                        received_ctx_id,
+                    )
+                    await self.create_audio_context(received_ctx_id)
+                else:
+                    logger.warning(
+                        "EL_WS_CTX_DROP contextId={} active={} — unavailable context, dropping audio",
+                        received_ctx_id,
+                        self.get_active_audio_context_id(),
+                    )
+                    continue
+
+            if msg.get("audio"):
+                audio = base64.b64decode(msg["audio"])
+                frame = TTSAudioRawFrame(audio, self.sample_rate, 1, context_id=received_ctx_id)
+                await self.append_to_audio_context(received_ctx_id, frame)
+
+            if msg.get("normalizedAlignment"):
+                alignment = _strip_leading_space(
+                    msg["normalizedAlignment"],
+                    ("chars", "charStartTimesMs", "charDurationsMs"),
+                )
+                word_times, self._partial_word, self._partial_word_start_time = (
+                    calculate_word_times(
+                        alignment,
+                        self._cumulative_time,
+                        self._partial_word,
+                        self._partial_word_start_time,
+                    )
+                )
+
+                if word_times:
+                    await self.add_word_timestamps(word_times, received_ctx_id)
+
+                    char_start_times_ms = alignment.get("charStartTimesMs", [])
+                    char_durations_ms = alignment.get("charDurationsMs", [])
+
+                    if char_start_times_ms and char_durations_ms:
+                        chunk_end_time_ms = char_start_times_ms[-1] + char_durations_ms[-1]
+                        self._cumulative_time += chunk_end_time_ms / 1000.0
+                    else:
+                        self._cumulative_time = word_times[-1][1]
+
+
 async def _build_tts(call_ctx_ref):
     from pipecat.services.elevenlabs.tts import output_format_from_sample_rate
     api_key = os.environ.get("ELEVENLABS_API_KEY", "")
@@ -168,7 +269,7 @@ async def _build_tts(call_ctx_ref):
         "ELEVENLABS_TTS_INIT voice_id={} model={} sample_rate=16000 resolved_output_format={}",
         voice_id, model, resolved_format,
     )
-    tts = ElevenLabsTTSService(
+    tts = _InstrumentedElevenLabsTTSService(
         api_key=api_key,
         settings=ElevenLabsTTSService.Settings(
             voice=voice_id,
@@ -176,7 +277,7 @@ async def _build_tts(call_ctx_ref):
         ),
         sample_rate=16000,
     )
-    logger.info("using elevenlabs websocket tts voice_id={} model={}", voice_id, model)
+    logger.info("using instrumented elevenlabs websocket tts voice_id={} model={}", voice_id, model)
     return tts
 
 
