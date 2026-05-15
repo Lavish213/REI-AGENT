@@ -13,7 +13,6 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
@@ -154,8 +153,91 @@ def _make_tool_handler(tool_name: str, call_ctx=None, lf_trace=None):
     return handler
 
 
+class _DiagnosticRestTTSService:
+    from pipecat.services.tts_service import TTSService as _TTSBase
+
+    class _Impl(_TTSBase):
+        def __init__(self, api_key: str, voice_id: str, model: str, **kwargs):
+            super().__init__(sample_rate=16000, **kwargs)
+            self._api_key = api_key
+            self._voice_id = voice_id
+            self._model = model
+
+        async def run_tts(self, text: str, context_id: str):
+            import httpx
+            from pipecat.frames.frames import TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame
+
+            logger.warning(
+                "DIAG_TTS_REST_START text_len={} voice_id={} model={}",
+                len(text), self._voice_id, self._model,
+            )
+
+            yield TTSStartedFrame(context_id=context_id)
+
+            try:
+                url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._voice_id}"
+                headers = {
+                    "xi-api-key": self._api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                }
+                payload = {
+                    "text": text,
+                    "model_id": self._model,
+                }
+                params = {"output_format": "pcm_16000"}
+
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, headers=headers, json=payload, params=params)
+
+                logger.warning(
+                    "DIAG_TTS_REST_RESPONSE status={} content_type={} bytes={}",
+                    resp.status_code,
+                    resp.headers.get("content-type", "unknown"),
+                    len(resp.content),
+                )
+
+                if resp.status_code != 200:
+                    logger.error(
+                        "DIAG_TTS_REST_FAILED status={} body={}",
+                        resp.status_code,
+                        resp.text[:300],
+                    )
+                    yield TTSStoppedFrame(context_id=context_id)
+                    return
+
+                pcm_bytes = resp.content
+                chunk_size = 8000
+                chunk_count = 0
+                for i in range(0, len(pcm_bytes), chunk_size):
+                    chunk = pcm_bytes[i:i + chunk_size]
+                    if not chunk:
+                        continue
+                    chunk_count += 1
+                    if chunk_count <= 3:
+                        logger.warning(
+                            "DIAG_TTS_FRAME_EMIT chunk={} bytes={} sample_rate=16000",
+                            chunk_count, len(chunk),
+                        )
+                    yield TTSAudioRawFrame(
+                        audio=chunk,
+                        sample_rate=16000,
+                        num_channels=1,
+                        context_id=context_id,
+                    )
+
+                logger.warning(
+                    "DIAG_TTS_REST_DONE total_bytes={} total_chunks={}",
+                    len(pcm_bytes), chunk_count,
+                )
+
+            except Exception as e:
+                logger.error("DIAG_TTS_REST_EXCEPTION error={}", str(e))
+
+            yield TTSStoppedFrame(context_id=context_id)
+
+
 async def _build_tts(call_ctx_ref):
-    from pipecat.services.elevenlabs.tts import output_format_from_sample_rate
     api_key = os.environ.get("ELEVENLABS_API_KEY", "")
     voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "")
     if not api_key:
@@ -163,20 +245,16 @@ async def _build_tts(call_ctx_ref):
     if not voice_id:
         logger.error("ELEVENLABS_VOICE_ID missing — TTS will fail")
     model = os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
-    resolved_format = output_format_from_sample_rate(16000)
     logger.warning(
-        "elevenlabs tts init voice_id={} model={} sample_rate=16000 resolved_output_format={}",
-        voice_id, model, resolved_format,
+        "DIAG_TTS_MODE rest_bypass voice_id={} model={} sample_rate=16000 output_format=pcm_16000",
+        voice_id, model,
     )
-    tts = ElevenLabsTTSService(
+    tts = _DiagnosticRestTTSService._Impl(
         api_key=api_key,
-        settings=ElevenLabsTTSService.Settings(
-            voice=voice_id,
-            model=model,
-        ),
-        sample_rate=16000,
+        voice_id=voice_id,
+        model=model,
     )
-    logger.info("using elevenlabs baseline tts voice_id={}", voice_id)
+    logger.info("using diagnostic rest tts voice_id={}", voice_id)
     return tts
 
 
