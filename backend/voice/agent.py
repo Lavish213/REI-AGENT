@@ -256,28 +256,52 @@ class _InstrumentedElevenLabsTTSService(ElevenLabsTTSService):
 
 
 async def _build_tts(call_ctx_ref):
-    from pipecat.services.elevenlabs.tts import output_format_from_sample_rate
-    api_key = os.environ.get("ELEVENLABS_API_KEY", "")
-    voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "")
-    model = os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
+    provider = os.environ.get("TTS_PROVIDER", "openai").lower()
+    logger.warning("TTS_PROVIDER={}", provider)
+
+    if provider == "elevenlabs":
+        from pipecat.services.elevenlabs.tts import output_format_from_sample_rate
+        api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+        voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "")
+        model = os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5")
+        if not api_key:
+            logger.error("ELEVENLABS_API_KEY missing — TTS will fail")
+        if not voice_id:
+            logger.error("ELEVENLABS_VOICE_ID missing — TTS will fail")
+        resolved_format = output_format_from_sample_rate(16000)
+        logger.warning(
+            "ELEVENLABS_TTS_INIT voice_id={} model={} sample_rate=16000 resolved_output_format={}",
+            voice_id, model, resolved_format,
+        )
+        tts = _InstrumentedElevenLabsTTSService(
+            api_key=api_key,
+            settings=ElevenLabsTTSService.Settings(
+                voice=voice_id,
+                model=model,
+            ),
+            sample_rate=16000,
+        )
+        logger.warning("TTS_ACTIVE provider=elevenlabs voice_id={} model={}", voice_id, model)
+        return tts
+
+    # Default: OpenAI TTS (confirmed working — caller heard audio)
+    from pipecat.services.openai.tts import OpenAITTSService
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    model = os.environ.get("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+    voice = os.environ.get("OPENAI_TTS_VOICE", "alloy")
     if not api_key:
-        logger.error("ELEVENLABS_API_KEY missing — TTS will fail")
-    if not voice_id:
-        logger.error("ELEVENLABS_VOICE_ID missing — TTS will fail")
-    resolved_format = output_format_from_sample_rate(16000)
-    logger.warning(
-        "ELEVENLABS_TTS_INIT voice_id={} model={} sample_rate=16000 resolved_output_format={}",
-        voice_id, model, resolved_format,
-    )
-    tts = _InstrumentedElevenLabsTTSService(
+        logger.error("OPENAI_API_KEY missing — TTS will fail")
+    # OpenAI TTS natively outputs 24kHz PCM. Pass sample_rate=24000 so frames
+    # are correctly labeled; pipecat transport resamples to audio_out_sample_rate.
+    tts = OpenAITTSService(
         api_key=api_key,
-        settings=ElevenLabsTTSService.Settings(
-            voice=voice_id,
+        settings=OpenAITTSService.Settings(
             model=model,
+            voice=voice,
         ),
-        sample_rate=16000,
+        sample_rate=24000,
     )
-    logger.info("using instrumented elevenlabs websocket tts voice_id={} model={}", voice_id, model)
+    logger.warning("TTS_ACTIVE provider=openai model={} voice={}", model, voice)
     return tts
 
 
