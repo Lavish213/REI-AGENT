@@ -13,6 +13,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
@@ -153,137 +154,29 @@ def _make_tool_handler(tool_name: str, call_ctx=None, lf_trace=None):
     return handler
 
 
-class _OpenAIRestTTSService:
-    from pipecat.services.tts_service import TTSService as _TTSBase
-
-    class _Impl(_TTSBase):
-        def __init__(self, api_key: str, voice: str, model: str, **kwargs):
-            super().__init__(sample_rate=16000, **kwargs)
-            self._api_key = api_key
-            self._voice = voice
-            self._model = model
-
-        @staticmethod
-        def _resample_24k_to_16k(raw: bytes) -> bytes:
-            import numpy as np
-            samples = np.frombuffer(raw, dtype=np.int16)
-            new_length = int(len(samples) * 16000 / 24000)
-            resampled = np.interp(
-                np.linspace(0, len(samples) - 1, new_length),
-                np.arange(len(samples)),
-                samples.astype(np.float64),
-            ).astype(np.int16)
-            return resampled.tobytes()
-
-        async def run_tts(self, text: str, context_id: str):
-            import httpx
-            from pipecat.frames.frames import TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame
-
-            logger.warning(
-                "OPENAI_TTS_START text_len={} voice={} model={}",
-                len(text), self._voice, self._model,
-            )
-
-            yield TTSStartedFrame(context_id=context_id)
-
-            try:
-                url = "https://api.openai.com/v1/audio/speech"
-                headers = {
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                }
-                payload = {
-                    "model": self._model,
-                    "input": text,
-                    "voice": self._voice,
-                    "response_format": "pcm",
-                }
-
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    resp = await client.post(url, headers=headers, json=payload)
-
-                logger.warning(
-                    "OPENAI_TTS_RESPONSE status={} content_type={} raw_bytes={}",
-                    resp.status_code,
-                    resp.headers.get("content-type", "unknown"),
-                    len(resp.content),
-                )
-
-                if resp.status_code != 200:
-                    logger.error(
-                        "OPENAI_TTS_FAILED status={} body={}",
-                        resp.status_code,
-                        resp.text[:300],
-                    )
-                    yield TTSStoppedFrame(context_id=context_id)
-                    return
-
-                content_type = resp.headers.get("content-type", "unknown")
-                if "mpeg" in content_type or "mp3" in content_type:
-                    logger.error(
-                        "OPENAI_TTS_FORMAT_MISMATCH content_type={} — got compressed audio not raw PCM. "
-                        "response_format=pcm was not honored. Cannot resample MP3 bytes as PCM.",
-                        content_type,
-                    )
-                    yield TTSStoppedFrame(context_id=context_id)
-                    return
-
-                logger.warning(
-                    "OPENAI_TTS_BYTES raw={} content_type={} resampling 24000->16000",
-                    len(resp.content), content_type,
-                )
-                pcm_bytes = self._resample_24k_to_16k(resp.content)
-                logger.warning(
-                    "OPENAI_TTS_BYTES resampled={} sample_rate=16000 encoding=pcm_s16le mono",
-                    len(pcm_bytes),
-                )
-
-                chunk_size = 8000
-                chunk_count = 0
-                for i in range(0, len(pcm_bytes), chunk_size):
-                    chunk = pcm_bytes[i:i + chunk_size]
-                    if not chunk:
-                        continue
-                    chunk_count += 1
-                    if chunk_count <= 3:
-                        logger.warning(
-                            "OPENAI_TTS_FRAME_EMIT chunk={} bytes={} sample_rate=16000",
-                            chunk_count, len(chunk),
-                        )
-                    yield TTSAudioRawFrame(
-                        audio=chunk,
-                        sample_rate=16000,
-                        num_channels=1,
-                        context_id=context_id,
-                    )
-
-                logger.warning(
-                    "OPENAI_TTS_DONE total_resampled_bytes={} total_chunks={}",
-                    len(pcm_bytes), chunk_count,
-                )
-
-            except Exception as e:
-                logger.error("OPENAI_TTS_EXCEPTION error={}", str(e))
-
-            yield TTSStoppedFrame(context_id=context_id)
-
-
 async def _build_tts(call_ctx_ref):
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    voice = os.environ.get("OPENAI_TTS_VOICE", "alloy")
-    model = os.environ.get("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+    from pipecat.services.elevenlabs.tts import output_format_from_sample_rate
+    api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "")
+    model = os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
     if not api_key:
-        logger.error("OPENAI_API_KEY missing — TTS will fail")
+        logger.error("ELEVENLABS_API_KEY missing — TTS will fail")
+    if not voice_id:
+        logger.error("ELEVENLABS_VOICE_ID missing — TTS will fail")
+    resolved_format = output_format_from_sample_rate(16000)
     logger.warning(
-        "OPENAI_TTS_INIT voice={} model={} sample_rate=16000 output_format=pcm resample=24000->16000",
-        voice, model,
+        "ELEVENLABS_TTS_INIT voice_id={} model={} sample_rate=16000 resolved_output_format={}",
+        voice_id, model, resolved_format,
     )
-    tts = _OpenAIRestTTSService._Impl(
+    tts = ElevenLabsTTSService(
         api_key=api_key,
-        voice=voice,
-        model=model,
+        settings=ElevenLabsTTSService.Settings(
+            voice=voice_id,
+            model=model,
+        ),
+        sample_rate=16000,
     )
-    logger.info("using openai rest tts voice={} model={}", voice, model)
+    logger.info("using elevenlabs websocket tts voice_id={} model={}", voice_id, model)
     return tts
 
 
@@ -620,7 +513,7 @@ async def run_sophia_agent(
                 params=VADParams(
                     confidence=0.7,
                     start_secs=0.2,
-                    stop_secs=0.2,
+                    stop_secs=0.5,
                     min_volume=0.6,
                 ),
             ),
