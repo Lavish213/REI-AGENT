@@ -237,7 +237,7 @@ async def _build_tts(call_ctx_ref):
         raise RuntimeError("CARTESIA_VOICE_ID missing")
 
     logger.warning(
-        "TTS_ACTIVE provider=cartesia model={} voice_id={} sample_rate=16000",
+        "TTS_ACTIVE provider=cartesia model={} voice_id={} sample_rate=8000",
         model,
         voice_id,
     )
@@ -246,7 +246,7 @@ async def _build_tts(call_ctx_ref):
         api_key=api_key,
         voice_id=voice_id,
         model=model,
-        sample_rate=16000,
+        sample_rate=8000,  # Match Twilio's native 8kHz mulaw — eliminates soxr resampling
     )
 
 
@@ -255,7 +255,7 @@ async def _create_stt_service(
     spanish: bool,
 ) -> DeepgramSTTService:
     language = "es" if spanish else "en-US"
-    model = "base"
+    model = "nova-2-phonecall"
 
     logger.info(
         "deepgram stt initializing model={} language={}",
@@ -266,6 +266,7 @@ async def _create_stt_service(
     try:
         stt = DeepgramSTTService(
             api_key=api_key,
+            sample_rate=8000,  # Match Twilio's native 8kHz — no resampling in input path
             settings=DeepgramSTTService.Settings(
                 model=model,
                 language=language,
@@ -545,9 +546,9 @@ async def run_sophia_agent(
         websocket=logging_ws,
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
-            audio_in_sample_rate=16000,
+            audio_in_sample_rate=8000,   # Twilio sends 8kHz mulaw — no upsampling needed
             audio_out_enabled=True,
-            audio_out_sample_rate=16000,
+            audio_out_sample_rate=8000,  # Cartesia at 8kHz — no downsampling needed
             add_wav_header=False,
             serializer=_LoggingTwilioSerializer(
                 stream_sid=stream_sid,
@@ -573,7 +574,7 @@ async def run_sophia_agent(
         settings=AnthropicLLMService.Settings(
             model=voice_model,
             enable_prompt_caching=True,
-            max_tokens=80,
+            max_tokens=120,  # 80 caused mid-sentence truncation → broken TTS cadence
         ),
     )
 
@@ -623,10 +624,11 @@ async def run_sophia_agent(
         context,
         user_params=LLMUserAggregatorParams(
             vad_analyzer=SileroVADAnalyzer(
+                sample_rate=8000,  # Must match audio_in_sample_rate
                 params=VADParams(
                     confidence=0.7,
                     start_secs=0.2,
-                    stop_secs=0.5,
+                    stop_secs=0.3,    # Was 0.5 — pipecat default is 0.2, 0.3 is phone-appropriate
                     min_volume=0.6,
                 ),
             ),
