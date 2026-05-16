@@ -57,14 +57,18 @@ _INLINE_MAP = [
     (re.compile(r"\bas your AI assistant\b", re.I), ""),
 ]
 
-# Phrases that should be varied — if repeated in last N turns, remove/replace
+# Phrases to suppress if repeated in last N turns.
+# Batch 4 doctrine: short acks (okay, yeah, gotcha) MUST repeat freely — that's realism.
+# Only suppress multi-word constructions that sound formulaic when repeated.
 _REPEATABLE_STARTERS = [
-    "yeah,", "yeah.", "yeah!", "yep,", "sure,",
-    "right,", "right.", "okay,", "ok,", "mhm,",
-    "got it,", "got it.", "i hear you",
+    "i hear you",
+    "i completely understand",
+    "that makes sense",
+    "no worries",
+    "makes sense",
 ]
 
-_MAX_REPEAT_WINDOW = 4  # turns before same opener is allowed again
+_MAX_REPEAT_WINDOW = 6  # broader window — allow more repetition than before
 
 # Setup/orchestration phrases that must never reach the caller
 _LEAKAGE_PATTERNS = [

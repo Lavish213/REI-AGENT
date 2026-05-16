@@ -121,6 +121,14 @@ class CallContext:
     silence_hint: str | None = None
 
     # ------------------------------------------------------------------
+    # Redirect state (Batch 4)
+    # ------------------------------------------------------------------
+
+    # redirect_needed consumed once by SpokenRendererProcessor
+    # set when seller is rambling (talkative) and call is past opening
+    redirect_needed: bool = False
+
+    # ------------------------------------------------------------------
     # Objective engine
     # ------------------------------------------------------------------
 
@@ -184,11 +192,18 @@ class CallContext:
     # ------------------------------------------------------------------
 
     def build_context_prefix(self) -> str:
+        from backend.voice.phrases import PIVOT_BANK
+
         objective = self.get_current_objective()
         forbidden = self.get_forbidden_moves()
         seller_mode = self.get_seller_mode()
 
         parts = [f"OBJ={objective}"]
+
+        # Inject preferred phrases for this objective — LLM should use these exactly
+        preferred = PIVOT_BANK.get(objective, [])
+        if preferred:
+            parts.append("SAY=" + " / ".join(f'"{p}"' for p in preferred[:2]))
 
         if forbidden:
             parts.append("NO=" + "; ".join(forbidden))
@@ -795,7 +810,7 @@ class ContextTrackerProcessor(FrameProcessor):
 
         new_energy: SellerEnergy | None = None
 
-        if word_count > 45:
+        if word_count > 30:
             new_energy = "talkative"
         else:
             for energy, pattern in _ENERGY_PATTERNS:
@@ -811,6 +826,20 @@ class ContextTrackerProcessor(FrameProcessor):
         self._ctx.seller_energy = new_energy
 
         logger.debug("seller_energy changed to={}", new_energy)
+
+        # Talkative seller past the opening → trigger redirect
+        # Renderer will consume this flag and inject a pivot phrase
+        if (
+            new_energy == "talkative"
+            and self._ctx.turn_count > 2
+            and self._ctx.intent_confirmed
+        ):
+            self._ctx.redirect_needed = True
+            logger.info(
+                "redirect_needed set turn={} objective={}",
+                self._ctx.turn_count,
+                self._ctx.get_current_objective(),
+            )
 
     def _update_situation_label(self, text: str) -> None:
         if self._ctx.situation_label != "unknown":

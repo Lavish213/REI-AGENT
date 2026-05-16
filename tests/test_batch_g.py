@@ -197,14 +197,15 @@ class TestAISoftenerProcessor:
         result = proc._soften(original)
         assert "twenty thousand dollars" in result
 
-    def test_repeated_starter_removed(self):
+    def test_repeated_starter_allowed_for_short_acks(self):
+        # Batch 4 doctrine: short acks (yeah, okay) repeat freely — that's realism
         proc = self._proc()
         proc._soften("Yeah, that makes sense.")
         proc._soften("Yeah, I get that.")
         proc._soften("Yeah, okay.")
-        # 4th "yeah" should be suppressed
+        # "yeah" should NOT be suppressed — anti-novelty enforcement removed for short acks
         result = proc._soften("Yeah, let me check that.")
-        assert not result.lower().startswith("yeah")
+        assert "yeah" in result.lower()  # repetition is allowed and expected
 
     def test_empty_string_passes_through(self):
         proc = self._proc()

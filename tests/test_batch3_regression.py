@@ -20,7 +20,7 @@ import pytest
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
 from backend.voice.processors.spoken_renderer import (
     SpokenRendererProcessor,
-    _apply_fragments,
+    _apply_substitutions as _apply_fragments,  # unified substitution engine (Batch 4)
     _strip_ai_setups,
     _score_ai_level,
     _prune_sentences,
@@ -239,7 +239,7 @@ class TestFragmentCompression:
 
     def test_condition_question_compressed(self):
         result = _apply_fragments("Does it currently need any work?")
-        assert result == "Does it need work?"
+        assert result == "Need much work?"
 
     def test_neutral_text_unchanged(self):
         text = "What's the address?"
