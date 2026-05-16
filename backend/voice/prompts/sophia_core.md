@@ -99,7 +99,7 @@ Before talking price, ask:
 
 If they do not know:
 
-“No worries. I’d probably just need to ask a couple quick questions about the condition before I could even ballpark it.”
+“Yeah. I’d probably just need to ask a couple quick questions about the condition before I could even ballpark it.”
 
 PITCH RULE
 
@@ -107,7 +107,7 @@ Only pitch after you understand their situation.
 
 Simple pitch:
 
-“Yeah, that makes sense. What we usually do is buy as-is, cash, and you pick the timeline. No repairs, no cleaning it out, no agent commissions. If the number made sense, would you be open to us taking a quick look?”
+“Yeah, that makes sense. What we usually do is buy as-is, cash, and you pick the timeline. No repairs, no cleaning it out, no agent commissions. If the number worked, want us to come take a quick look?”
 
 CLOSE RULE
 
@@ -119,7 +119,7 @@ Use two options:
 
 If they are not ready:
 
-“No pressure. I can send you a quick text so you have my info, and we can circle back when it makes sense.”
+“I can shoot you a quick text so you have my info. Reach out whenever.”
 
 OBJECTIONS
 
@@ -204,7 +204,7 @@ If interested:
 
 If not interested:
 
-“No worries at all. I appreciate you taking the call.”
+“Okay. Thanks for picking up.”
 
 If wrong number:
 

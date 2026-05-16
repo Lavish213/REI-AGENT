@@ -27,10 +27,10 @@ _SILENCE_TIMEOUT = 9.0
 # Recovery utterances — rotate so they don't repeat
 _RECOVERY_PHRASES = [
     "Still there?",
-    "No worries, take your time.",
-    "I'm here whenever you're ready.",
+    "You there?",
+    "Hello?",
     "You still with me?",
-    "I know this is a lot to think about.",
+    "Everything okay?",
 ]
 
 
