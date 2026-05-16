@@ -66,6 +66,20 @@ _REPEATABLE_STARTERS = [
 
 _MAX_REPEAT_WINDOW = 4  # turns before same opener is allowed again
 
+# Setup/orchestration phrases that must never reach the caller
+_LEAKAGE_PATTERNS = [
+    re.compile(r"\[name\]", re.I),
+    re.compile(r"\[address\]", re.I),
+    re.compile(r"\binbound or outbound\b", re.I),
+    re.compile(r"\bcall type\b", re.I),
+    re.compile(r"\bright opening\b", re.I),
+    re.compile(r"owner.{0,5}s name and address", re.I),
+    re.compile(r"\bOUTBOUND\b"),
+    re.compile(r"\bINBOUND\b"),
+]
+
+_LEAKAGE_SAFE = "Hey, this is Sophia with San Joaquin House Buyers. Did I catch you at an okay time?"
+
 
 def _apply_openers(text: str) -> str:
     for pattern, replacement in _OPENER_MAP:
@@ -103,6 +117,16 @@ class AISoftenerProcessor(FrameProcessor):
     def _soften(self, text: str) -> str:
         if not text or not text.strip():
             return text
+
+        # Block setup/orchestration leakage before it reaches TTS
+        for pattern in _LEAKAGE_PATTERNS:
+            if pattern.search(text):
+                logger.error(
+                    "leakage_blocked pattern={} text_preview={}",
+                    pattern.pattern,
+                    text[:80],
+                )
+                return _LEAKAGE_SAFE
 
         original = text
         # Strip robotic openers

@@ -55,8 +55,42 @@ def _strip_markdown(text: str) -> str:
     return text.strip()
 
 
+def _build_opener(call_context: dict) -> str:
+    """
+    Build the exact ready-to-say opener from call context.
+    Never exposes placeholders or conditional logic to the LLM.
+    """
+    is_outbound = call_context.get("is_outbound", False)
+    name = (call_context.get("owner_first_name") or "").strip()
+    address = (call_context.get("address") or "").strip()
+
+    if not is_outbound:
+        return (
+            "San Joaquin House Buyers, this is Sophia. "
+            "Hey — how can I help you?"
+        )
+
+    if name and address:
+        return (
+            f"Hey, is this {name}? Hey, this is Sophia. "
+            f"I know this is kind of out of nowhere, but I was calling about your place on {address}. "
+            f"Did I catch you at an okay time?"
+        )
+    if address:
+        return (
+            f"Hey, this is Sophia. I know this is kind of out of nowhere, "
+            f"but I was calling about the property on {address}. "
+            f"Did I catch you at an okay time?"
+        )
+    return (
+        "Hey, this is Sophia with San Joaquin House Buyers. "
+        "I know this is kind of out of nowhere, but I was reaching out to see "
+        "if you had any interest in selling a property. Did I catch you at an okay time?"
+    )
+
+
 def _load_system_prompt(
-    property_context_str: str,
+    call_context: dict,
     spanish: bool = False,
 ) -> str:
     prompts_dir = os.path.join(
@@ -99,8 +133,16 @@ def _load_system_prompt(
 
     base_prompt = _strip_markdown(base_prompt)
 
+    opener = _build_opener(call_context)
+    property_context_str = call_context.get(
+        "property_context_str",
+        "No property context available.",
+    )
+
     return (
         f"{base_prompt}\n\n"
+        f"OPENER\n\n"
+        f"{opener}\n\n"
         f"CALLER PROPERTY CONTEXT\n\n"
         f"{property_context_str}"
     )
@@ -477,10 +519,7 @@ async def run_sophia_agent(
 
     else:
         system_prompt = _load_system_prompt(
-            call_context.get(
-                "property_context_str",
-                "No property context available.",
-            ),
+            call_context,
             spanish=spanish_detected,
         )
 

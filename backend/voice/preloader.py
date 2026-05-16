@@ -1,4 +1,3 @@
-import os
 from datetime import datetime, timezone
 
 from loguru import logger
@@ -76,15 +75,19 @@ def preload_call_context(caller_phone: str) -> dict:
         logger.info("preload_call_context no lead found phone={}", caller_phone)
         return {
             "lead": None,
-            "property_context_str": "No property context available. Greet warmly and ask if they are calling about selling their home.",
-            "owner_first_name": "there",
+            "is_outbound": False,
+            "address": "",
+            "property_context_str": "No property context available.",
+            "owner_first_name": "",
         }
 
     property_context_str = _build_property_context_str(lead)
+    prop = lead.get("properties") or {}
+    address = prop.get("address", "")
     owner_first_name = (
         lead.get("owner_first_name")
-        or lead.get("owner_name", "").split()[0]
-        or "there"
+        or (lead.get("owner_name", "") or "").split()[0]
+        or ""
     )
 
     logger.info(
@@ -95,6 +98,8 @@ def preload_call_context(caller_phone: str) -> dict:
 
     return {
         "lead": lead,
+        "is_outbound": False,
+        "address": address,
         "property_context_str": property_context_str,
         "owner_first_name": owner_first_name,
     }
@@ -109,6 +114,8 @@ def preload_boss_context() -> dict:
 
     return {
         "lead": None,
+        "is_outbound": False,
+        "address": "",
         "property_context_str": "",
         "owner_first_name": "Angelo",
         "briefing": briefing,

@@ -148,6 +148,7 @@ async def outbound_voice_stream(websocket: WebSocket, lead_id: str):
         "lead": lead,
         "lead_id": lead_id,
         "owner_first_name": first_name,
+        "address": address,
         "property_context_str": base_context_str,
         "spanish_detected": False,
     }
@@ -174,11 +175,7 @@ def _build_outbound_context(
     landmark: str | None = None,
 ) -> str:
     if not lead or not prop:
-        return (
-            "OUTBOUND CALL CONTEXT\n"
-            "You called this person. Introduce yourself warmly.\n"
-            "Greet as: Hey [name]! This is Sophia from San Joaquin House Buyers..."
-        )
+        return "You called this person. Introduce yourself as Sophia with San Joaquin House Buyers."
 
     score = prop.get("distress_score", 0)
     distress = (prop.get("distress_type") or "unknown").replace("_", " ").title()
@@ -202,8 +199,7 @@ def _build_outbound_context(
 
     return f"""OUTBOUND CALL CONTEXT
 =====================
-YOU CALLED THEM. You initiated this call.
-Use one of the 4 openers from your system prompt (A, B, C, or D). Rotate randomly.
+YOU CALLED THEM. You initiated this call. Use your OPENER exactly as given.
 
 Owner: {first_name}
 Address: {address} {city}
@@ -215,13 +211,6 @@ MAO: {mao_str}
 NEIGHBORHOOD HOOK
 =================
 {neighborhood_line}
-
-OPENER GUIDANCE
-===============
-After opener: drop address then STOP. Let silence work. Do not fill it.
-If Spanish speaker detected switch immediately:
-"Oye {first_name}! Habla Sophia de San Joaquin House Buyers.
-Te llamo sobre tu propiedad en {address}. ¿Tienes unos minutos?"
 
 OUTBOUND CALL GUIDANCE
 ======================
