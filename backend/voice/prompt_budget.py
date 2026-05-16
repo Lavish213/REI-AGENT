@@ -16,15 +16,15 @@ from loguru import logger
 # Approx character budget for system prompt (excl. [CONTEXT:] prefix injected live)
 DEFAULT_CHAR_BUDGET = 6000
 
-# Section headers in priority order — later sections are trimmed first
+# Section headers in priority order — later sections are trimmed LAST (highest priority)
 _SECTION_ORDER = [
-    "CALLER PROPERTY CONTEXT",
+    "OFFER GUIDANCE",
+    "PRICING",
     "LOCATION INTELLIGENCE",
     "SOPHIA LOCAL GEOGRAPHIC FAMILIARITY",
-    "SELLER MEMORY",
     "PREVIOUS CALL CONTEXT",
-    "PRICING",
-    "OFFER GUIDANCE",
+    "SELLER MEMORY",
+    "CALLER PROPERTY CONTEXT",
 ]
 
 _SECTION_PATTERN = re.compile(
