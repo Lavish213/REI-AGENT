@@ -77,3 +77,4 @@ def send_report_to_owner(eval_summary: dict) -> None:
         send_alert_to_owner(short_alert)
     except Exception as e:
         logger.error("eval report SMS failed error={}", str(e))
+ 
