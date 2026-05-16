@@ -107,6 +107,20 @@ class CallContext:
     turn_count: int = 0
 
     # ------------------------------------------------------------------
+    # Momentum / pacing state (Batch 3)
+    # ------------------------------------------------------------------
+
+    # pacing_state drives sentence count limits in SpokenRendererProcessor
+    # "warm" → 3 sentences max (early call, opener)
+    # "operational" → 2 sentences max (intent confirmed, gathering facts)
+    # "tight" → 1 sentence max (late stage, hot lead, fast qualification)
+    pacing_state: str = "warm"
+
+    # silence_hint consumed once by SpokenRendererProcessor to inject pause
+    # set by _analyze() after price/emotional/skeptical signals
+    silence_hint: str | None = None
+
+    # ------------------------------------------------------------------
     # Objective engine
     # ------------------------------------------------------------------
 
@@ -773,6 +787,8 @@ class ContextTrackerProcessor(FrameProcessor):
 
         self._update_seller_energy(text)
         self._update_situation_label(text)
+        self._update_pacing()
+        self._update_silence_hint(text)
 
     def _update_seller_energy(self, text: str) -> None:
         word_count = len(text.split())
@@ -805,3 +821,64 @@ class ContextTrackerProcessor(FrameProcessor):
                 self._ctx.situation_label = label
                 logger.info("situation_label detected label={}", label)
                 return
+
+    def _update_pacing(self) -> None:
+        """Advance pacing_state as acquisition facts accumulate."""
+        ctx = self._ctx
+        # Count confirmed fields beyond intent
+        fields_known = sum([
+            ctx.address_known,
+            ctx.motivation_known,
+            ctx.occupancy_known,
+            ctx.condition_known,
+            ctx.timeline_known,
+            ctx.price_expectation_known,
+        ])
+
+        if ctx.seller_energy == "rushed" or ctx.disposition == "HOT":
+            new_state = "tight"
+        elif fields_known >= 3 or ctx.intent_confirmed and fields_known >= 2:
+            new_state = "tight"
+        elif ctx.intent_confirmed or fields_known >= 1:
+            new_state = "operational"
+        else:
+            new_state = "warm"
+
+        # Never regress from tighter to warmer mid-call
+        order = ("warm", "operational", "tight")
+        if order.index(new_state) > order.index(ctx.pacing_state):
+            logger.info(
+                "pacing_state advanced from={} to={} fields_known={}",
+                ctx.pacing_state,
+                new_state,
+                fields_known,
+            )
+            ctx.pacing_state = new_state
+
+    def _update_silence_hint(self, text: str) -> None:
+        """Set silence_hint based on seller content — consumed once by renderer."""
+        ctx = self._ctx
+        if ctx.silence_hint:
+            return  # already pending, don't overwrite
+
+        lower = text.lower()
+
+        # Price mention → pause before our response
+        if _extract_price_cents(text) is not None or _PRICE_EXPECTATION_PATTERN.search(text):
+            ctx.silence_hint = "price"
+            return
+
+        # Emotional/hardship disclosure → longer pause
+        if _MOTIVATION_CONFIRMED_PATTERN.search(text):
+            # Only for the heavy ones
+            heavy = re.search(
+                r"\b(passed away|died|foreclosure|behind on|divorce|divorcing|can.?t afford)\b",
+                lower,
+            )
+            if heavy:
+                ctx.silence_hint = "emotional"
+                return
+
+        # Skeptical energy
+        if ctx.seller_energy == "skeptical":
+            ctx.silence_hint = "skeptical"

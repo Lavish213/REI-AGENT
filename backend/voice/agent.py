@@ -41,6 +41,8 @@ from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.qa.grader import grade_call
 from backend.lib.db import insert_call, update_lead_for_disposition
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
+from backend.voice.processors.spoken_renderer import SpokenRendererProcessor
+from backend.voice.processors.ai_softener import AISoftenerProcessor
 
 
 _MD_STRIP_PATTERN = re.compile(
@@ -629,6 +631,9 @@ async def run_sophia_agent(
         llm_context=context,
     )
 
+    spoken_renderer = SpokenRendererProcessor(call_ctx=call_ctx)
+    ai_softener = AISoftenerProcessor()
+
     context_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
@@ -650,6 +655,8 @@ async def run_sophia_agent(
         context_tracker,          # Tracks seller speech → injects [LIVE CONTEXT] before LLM
         context_aggregator.user(),
         llm,
+        spoken_renderer,          # Buffers LLM output → compresses to operator speech → TTSTextFrame
+        ai_softener,              # Final cleanup: leakage guard, contraction normalization
         tts,
         tts_frame_probe,
         transport_output,
