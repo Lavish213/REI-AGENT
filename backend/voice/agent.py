@@ -40,7 +40,7 @@ from pipecat.services.llm_service import FunctionCallParams
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.qa.grader import grade_call
 from backend.lib.db import insert_call, update_lead_for_disposition
-from backend.voice.processors.context_tracker import CallContext
+from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
 
 
 _MD_STRIP_PATTERN = re.compile(
@@ -585,6 +585,10 @@ async def run_sophia_agent(
 
     call_ctx = CallContext()
 
+    # Seed known facts from preloaded context so objective engine skips redundant questions
+    if call_context.get("address"):
+        call_ctx.address_known = True
+
     if metrics_store is not None:
         metrics_store[call_sid] = call_ctx
 
@@ -620,6 +624,11 @@ async def run_sophia_agent(
         tools=_build_tools_schema(),
     )
 
+    context_tracker = ContextTrackerProcessor(
+        call_ctx=call_ctx,
+        llm_context=context,
+    )
+
     context_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
@@ -638,6 +647,7 @@ async def run_sophia_agent(
     pipeline = Pipeline([
         transport.input(),
         stt,
+        context_tracker,          # Tracks seller speech → injects [LIVE CONTEXT] before LLM
         context_aggregator.user(),
         llm,
         tts,

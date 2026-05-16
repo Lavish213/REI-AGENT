@@ -8,6 +8,10 @@ from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
+# ---------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------
+
 ConversationPhase = Literal[
     "opening",
     "rapport",
@@ -54,20 +58,36 @@ SituationLabel = Literal[
 ]
 
 
+# ---------------------------------------------------------------------------
+# CallContext — runtime acquisition state
+# ---------------------------------------------------------------------------
+
 @dataclass
 class CallContext:
+    # Identity
     seller_name: str | None = None
     opener_used: str | None = None
     last_opener_used: str | None = None
 
+    # Conversation phase (legacy — still tracked for QA/observability)
     current_phase: ConversationPhase = "opening"
     phase_history: list[str] = field(default_factory=list)
 
+    # Seller signals
     seller_energy: SellerEnergy = "calm"
     energy_history: list[str] = field(default_factory=list)
-
     situation_label: SituationLabel = "unknown"
 
+    # Acquisition field tracking — binary flags set once confirmed
+    intent_confirmed: bool = False   # seller stated they want to sell
+    address_known: bool = False      # we have property address (from preloader or confirmed)
+    occupancy_known: bool = False    # living there / renting / vacant
+    condition_known: bool = False    # move-in ready / needs work / rough
+    motivation_known: bool = False   # divorce / foreclosure / relocation / etc.
+    timeline_known: bool = False     # how soon they want to close
+    price_expectation_known: bool = False  # what they need to walk away with
+
+    # Raw signal data
     property_issues: list[str] = field(default_factory=list)
     motivation_signals: list[str] = field(default_factory=list)
     last_price_mentioned: int | None = None
@@ -86,6 +106,100 @@ class CallContext:
     extended_loaded: bool = False
     turn_count: int = 0
 
+    # ------------------------------------------------------------------
+    # Objective engine
+    # ------------------------------------------------------------------
+
+    def get_current_objective(self) -> str:
+        """Return the highest-priority missing acquisition field."""
+        if not self.intent_confirmed:
+            return "CONFIRM_INTENT"
+        if not self.address_known:
+            return "GET_ADDRESS"
+        if not self.motivation_known:
+            return "GET_MOTIVATION"
+        if not self.occupancy_known:
+            return "GET_OCCUPANCY"
+        if not self.condition_known:
+            return "GET_CONDITION"
+        if not self.timeline_known:
+            return "GET_TIMELINE"
+        if not self.price_expectation_known:
+            return "TEST_PRICE"
+        return "BOOK_APPOINTMENT"
+
+    def get_forbidden_moves(self) -> list[str]:
+        """Return list of questions that are illegal this turn (fact already known)."""
+        forbidden = []
+        if self.intent_confirmed:
+            forbidden.append("ask if they want to sell")
+        if self.address_known:
+            forbidden.append("ask for address")
+        if self.occupancy_known:
+            forbidden.append("ask if they live there or if it is vacant")
+        if self.motivation_known:
+            forbidden.append("ask why they want to sell")
+        if self.condition_known:
+            forbidden.append("ask about condition")
+        if self.timeline_known:
+            forbidden.append("ask about timeline")
+        return forbidden
+
+    def get_seller_mode(self) -> str:
+        """Map situation + energy to a behavioral mode label."""
+        if self.seller_energy == "rushed":
+            return "FAST"
+        if self.situation_label in ("preforeclosure", "distressed_seller"):
+            return "DISTRESSED"
+        if self.situation_label == "tired_landlord":
+            return "LANDLORD"
+        if self.situation_label in ("inherited_property", "probate"):
+            return "INHERITED"
+        if self.situation_label == "divorce":
+            return "DIVORCE"
+        if self.seller_energy == "skeptical":
+            return "SKEPTICAL"
+        if self.seller_energy == "emotional":
+            return "EMOTIONAL"
+        if self.seller_energy == "motivated" or self.disposition == "HOT":
+            return "HOT"
+        return "STANDARD"
+
+    # ------------------------------------------------------------------
+    # Context prefix (injected into system message every turn)
+    # ------------------------------------------------------------------
+
+    def build_context_prefix(self) -> str:
+        objective = self.get_current_objective()
+        forbidden = self.get_forbidden_moves()
+        seller_mode = self.get_seller_mode()
+
+        parts = [f"OBJ={objective}"]
+
+        if forbidden:
+            parts.append("NO=" + "; ".join(forbidden))
+
+        if seller_mode != "STANDARD":
+            parts.append(f"mode={seller_mode}")
+
+        if self.timeline_mentioned:
+            parts.append(f"timeline={self.timeline_mentioned}")
+
+        if self.last_price_mentioned is not None:
+            parts.append(f"price=${self.last_price_mentioned // 100:,}")
+
+        if self.objections_raised:
+            parts.append(f"objection={self.objections_raised[-1]}")
+
+        if self.situation_label != "unknown":
+            parts.append(f"situation={self.situation_label.replace('_', ' ')}")
+
+        return "[LIVE CONTEXT: " + "; ".join(parts) + "]"
+
+    # ------------------------------------------------------------------
+    # Phase management (legacy — kept for QA observability)
+    # ------------------------------------------------------------------
+
     def advance_phase(self, target: ConversationPhase) -> bool:
         try:
             current_idx = _PHASE_ORDER.index(self.current_phase)
@@ -97,41 +211,79 @@ class CallContext:
             previous = self.current_phase
             self.phase_history.append(previous)
             self.current_phase = target
-            logger.info("conversation_phase advanced from={} to={}", previous, target)
+            logger.info(
+                "conversation_phase advanced from={} to={}",
+                previous,
+                target,
+            )
             return True
 
         return False
 
-    def build_context_prefix(self) -> str:
-        parts = [
-            f"phase={self.current_phase}",
-            f"energy={self.seller_energy}",
-        ]
 
-        if self.situation_label != "unknown":
-            parts.append(f"situation={self.situation_label.replace('_', ' ')}")
+# ---------------------------------------------------------------------------
+# Detection patterns
+# ---------------------------------------------------------------------------
 
-        if self.property_issues:
-            parts.append(f"issues={', '.join(self.property_issues[-2:])}")
+_INTENT_CONFIRMED_PATTERN = re.compile(
+    r"\b("
+    r"want(s)? to sell|trying to sell|need(s)? to sell|looking to sell|"
+    r"thinking (about|of) sell(ing)?|ready to sell|interested in sell(ing)?|"
+    r"going to sell|planning to sell|"
+    r"sell(ing)? (my|the|this) (house|home|place|property)|"
+    r"yeah.{0,15}sell|yes.{0,15}sell|"
+    r"put it on the market|list(ing)? it|get rid of it|unload it"
+    r")\b",
+    re.IGNORECASE,
+)
 
-        if self.motivation_signals:
-            parts.append(f"motivation={', '.join(self.motivation_signals[-2:])}")
+_OCCUPANCY_PATTERN = re.compile(
+    r"\b("
+    r"living there|i live there|we live there|owner.?occupied|"
+    r"renting (it )?out|my tenant|tenants?|"
+    r"vacant|empty|nobody (lives|living)|sitting empty|"
+    r"my primary|not living|i.?m (not )?there|my main home|"
+    r"moved out|don.?t live there"
+    r")\b",
+    re.IGNORECASE,
+)
 
-        if self.last_price_mentioned is not None:
-            dollar = self.last_price_mentioned // 100
-            parts.append(f"price mentioned=${dollar:,}")
+_CONDITION_PATTERN = re.compile(
+    r"\b("
+    r"need(s)? (work|repairs?|fixing|updating|attention)|"
+    r"good condition|great shape|perfect condition|"
+    r"updated|renovated|remodeled|fully updated|"
+    r"fixer|as.?is|move.?in ready|gut job|"
+    r"torn up|rough shape|dated|run.?down|falling apart|"
+    r"pretty good|not bad|needs (some|a lot of|major)"
+    r")\b",
+    re.IGNORECASE,
+)
 
-        if self.timeline_mentioned:
-            parts.append(f"timeline={self.timeline_mentioned}")
+_MOTIVATION_CONFIRMED_PATTERN = re.compile(
+    r"\b("
+    r"divorce|divorcing|separated|splitting up|"
+    r"foreclosure|behind on (the )?mortgage|notice of default|"
+    r"inherited|estate|probate|passed away|my (mom|dad|parent|grandma|grandpa|uncle|aunt) (died|passed)|"
+    r"relocat|moving (out|away|out of state)|job transfer|"
+    r"need the money|can.?t afford|"
+    r"tired (of|landlord|dealing)|bad tenant(s)?|eviction|"
+    r"need (out|to get out|to move)|too much to handle|overwhelmed|"
+    r"downsiz|kids (moved|are gone)|empty nest|retirement|retiring|"
+    r"financial(ly)? (stress|strapped|trouble)|owe more than"
+    r")\b",
+    re.IGNORECASE,
+)
 
-        if self.objections_raised:
-            parts.append(f"objection={self.objections_raised[-1]}")
-
-        if self.disposition:
-            parts.append(f"disposition={self.disposition}")
-
-        return "[LIVE CONTEXT: " + "; ".join(parts) + "]"
-
+_PRICE_EXPECTATION_PATTERN = re.compile(
+    r"\b("
+    r"looking (to get|for)|need(ing)? (at least|around|about|\$)|"
+    r"want(ing)? (to get|at least)|hoping (to get|for)|"
+    r"my number|my price|what i need|"
+    r"asking (price)?|was thinking (around|about)|\$\s*\d"
+    r")\b",
+    re.IGNORECASE,
+)
 
 _ISSUE_PATTERNS = [
     (r"\b(roof|roofing|leak|leaking)\b", "roof problem"),
@@ -373,6 +525,10 @@ _SITUATION_PATTERNS: list[tuple[SituationLabel, re.Pattern]] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
 def _extract_price_cents(text: str) -> int | None:
     matches = list(_PRICE_PATTERN.finditer(text))
     if not matches:
@@ -402,24 +558,29 @@ def _load_extended_prompt(extended_path: str) -> str:
         with open(extended_path, encoding="utf-8") as f:
             return f.read().strip()
     except Exception as e:
-        logger.warning("extended_prompt_load_failed path={} error={}", extended_path, str(e))
+        logger.warning(
+            "extended_prompt_load_failed path={} error={}",
+            extended_path,
+            str(e),
+        )
         return ""
 
 
 def _shrink_extended_prompt(content: str, max_chars: int = 5000) -> str:
     content = content.strip()
-
     if len(content) <= max_chars:
         return content
-
     trimmed = content[:max_chars].rsplit("\n", 1)[0].strip()
-
     return (
         trimmed
         + "\n\nNOTE: Extended context was trimmed for realtime voice latency. "
         "Use only the most relevant guidance."
     )
 
+
+# ---------------------------------------------------------------------------
+# ContextTrackerProcessor
+# ---------------------------------------------------------------------------
 
 class ContextTrackerProcessor(FrameProcessor):
     def __init__(
@@ -447,12 +608,12 @@ class ContextTrackerProcessor(FrameProcessor):
                 self._inject_context_prefix()
 
                 logger.info(
-                    "context_tracker turn={} phase={} energy={} situation={} text={!r}",
+                    "ctx_tracker turn={} obj={} mode={} situation={} text={!r}",
                     self._ctx.turn_count,
-                    self._ctx.current_phase,
-                    self._ctx.seller_energy,
+                    self._ctx.get_current_objective(),
+                    self._ctx.get_seller_mode(),
                     self._ctx.situation_label,
-                    text,
+                    text[:60],
                 )
 
         await self.push_frame(frame, direction)
@@ -510,7 +671,11 @@ class ContextTrackerProcessor(FrameProcessor):
         sys_msg["content"] = f"{content}\n\n{prefix}"
         self._last_context_prefix = prefix
 
-        logger.debug("context_tracker injected prefix={}", prefix)
+        logger.debug(
+            "ctx_tracker injected obj={} forbidden_count={}",
+            self._ctx.get_current_objective(),
+            len(self._ctx.get_forbidden_moves()),
+        )
 
     def _maybe_load_extended(self, text: str) -> None:
         if self._ctx.extended_loaded:
@@ -547,29 +712,60 @@ class ContextTrackerProcessor(FrameProcessor):
 
         self._maybe_load_extended(text)
 
+        # --- Acquisition field detection ---
+
+        if not self._ctx.intent_confirmed and _INTENT_CONFIRMED_PATTERN.search(text):
+            self._ctx.intent_confirmed = True
+            logger.info("intent_confirmed turn={}", self._ctx.turn_count)
+
+        if not self._ctx.occupancy_known and _OCCUPANCY_PATTERN.search(text):
+            self._ctx.occupancy_known = True
+            logger.info("occupancy_known turn={}", self._ctx.turn_count)
+
+        if not self._ctx.condition_known and _CONDITION_PATTERN.search(text):
+            self._ctx.condition_known = True
+            logger.info("condition_known turn={}", self._ctx.turn_count)
+
+        if not self._ctx.motivation_known and _MOTIVATION_CONFIRMED_PATTERN.search(text):
+            self._ctx.motivation_known = True
+            logger.info("motivation_known turn={}", self._ctx.turn_count)
+
+        if not self._ctx.price_expectation_known and _PRICE_EXPECTATION_PATTERN.search(text):
+            self._ctx.price_expectation_known = True
+            logger.info("price_expectation_known turn={}", self._ctx.turn_count)
+
+        # --- Timeline ---
+        timeline = _TIMELINE_PATTERN.search(lower)
+        if timeline:
+            self._ctx.timeline_mentioned = timeline.group(0)
+            if not self._ctx.timeline_known:
+                self._ctx.timeline_known = True
+                logger.info("timeline_known turn={}", self._ctx.turn_count)
+
+        # --- Price mentions ---
         price = _extract_price_cents(text)
         if price is not None:
             self._ctx.last_price_mentioned = price
 
-        timeline = _TIMELINE_PATTERN.search(lower)
-        if timeline:
-            self._ctx.timeline_mentioned = timeline.group(0)
-
+        # --- Property issues ---
         for pattern, label in _ISSUE_PATTERNS:
             if re.search(pattern, lower) and label not in self._ctx.property_issues:
                 self._ctx.property_issues.append(label)
                 self._ctx.property_issues = self._ctx.property_issues[-8:]
 
+        # --- Motivation signals ---
         for pattern, label in _MOTIVATION_PATTERNS:
             if re.search(pattern, lower) and label not in self._ctx.motivation_signals:
                 self._ctx.motivation_signals.append(label)
                 self._ctx.motivation_signals = self._ctx.motivation_signals[-8:]
 
+        # --- Objections ---
         for pattern, label in _OBJECTION_PATTERNS:
             if re.search(pattern, lower) and label not in self._ctx.objections_raised:
                 self._ctx.objections_raised.append(label)
                 self._ctx.objections_raised = self._ctx.objections_raised[-8:]
 
+        # --- Phase (legacy observability) ---
         for target_phase, pattern in _PHASE_TRIGGERS:
             if pattern.search(text):
                 self._ctx.advance_phase(target_phase)
