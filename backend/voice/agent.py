@@ -256,7 +256,7 @@ async def _create_stt_service(
     spanish: bool,
 ) -> DeepgramSTTService:
     language = "es" if spanish else "en-US"
-    model = "nova-2-phonecall"
+    model = "nova-2"
 
     logger.info(
         "deepgram stt initializing model={} language={}",
