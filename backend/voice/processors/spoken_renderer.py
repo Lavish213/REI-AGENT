@@ -94,14 +94,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern[str], str]] = [
     ),
     (
         re.compile(
-            r"\bI (?:completely |totally )?"
-            r"understand\b[^.!?]*[.!]\s*",
-            re.I,
-        ),
-        "Gotcha. ",
-    ),
-    (
-        re.compile(
             r"\bI (?:really )?get (?:it|that)[!.,]?\s*",
             re.I,
         ),
@@ -110,10 +102,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"\bAbsolutely[!.,]?\s*", re.I),
         "Yeah. ",
-    ),
-    (
-        re.compile(r"\bFor sure[!.,]?\s*", re.I),
-        "Okay. ",
     ),
     (
         re.compile(

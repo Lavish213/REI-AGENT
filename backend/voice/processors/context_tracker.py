@@ -1,28 +1,24 @@
+from __future__ import annotations
+
 import asyncio
 import re
 from dataclasses import dataclass, field
 from typing import Literal
 
 from loguru import logger
-from pipecat.frames.frames import Frame, TranscriptionFrame
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.frames.frames import Frame
+from pipecat.frames.frames import TranscriptionFrame
+from pipecat.processors.frame_processor import FrameDirection
+from pipecat.processors.frame_processor import FrameProcessor
 
 
 ConversationPhase = Literal[
     "opening",
     "discovery",
-    "negotiation",
-    "objection_handling",
-    "close_attempt",
-    "wrap_up",
-]
-
-_PHASE_ORDER = [
-    "opening",
-    "discovery",
-    "negotiation",
-    "objection_handling",
-    "close_attempt",
+    "qualification",
+    "appointment_transition",
+    "follow_up_hold",
+    "recovery",
     "wrap_up",
 ]
 
@@ -47,6 +43,18 @@ SituationLabel = Literal[
     "unknown",
 ]
 
+
+_PHASE_ORDER = [
+    "opening",
+    "discovery",
+    "qualification",
+    "appointment_transition",
+    "follow_up_hold",
+    "recovery",
+    "wrap_up",
+]
+
+
 _INTENT_PHRASES = [
     "trying to sell",
     "want to sell",
@@ -62,6 +70,7 @@ _INTENT_PHRASES = [
     "must sell",
 ]
 
+
 _ADDRESS_PATTERN = re.compile(
     r"\b\d{3,5}\s+[A-Za-z][\w\s]{2,30}"
     r"(?:st|ave|blvd|dr|ln|rd|ct|way|pl|cir|ter|"
@@ -69,6 +78,7 @@ _ADDRESS_PATTERN = re.compile(
     r"court|place|circle|terrace)\b",
     re.IGNORECASE,
 )
+
 
 _TIMELINE_PATTERN = re.compile(
     r"\b("
@@ -78,10 +88,12 @@ _TIMELINE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+
 _PRICE_PATTERN = re.compile(
     r"(?:\$?\s*(\d{2,3}(?:,\d{3})+|\d{2,6})\s*(k|thousand|grand)?)",
     re.IGNORECASE,
 )
+
 
 _ISSUE_PATTERNS = [
     (r"\b(roof|roofing|leak|leaking)\b", "roof"),
@@ -93,6 +105,7 @@ _ISSUE_PATTERNS = [
     (r"\b(hoard|junk|trash|mess)\b", "condition"),
 ]
 
+
 _MOTIVATION_PATTERNS = [
     (r"\b(need to sell|must sell|sell fast|asap)\b", "urgent"),
     (r"\b(divorce|divorcing)\b", "divorce"),
@@ -102,15 +115,19 @@ _MOTIVATION_PATTERNS = [
     (r"\b(bad tenant|tenant|renter)\b", "landlord"),
 ]
 
+
 _OBJECTION_PATTERNS = [
     (r"\b(too low|worth more|higher offer)\b", "price"),
     (r"\b(agent|realtor|listing|mls)\b", "mls"),
     (r"\b(think about it|need time|not ready)\b", "hesitation"),
     (r"\b(other offer|another buyer)\b", "competition"),
-    (r"\b(not interested|stop calling)\b", "not interested"),
+    (r"\b(not interested|stop calling)\b", "not_interested"),
 ]
 
-_PHASE_TRIGGERS: list[tuple[ConversationPhase, re.Pattern]] = [
+
+_PHASE_TRIGGERS: list[
+    tuple[ConversationPhase, re.Pattern]
+] = [
     (
         "discovery",
         re.compile(
@@ -119,23 +136,23 @@ _PHASE_TRIGGERS: list[tuple[ConversationPhase, re.Pattern]] = [
         ),
     ),
     (
-        "negotiation",
+        "qualification",
         re.compile(
-            r"\b(how much|offer|price|what would you pay|make me an offer)\b",
+            r"\b(how much|offer|price|mortgage|timeline)\b",
             re.IGNORECASE,
         ),
     ),
     (
-        "objection_handling",
-        re.compile(
-            r"\b(too low|not interested|need time|agent|listing)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "close_attempt",
+        "appointment_transition",
         re.compile(
             r"\b(appointment|schedule|come see|walkthrough|meet)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "follow_up_hold",
+        re.compile(
+            r"\b(call me later|not ready|need time|follow up)\b",
             re.IGNORECASE,
         ),
     ),
@@ -148,7 +165,10 @@ _PHASE_TRIGGERS: list[tuple[ConversationPhase, re.Pattern]] = [
     ),
 ]
 
-_ENERGY_PATTERNS: list[tuple[SellerEnergy, re.Pattern]] = [
+
+_ENERGY_PATTERNS: list[
+    tuple[SellerEnergy, re.Pattern]
+] = [
     (
         "rushed",
         re.compile(
@@ -179,7 +199,10 @@ _ENERGY_PATTERNS: list[tuple[SellerEnergy, re.Pattern]] = [
     ),
 ]
 
-_SITUATION_PATTERNS: list[tuple[SituationLabel, re.Pattern]] = [
+
+_SITUATION_PATTERNS: list[
+    tuple[SituationLabel, re.Pattern]
+] = [
     (
         "probate",
         re.compile(
@@ -246,7 +269,7 @@ _SITUATION_PATTERNS: list[tuple[SituationLabel, re.Pattern]] = [
 ]
 
 
-@dataclass
+@dataclass(slots=True)
 class CallContext:
     seller_name: str | None = None
 
@@ -260,11 +283,10 @@ class CallContext:
 
     property_issues: list[str] = field(default_factory=list)
     motivation_signals: list[str] = field(default_factory=list)
+    objections_raised: list[str] = field(default_factory=list)
 
     last_price_mentioned: int | None = None
     timeline_mentioned: str | None = None
-
-    objections_raised: list[str] = field(default_factory=list)
 
     disposition: str | None = None
 
@@ -275,103 +297,74 @@ class CallContext:
 
     extended_loaded: bool = False
 
-    def advance_phase(self, target: ConversationPhase) -> bool:
+    def advance_phase(
+        self,
+        target: ConversationPhase,
+    ) -> bool:
         try:
-            current_idx = _PHASE_ORDER.index(self.current_phase)
-            target_idx = _PHASE_ORDER.index(target)
-
+            current_index = _PHASE_ORDER.index(self.current_phase)
+            target_index = _PHASE_ORDER.index(target)
         except ValueError:
             return False
 
-        if target_idx > current_idx:
-            previous = self.current_phase
+        if target_index <= current_index:
+            return False
 
-            self.phase_history.append(previous)
-            self.current_phase = target
+        previous = self.current_phase
+        self.phase_history.append(previous)
+        self.phase_history = self.phase_history[-10:]
+        self.current_phase = target
 
-            logger.info(
-                "conversation_phase advanced from={} to={}",
-                previous,
-                target,
-            )
+        logger.info(
+            "conversation_phase advanced from={} to={}",
+            previous,
+            target,
+        )
 
-            return True
-
-        return False
+        return True
 
     def get_seller_mode(self) -> str:
-        if self.situation_label in ("preforeclosure", "distressed_seller"):
+        if self.situation_label in {"preforeclosure", "distressed_seller"}:
             return "DISTRESSED"
-
         if self.seller_energy == "rushed":
             return "FAST"
-
         if self.seller_energy == "motivated":
             return "HOT"
-
         if self.seller_energy == "skeptical":
             return "SKEPTICAL"
-
-        if self.situation_label in ("inherited_property", "probate"):
+        if self.situation_label in {"inherited_property", "probate"}:
             return "INHERITED"
-
         if self.situation_label == "tired_landlord":
             return "LANDLORD"
-
         return "STANDARD"
 
     def get_current_objective(self) -> str:
         if not self.address_known:
             return "GET_ADDRESS"
-
         if not self.intent_locked:
             return "GET_MOTIVATION"
-
-        if not self.property_issues:
-            return "GET_CONDITION"
-
+        if not self.motivation_signals:
+            return "GET_MOTIVATION"
+        if not self.property_issues and self.situation_label == "unknown":
+            return "GET_OCCUPANCY"
         if not self.timeline_mentioned:
             return "GET_TIMELINE"
-
-        if self.last_price_mentioned is None:
-            return "TEST_PRICE"
-
+        if not self.property_issues:
+            return "GET_CONDITION"
         return "BOOK_APPOINTMENT"
 
     def build_context_prefix(self) -> str:
-        parts = [
-            f"OBJ={self.get_current_objective()}",
-            f"mode={self.get_seller_mode()}",
-        ]
+        addr = 1 if self.address_known else 0
+        intent = 1 if self.intent_locked else 0
+        obj = self.get_current_objective()
+        mode = self.get_seller_mode()
 
-        if self.intent_locked:
-            parts.append("intent=CONFIRMED")
-
-        if self.address_known:
-            parts.append("address=KNOWN")
-
-        if self.situation_label != "unknown":
-            parts.append(
-                f"situation={self.situation_label.replace('_', ' ')}"
-            )
-
-        if self.property_issues:
-            parts.append(
-                f"issues={', '.join(self.property_issues[-2:])}"
-            )
-
-        if self.motivation_signals:
-            parts.append(
-                f"motivation={', '.join(self.motivation_signals[-2:])}"
-            )
-
-        if self.timeline_mentioned:
-            parts.append(f"timeline={self.timeline_mentioned}")
+        tag = f"[CTX:OBJ={obj}|MODE={mode}|ADDR={addr}|INTENT={intent}]"
 
         if self.objections_raised:
-            parts.append(f"objection={self.objections_raised[-1]}")
+            tag = tag[:-1] + f"|OBJ_LAST={self.objections_raised[-1]}]"
 
-        return "[LIVE CONTEXT: " + "; ".join(parts) + "]"
+        return tag
 
 
 def _extract_price_cents(text: str) -> int | None:
@@ -385,18 +378,16 @@ def _extract_price_cents(text: str) -> int | None:
         suffix = (match.group(2) or "").lower()
 
         try:
-            val = int(raw)
-
+            value = int(raw)
         except ValueError:
             continue
 
         if suffix in {"k", "thousand", "grand"}:
-            val *= 1000
-
-        elif val < 1000 and "$" not in match.group(0):
+            value *= 1000
+        elif value < 1000 and "$" not in match.group(0):
             continue
 
-        return val * 100
+        return value * 100
 
     return None
 
@@ -408,12 +399,15 @@ class ContextTrackerProcessor(FrameProcessor):
         llm_context=None,
     ):
         super().__init__()
-
         self._ctx = call_ctx
         self._llm_context = llm_context
         self._last_context_prefix: str | None = None
 
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
+    async def process_frame(
+        self,
+        frame: Frame,
+        direction: FrameDirection,
+    ):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, TranscriptionFrame) and frame.text:
@@ -421,23 +415,20 @@ class ContextTrackerProcessor(FrameProcessor):
 
             if text:
                 self._ctx.turn_count += 1
-
                 self._analyze(text)
-
                 await self._maybe_compress_context()
-
                 self._inject_context_prefix()
 
                 logger.info(
-                    "context_tracker turn={} phase={} energy={} situation={} "
-                    "intent_locked={} address_known={} obj={} text={!r}",
+                    "context_tracker turn={} phase={} energy={} "
+                    "situation={} obj={} addr={} intent={} text={!r}",
                     self._ctx.turn_count,
                     self._ctx.current_phase,
                     self._ctx.seller_energy,
                     self._ctx.situation_label,
-                    self._ctx.intent_locked,
-                    self._ctx.address_known,
                     self._ctx.get_current_objective(),
+                    self._ctx.address_known,
+                    self._ctx.intent_locked,
                     text,
                 )
 
@@ -468,14 +459,14 @@ class ContextTrackerProcessor(FrameProcessor):
             self._llm_context.set_messages(compressed)
 
             logger.info(
-                "context_tracker compressed messages count={}",
+                "context compressed messages={}",
                 len(compressed),
             )
 
-        except Exception as e:
+        except Exception as error:
             logger.warning(
-                "context_compression_failed error={}",
-                str(e),
+                "context compression failed error={}",
+                str(error),
             )
 
     def _inject_context_prefix(self) -> None:
@@ -485,81 +476,66 @@ class ContextTrackerProcessor(FrameProcessor):
         if not getattr(self._llm_context, "messages", None):
             return
 
+        if not self._llm_context.messages:
+            return
+
         prefix = self._ctx.build_context_prefix()
 
         if prefix == self._last_context_prefix:
             return
 
-        sys_msg = self._llm_context.messages[0]
-
-        content = sys_msg.get("content", "")
+        system_message = self._llm_context.messages[0]
+        content = system_message.get("content", "")
 
         content = re.sub(
-            r"\n*\[LIVE CONTEXT:[^\]]*\]\s*",
+            r"\n*\[CTX:[^\]]*\]\s*",
             "\n",
             content,
         ).rstrip()
 
-        sys_msg["content"] = f"{content}\n\n{prefix}"
-
+        system_message["content"] = f"{content}\n\n{prefix}"
         self._last_context_prefix = prefix
 
-        logger.debug(
-            "context_tracker injected prefix={}",
-            prefix,
-        )
+        logger.debug("context prefix updated prefix={}", prefix)
 
     def _analyze(self, text: str) -> None:
         lower = text.lower()
 
         price = _extract_price_cents(text)
-
         if price is not None:
             self._ctx.last_price_mentioned = price
 
-        timeline = _TIMELINE_PATTERN.search(lower)
-
-        if timeline:
-            self._ctx.timeline_mentioned = timeline.group(0)
+        timeline_match = _TIMELINE_PATTERN.search(lower)
+        if timeline_match:
+            self._ctx.timeline_mentioned = timeline_match.group(0)
 
         for pattern, label in _ISSUE_PATTERNS:
             if re.search(pattern, lower):
                 if label not in self._ctx.property_issues:
                     self._ctx.property_issues.append(label)
-
         self._ctx.property_issues = self._ctx.property_issues[-6:]
 
         for pattern, label in _MOTIVATION_PATTERNS:
             if re.search(pattern, lower):
                 if label not in self._ctx.motivation_signals:
                     self._ctx.motivation_signals.append(label)
-
         self._ctx.motivation_signals = self._ctx.motivation_signals[-6:]
 
         for pattern, label in _OBJECTION_PATTERNS:
             if re.search(pattern, lower):
                 if label not in self._ctx.objections_raised:
                     self._ctx.objections_raised.append(label)
-
         self._ctx.objections_raised = self._ctx.objections_raised[-6:]
 
-        if not self._ctx.intent_locked:
-            if any(p in lower for p in _INTENT_PHRASES):
-                self._ctx.intent_locked = True
+        if not self._ctx.intent_locked and any(
+            phrase in lower for phrase in _INTENT_PHRASES
+        ):
+            self._ctx.intent_locked = True
+            logger.info("seller intent locked")
 
-                logger.info(
-                    "intent_locked triggered text={!r}",
-                    text[:80],
-                )
-
-        if not self._ctx.address_known:
-            if _ADDRESS_PATTERN.search(text):
-                self._ctx.address_known = True
-
-                logger.info(
-                    "address_known set text={!r}",
-                    text[:80],
-                )
+        if not self._ctx.address_known and _ADDRESS_PATTERN.search(text):
+            self._ctx.address_known = True
+            logger.info("property address detected")
 
         for target_phase, pattern in _PHASE_TRIGGERS:
             if pattern.search(text):
@@ -572,20 +548,14 @@ class ContextTrackerProcessor(FrameProcessor):
     def _update_seller_energy(self, text: str) -> None:
         for energy, pattern in _ENERGY_PATTERNS:
             if pattern.search(text):
-                if energy != self._ctx.seller_energy:
-                    self._ctx.energy_history.append(
-                        self._ctx.seller_energy
-                    )
+                if energy == self._ctx.seller_energy:
+                    return
 
-                    self._ctx.energy_history = self._ctx.energy_history[-8:]
+                self._ctx.energy_history.append(self._ctx.seller_energy)
+                self._ctx.energy_history = self._ctx.energy_history[-8:]
+                self._ctx.seller_energy = energy
 
-                    self._ctx.seller_energy = energy
-
-                    logger.debug(
-                        "seller_energy changed to={}",
-                        energy,
-                    )
-
+                logger.debug("seller energy updated energy={}", energy)
                 return
 
     def _update_situation_label(self, text: str) -> None:
@@ -595,10 +565,5 @@ class ContextTrackerProcessor(FrameProcessor):
         for label, pattern in _SITUATION_PATTERNS:
             if pattern.search(text):
                 self._ctx.situation_label = label
-
-                logger.info(
-                    "situation_label detected label={}",
-                    label,
-                )
-
+                logger.info("seller situation detected label={}", label)
                 return
