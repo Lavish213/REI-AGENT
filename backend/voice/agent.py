@@ -274,7 +274,6 @@ async def _create_stt_service(
                 punctuate=True,
                 interim_results=True,
                 endpointing=400,
-                filler_words=False,
             ),
         )
 
