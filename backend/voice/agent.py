@@ -750,7 +750,7 @@ async def run_sophia_agent(
         settings=AnthropicLLMService.Settings(
             model=voice_model,
             enable_prompt_caching=True,
-            max_tokens=70,
+            max_tokens=120,
         ),
     )
 
@@ -836,7 +836,7 @@ async def run_sophia_agent(
                     params=VADParams(
                         confidence=0.7,
                         start_secs=0.12,
-                        stop_secs=0.16,
+                        stop_secs=0.3,
                         min_volume=0.6,
                     ),
                 ),

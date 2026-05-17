@@ -243,7 +243,6 @@ class SpokenRendererProcessor(FrameProcessor):
 
         self._ctx = call_ctx
         self._buffer = ""
-        self._last_emit = ""
 
     def _transform(self, text: str) -> str:
         text = text.strip()
@@ -295,11 +294,6 @@ class SpokenRendererProcessor(FrameProcessor):
         if not transformed:
             return
 
-        if transformed == self._last_emit:
-            return
-
-        self._last_emit = transformed
-
         logger.info(
             "spoken_renderer turn={} in_chars={} out_chars={} preview={!r}",
             self._ctx.turn_count,
@@ -347,8 +341,6 @@ class SpokenRendererProcessor(FrameProcessor):
                     text,
                     direction,
                 )
-
-            self._last_emit = ""
 
             await self.push_frame(
                 frame,
