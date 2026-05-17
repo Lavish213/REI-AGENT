@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import re
 from typing import TYPE_CHECKING
 
@@ -12,7 +11,6 @@ from pipecat.frames.frames import (
     InterimTranscriptionFrame,
     LLMFullResponseEndFrame,
     LLMTextFrame,
-    StartInterruptionFrame,
     TextFrame,
     TTSTextFrame,
 )
@@ -37,9 +35,7 @@ _LEAKAGE_PATTERNS = [
     re.compile(r"\bINBOUND\b"),
 ]
 
-_LEAKAGE_SAFE = (
-    "Hey, this is Sophia with San Joaquin House Buyers."
-)
+_LEAKAGE_SAFE = "Hey, this is Sophia with San Joaquin House Buyers."
 
 _CONTRACTION_MAP = [
     (re.compile(r"\bI am\b", re.I), "I'm"),
@@ -63,7 +59,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "Makes sense. ",
     ),
-
     (
         re.compile(
             r"\bI (?:completely |totally )?understand\b[^.!?]*[.!]\s*",
@@ -71,7 +66,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "Gotcha. ",
     ),
-
     (
         re.compile(
             r"\bI (?:completely )?get (?:it|that)[!.,]?\s*",
@@ -79,7 +73,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "Got it. ",
     ),
-
     (
         re.compile(
             r"\bI (?:really )?appreciate (?:you|your|that|it)[!.,]?\s*",
@@ -87,7 +80,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bThank you for (?:sharing|letting me know|telling me)(?: that)?[!.,]?\s*",
@@ -95,7 +87,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bAbsolutely[!.,]?\s*",
@@ -103,7 +94,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "Yeah. ",
     ),
-
     (
         re.compile(
             r"\bCertainly[!.,]?\s*",
@@ -111,7 +101,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bOf course[!.,]?\s*",
@@ -119,7 +108,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bFor sure[!.,]?\s*",
@@ -127,7 +115,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "Okay. ",
     ),
-
     (
         re.compile(
             r"\bNo worries[!.,]?\s*",
@@ -135,7 +122,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bNo problem[!.,]?\s*",
@@ -143,7 +129,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"(?:^|\s)(?:Great|Awesome|Wonderful|Excellent|Perfect)[!.,]?\s*",
@@ -151,7 +136,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         " ",
     ),
-
     (
         re.compile(
             r"\bI hear you[!.,]?\s*",
@@ -159,7 +143,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bFeel free to \w+[^.?!]*[.!]\s*",
@@ -167,7 +150,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bDon'?t hesitate to \w+[^.?!]*[.!]\s*",
@@ -175,7 +157,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bI'?m here to help[^.!]*[.!]\s*",
@@ -183,7 +164,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bI'?d be happy to help[^.!]*[.!]\s*",
@@ -191,7 +171,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bAs I mentioned,?\s*",
@@ -199,7 +178,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bTo summarize,?\s*",
@@ -207,7 +185,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bIn conclusion,?\s*",
@@ -215,7 +192,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bMoving forward,?\s*",
@@ -223,7 +199,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bWith that (?:being )?said,?\s*",
@@ -231,7 +206,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bAdditionally,?\s*",
@@ -239,7 +213,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "",
     ),
-
     (
         re.compile(
             r"\bCould you (?:please )?(?:provide|give me|share|tell me) (?:the )?(?:full |property )?address\?",
@@ -247,7 +220,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "What's the address?",
     ),
-
     (
         re.compile(
             r"\bWhat is the (?:full |property )?address\?",
@@ -255,7 +227,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "What's the address?",
     ),
-
     (
         re.compile(
             r"\bIs (?:the property|it) (?:currently )?vacant\?",
@@ -263,7 +234,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "Vacant right now?",
     ),
-
     (
         re.compile(
             r"\bAre you (?:currently )?living (?:there|in the property|in it)\?",
@@ -271,7 +241,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "Living there now?",
     ),
-
     (
         re.compile(
             r"\bDoes (?:it|the property) (?:currently )?need (?:any|some|significant)? ?(?:work|repairs?|updating)\?",
@@ -279,7 +248,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "Need much work?",
     ),
-
     (
         re.compile(
             r"\bHow (?:soon|quickly) (?:are|were) you (?:looking|hoping|planning) to (?:sell|close|move)\?",
@@ -287,7 +255,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "How soon you trying to move?",
     ),
-
     (
         re.compile(
             r"\bWhat(?:'s| is| was) your timeline(?: for (?:this|the sale))?\?",
@@ -295,7 +262,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "What's the timeline look like?",
     ),
-
     (
         re.compile(
             r"\bWhat (?:is|'s|are) you (?:looking|hoping) to (?:get|walk away with)(?: from (?:this|the sale))?\?",
@@ -303,7 +269,6 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern, str]] = [
         ),
         "What's your number?",
     ),
-
     (
         re.compile(
             r"\bWhat kind of condition is the property in\?",
@@ -318,17 +283,14 @@ _AI_SETUP_PATTERNS = [
         r"I'?d (?:love|like) to ask you (?:a few |some |some quick )?questions?(?:\s+about[^.?!]*)?\.\s*",
         re.I,
     ),
-
     re.compile(
         r"I(?:'d| would) (?:love|like) to (?:help you with that|assist(?:\s+you)?)\.\s*",
         re.I,
     ),
-
     re.compile(
         r"Before (?:I|we) can (?:give you (?:a )?(?:number|ballpark|estimate|quote)|make (?:you )?(?:an )?offer),\s*",
         re.I,
     ),
-
     re.compile(
         r"To (?:better )?(?:help|assist) you,?\s*",
         re.I,
@@ -338,14 +300,6 @@ _AI_SETUP_PATTERNS = [
 _SENTENCE_BREAK_PATTERN = re.compile(
     r"([.!?])\s+"
 )
-
-_FILLER_STARTS = [
-    "Well",
-    "So",
-    "Honestly",
-    "Basically",
-    "I mean",
-]
 
 
 def _apply_substitutions(text: str) -> str:
@@ -369,7 +323,6 @@ def _humanize(text: str) -> str:
         return "Okay."
 
     sentences = _SENTENCE_BREAK_PATTERN.split(text)
-
     rebuilt = []
 
     for chunk in sentences:
@@ -395,18 +348,12 @@ class SpokenRendererProcessor(FrameProcessor):
         super().__init__()
 
         self._ctx = call_ctx
-
         self._buffer = ""
-
-        self._interrupted = False
-
         self._last_emit = ""
 
     def _transform(self, text: str) -> str:
-
         for pattern in _LEAKAGE_PATTERNS:
             if pattern.search(text):
-
                 logger.error(
                     "spoken_renderer leakage_blocked pattern={} preview={}",
                     pattern.pattern,
@@ -419,13 +366,9 @@ class SpokenRendererProcessor(FrameProcessor):
             text = pattern.sub(replacement, text)
 
         text = _apply_substitutions(text)
-
         text = _strip_ai_setups(text)
-
         text = text.replace("\n", " ")
-
         text = re.sub(r"\s{2,}", " ", text).strip()
-
         text = _humanize(text)
 
         if not text:
@@ -461,34 +404,16 @@ class SpokenRendererProcessor(FrameProcessor):
         )
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
-
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, StartInterruptionFrame):
-
-            self._interrupted = True
-
-            self._buffer = ""
-
-            logger.debug(
-                "spoken_renderer interruption detected"
-            )
-
-            await self.push_frame(frame, direction)
-
-            return
-
         if isinstance(frame, InterimTranscriptionFrame):
-
-            if self._buffer:
-                self._interrupted = True
+            self._buffer = ""
 
             await self.push_frame(frame, direction)
 
             return
 
         if isinstance(frame, (LLMTextFrame, TextFrame)):
-
             incoming = frame.text or ""
 
             if not incoming:
@@ -501,9 +426,7 @@ class SpokenRendererProcessor(FrameProcessor):
                 or "?" in self._buffer
                 or "." in self._buffer
             ):
-
                 text = self._buffer.strip()
-
                 self._buffer = ""
 
                 await self._emit_fast(text, direction)
@@ -511,15 +434,11 @@ class SpokenRendererProcessor(FrameProcessor):
             return
 
         if isinstance(frame, LLMFullResponseEndFrame):
-
             text = self._buffer.strip()
-
             self._buffer = ""
 
-            if text and not self._interrupted:
+            if text:
                 await self._emit_fast(text, direction)
-
-            self._interrupted = False
 
             await self.push_frame(frame, direction)
 
