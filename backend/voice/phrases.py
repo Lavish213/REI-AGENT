@@ -1,42 +1,15 @@
-"""
-Acquisitions phrase bank — real operator speech patterns, not AI completions.
-
-Used by:
-- SpokenRendererProcessor: substitution engine + redirect pivots
-- ContextTrackerProcessor: SAY= injection into [LIVE CONTEXT]
-
-All phrases drawn from real acquisitions call cadence.
-Short. Repetitive. Operational. Low-polish.
-"""
-
-# ---------------------------------------------------------------------------
-# Allowed acknowledgement bank — tiny on purpose
-# Operators repeat these constantly. That's normal. Do not suppress repetition.
-# ---------------------------------------------------------------------------
-
 ACK_BANK = [
     "Okay.",
     "Gotcha.",
     "Alright.",
     "Makes sense.",
-    "I hear you.",
     "Yeah.",
     "Right.",
     "Okay, yeah.",
     "Got it.",
 ]
 
-# ---------------------------------------------------------------------------
-# Per-objective pivot phrases — ordered by preferred usage
-# Renderer selects from these when redirect_needed or AI score forces swap
-# ---------------------------------------------------------------------------
-
 PIVOT_BANK: dict[str, list[str]] = {
-    "CONFIRM_INTENT": [
-        "You looking to sell it, or just seeing what it might be worth?",
-        "Were you thinking about selling, or not really?",
-        "You interested in selling, or just curious?",
-    ],
     "GET_ADDRESS": [
         "What's the address?",
         "What's the property address?",
@@ -80,22 +53,12 @@ PIVOT_BANK: dict[str, list[str]] = {
     ],
 }
 
-# ---------------------------------------------------------------------------
-# Redirect phrases — for rambling sellers
-# Used when redirect_needed=True and objective pivot isn't enough alone
-# ---------------------------------------------------------------------------
-
 REDIRECT_BANK: list[str] = [
     "Got it. And the property?",
     "Makes sense. What's the situation with the house?",
     "Okay. How soon are you looking to move?",
     "Sure. What's the address on that?",
 ]
-
-# ---------------------------------------------------------------------------
-# Pushback phrases by context
-# Used when seller makes unrealistic price demand or is evasive
-# ---------------------------------------------------------------------------
 
 PUSHBACK_BANK: dict[str, list[str]] = {
     "price_too_high": [

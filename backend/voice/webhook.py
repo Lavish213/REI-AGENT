@@ -36,7 +36,7 @@ async def _preload_and_store(app, call_sid: str, caller_phone: str) -> None:
         app.state.call_contexts = getattr(app.state, "call_contexts", {})
         app.state.call_contexts[call_sid] = {
             "boss_mode": False,
-            "property_context_str": "No property context available. Greet warmly and ask if they are calling about selling their home.",
+            "property_context_str": "No property context available. Greet professionally and ask if they are calling about selling their property.",
             "owner_first_name": "there",
             "lead": None,
         }

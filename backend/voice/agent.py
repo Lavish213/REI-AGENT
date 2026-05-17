@@ -29,6 +29,9 @@ from pipecat.transports.websocket.fastapi import (
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
 from pipecat.serializers.twilio import TwilioFrameSerializer
 
@@ -42,7 +45,6 @@ from backend.qa.grader import grade_call
 from backend.lib.db import insert_call, update_lead_for_disposition
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
 from backend.voice.processors.spoken_renderer import SpokenRendererProcessor
-from backend.voice.processors.ai_softener import AISoftenerProcessor
 
 
 _MD_STRIP_PATTERN = re.compile(
@@ -58,18 +60,15 @@ def _strip_markdown(text: str) -> str:
 
 
 def _build_opener(call_context: dict) -> str:
-    """
-    Build the exact ready-to-say opener from call context.
-    Never exposes placeholders or conditional logic to the LLM.
-    """
     is_outbound = call_context.get("is_outbound", False)
     name = (call_context.get("owner_first_name") or "").strip()
     address = (call_context.get("address") or "").strip()
 
     if not is_outbound:
         return (
-            "San Joaquin House Buyers, this is Sophia. "
-            "Hey — how can I help you?"
+            "Just so you know this call may be recorded. "
+            "Hey — this is Sophia with San Joaquin House Buyers. "
+            "Are you the one that reached out about your property?"
         )
 
     if name and address:
@@ -228,7 +227,7 @@ def _make_tool_handler(
 async def _build_tts(call_ctx_ref):
     api_key = os.environ.get("CARTESIA_API_KEY", "")
     voice_id = os.environ.get("CARTESIA_VOICE_ID", "")
-    model = os.environ.get("CARTESIA_MODEL", "sonic")
+    model = os.environ.get("CARTESIA_MODEL", "sonic-2")
 
     if not api_key:
         logger.error("CARTESIA_API_KEY missing")
@@ -248,7 +247,7 @@ async def _build_tts(call_ctx_ref):
         api_key=api_key,
         voice_id=voice_id,
         model=model,
-        sample_rate=8000,  # Match Twilio's native 8kHz mulaw — eliminates soxr resampling
+        sample_rate=8000,
     )
 
 
@@ -268,13 +267,14 @@ async def _create_stt_service(
     try:
         stt = DeepgramSTTService(
             api_key=api_key,
-            sample_rate=8000,  # Match Twilio's native 8kHz — no resampling in input path
+            sample_rate=8000,
             settings=DeepgramSTTService.Settings(
                 model=model,
                 language=language,
                 punctuate=True,
-                interim_results=False,
-                endpointing=200,
+                interim_results=True,
+                endpointing=400,
+                filler_words=False,
             ),
         )
 
@@ -548,9 +548,8 @@ async def run_sophia_agent(
         websocket=logging_ws,
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
-            audio_in_sample_rate=8000,   # Twilio sends 8kHz mulaw — no upsampling needed
             audio_out_enabled=True,
-            audio_out_sample_rate=8000,  # Cartesia at 8kHz — no downsampling needed
+            audio_out_sample_rate=8000,
             add_wav_header=False,
             serializer=_LoggingTwilioSerializer(
                 stream_sid=stream_sid,
@@ -576,7 +575,7 @@ async def run_sophia_agent(
         settings=AnthropicLLMService.Settings(
             model=voice_model,
             enable_prompt_caching=True,
-            max_tokens=120,  # 80 caused mid-sentence truncation → broken TTS cadence
+            max_tokens=80,
         ),
     )
 
@@ -587,7 +586,6 @@ async def run_sophia_agent(
 
     call_ctx = CallContext()
 
-    # Seed known facts from preloaded context so objective engine skips redundant questions
     if call_context.get("address"):
         call_ctx.address_known = True
 
@@ -632,17 +630,21 @@ async def run_sophia_agent(
     )
 
     spoken_renderer = SpokenRendererProcessor(call_ctx=call_ctx)
-    ai_softener = AISoftenerProcessor()
 
     context_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
+            user_turn_strategies=UserTurnStrategies(
+                stop=[TurnAnalyzerUserTurnStopStrategy(
+                    turn_analyzer=LocalSmartTurnAnalyzerV3()
+                )]
+            ),
             vad_analyzer=SileroVADAnalyzer(
-                sample_rate=8000,  # Must match audio_in_sample_rate
+                sample_rate=16000,
                 params=VADParams(
                     confidence=0.7,
                     start_secs=0.2,
-                    stop_secs=0.3,    # Was 0.5 — pipecat default is 0.2, 0.3 is phone-appropriate
+                    stop_secs=0.8,
                     min_volume=0.6,
                 ),
             ),
@@ -652,11 +654,10 @@ async def run_sophia_agent(
     pipeline = Pipeline([
         transport.input(),
         stt,
-        context_tracker,          # Tracks seller speech → injects [LIVE CONTEXT] before LLM
+        context_tracker,
         context_aggregator.user(),
         llm,
-        spoken_renderer,          # Buffers LLM output → compresses to operator speech → TTSTextFrame
-        ai_softener,              # Final cleanup: leakage guard, contraction normalization
+        spoken_renderer,
         tts,
         tts_frame_probe,
         transport_output,
