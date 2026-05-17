@@ -267,7 +267,7 @@ async def _create_stt_service(
     try:
         stt = DeepgramSTTService(
             api_key=api_key,
-            sample_rate=8000,
+            sample_rate=16000,
             ttfs_p99_latency=1.5,
             settings=DeepgramSTTService.Settings(
                 model=model,
@@ -563,6 +563,7 @@ async def run_sophia_agent(
         websocket=logging_ws,
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
+            audio_in_sample_rate=16000,
             audio_out_enabled=True,
             audio_out_sample_rate=8000,
             add_wav_header=False,
