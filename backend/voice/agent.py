@@ -272,7 +272,7 @@ async def _create_stt_service(
                 model=model,
                 language=language,
                 punctuate=True,
-                interim_results=True,
+                interim_results=False,
                 endpointing=400,
             ),
         )
@@ -643,10 +643,11 @@ async def run_sophia_agent(
                 params=VADParams(
                     confidence=0.7,
                     start_secs=0.2,
-                    stop_secs=0.8,
+                    stop_secs=0.4,
                     min_volume=0.6,
                 ),
             ),
+            user_turn_stop_timeout=3.0,
         ),
     )
 
