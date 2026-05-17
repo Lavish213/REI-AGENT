@@ -435,7 +435,7 @@ class ContextTrackerProcessor(FrameProcessor):
         await self.push_frame(frame, direction)
 
     async def _maybe_compress_context(self) -> None:
-        if self._ctx.turn_count < 6:
+        if self._ctx.turn_count < 10:
             return
 
         if not self._llm_context:
@@ -444,7 +444,7 @@ class ContextTrackerProcessor(FrameProcessor):
         if not getattr(self._llm_context, "messages", None):
             return
 
-        if len(self._llm_context.messages) <= 10:
+        if len(self._llm_context.messages) <= 16:
             return
 
         try:
