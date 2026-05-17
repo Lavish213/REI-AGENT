@@ -295,6 +295,21 @@ async def _create_stt_service(
         raise
 
 
+class STTFrameProbe(FrameProcessor):
+    async def process_frame(self, frame, direction):
+        frame_type = type(frame).__name__
+        text = getattr(frame, "text", None)
+        is_final = getattr(frame, "is_final", None)
+        logger.warning(
+            "STT_PROBE frame={} text={!r} final={}",
+            frame_type,
+            (text[:120] if text else None),
+            is_final,
+        )
+        await super().process_frame(frame, direction)
+        await self.push_frame(frame, direction)
+
+
 class TTSFrameProbe(FrameProcessor):
     _LIFECYCLE_TYPES = frozenset(["TTSStartedFrame", "TTSStoppedFrame", "ErrorFrame"])
     _AUDIO_TYPES = frozenset(["TTSAudioRawFrame", "OutputAudioRawFrame"])
@@ -606,6 +621,7 @@ async def run_sophia_agent(
 
     transport_output = transport.output()
 
+    stt_frame_probe = STTFrameProbe()
     tts_frame_probe = TTSFrameProbe()
 
     messages = [
@@ -655,6 +671,7 @@ async def run_sophia_agent(
     pipeline = Pipeline([
         transport.input(),
         stt,
+        stt_frame_probe,
         context_tracker,
         context_aggregator.user(),
         llm,
