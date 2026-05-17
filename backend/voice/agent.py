@@ -1,50 +1,46 @@
+from __future__ import annotations
+
+import asyncio
+import json
 import os
 import re
-import json
-import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from loguru import logger
 
-from pipecat.frames.frames import AudioRawFrame, TTSSpeakFrame
-from pipecat.pipeline.pipeline import Pipeline
-from pipecat.processors.frame_processor import FrameProcessor
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
-
-from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response_universal import (
-    LLMContextAggregatorPair,
-    LLMUserAggregatorParams,
-)
-
-from pipecat.services.anthropic.llm import AnthropicLLMService
-from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.cartesia.tts import CartesiaTTSService
-
-from pipecat.transports.websocket.fastapi import (
-    FastAPIWebsocketParams,
-    FastAPIWebsocketTransport,
-)
-
+from pipecat.adapters.schemas.function_schema import FunctionSchema
+from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.frames.frames import AudioRawFrame
+from pipecat.frames.frames import TTSSpeakFrame
+from pipecat.pipeline.pipeline import Pipeline
+from pipecat.pipeline.runner import PipelineRunner
+from pipecat.pipeline.task import PipelineParams
+from pipecat.pipeline.task import PipelineTask
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
+from pipecat.processors.aggregators.llm_response_universal import LLMUserAggregatorParams
+from pipecat.processors.frame_processor import FrameProcessor
+from pipecat.serializers.twilio import TwilioFrameSerializer
+from pipecat.services.anthropic.llm import AnthropicLLMService
+from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.llm_service import FunctionCallParams
+from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams
+from pipecat.transports.websocket.fastapi import FastAPIWebsocketTransport
 from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
-from pipecat.serializers.twilio import TwilioFrameSerializer
-
-from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.adapters.schemas.tools_schema import ToolsSchema
-
-from pipecat.services.llm_service import FunctionCallParams
-
-from backend.voice.tools import SOPHIA_TOOLS, execute_tool
+from backend.lib.db import insert_call
+from backend.lib.db import update_lead_for_disposition
 from backend.qa.grader import grade_call
-from backend.lib.db import insert_call, update_lead_for_disposition
-from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
+from backend.voice.processors.context_tracker import CallContext
+from backend.voice.processors.context_tracker import ContextTrackerProcessor
 from backend.voice.processors.spoken_renderer import SpokenRendererProcessor
+from backend.voice.tools import SOPHIA_TOOLS
+from backend.voice.tools import execute_tool
 
 
 _MD_STRIP_PATTERN = re.compile(
@@ -60,36 +56,46 @@ def _strip_markdown(text: str) -> str:
 
 
 def _build_opener(call_context: dict) -> str:
-    is_outbound = call_context.get("is_outbound", False)
+    is_outbound = bool(call_context.get("is_outbound"))
     name = (call_context.get("owner_first_name") or "").strip()
     address = (call_context.get("address") or "").strip()
 
     if not is_outbound:
         return (
-            "Just so you know this call may be recorded. "
-            "Hey, this is Sophia with San Joaquin House Buyers. "
-            "Are you calling about selling a property?"
+            "San Joaquin House Buyers — hey, this is Sophia."
         )
 
     if name and address:
         return (
-            f"Hey, is this {name}? This is Sophia with San Joaquin House Buyers. "
-            f"I was calling about the property on {address}. "
-            f"Did I catch you at an okay time?"
+            f"Hey — is this {name}? "
+            f"Hey, it's Sophia. I know this is kinda random. "
+            f"I was looking at your place on {address}. "
+            f"You got like two minutes?"
         )
 
     if address:
         return (
-            f"Hey, this is Sophia with San Joaquin House Buyers. "
-            f"I was calling about the property on {address}. "
-            f"Did I catch you at an okay time?"
+            "Hey, it's Sophia. I know this is kinda random. "
+            f"I was looking at the place on {address}. "
+            "You got like two minutes?"
         )
 
     return (
-        "Hey, this is Sophia with San Joaquin House Buyers. "
-        "I was reaching out about a property. "
-        "Did I catch you at an okay time?"
+        "Hey, it's Sophia with San Joaquin House Buyers. "
+        "I know this is kinda random. "
+        "You got like two minutes?"
     )
+
+
+def _load_prompt_file(prompts_dir: str, filename: str) -> str:
+    path = os.path.join(prompts_dir, filename)
+
+    if not os.path.exists(path):
+        logger.warning("prompt file missing path={}", path)
+        return ""
+
+    with open(path, encoding="utf-8") as file:
+        return file.read().strip()
 
 
 def _load_system_prompt(
@@ -101,42 +107,39 @@ def _load_system_prompt(
         "prompts",
     )
 
-    core_path = os.path.join(
-        prompts_dir,
-        "sophia_core.md",
-    )
-
-    with open(core_path) as f:
-        base_prompt = f.read().strip()
+    prompt_parts = [
+        _load_prompt_file(prompts_dir, "sophia_core.md"),
+        _load_prompt_file(prompts_dir, "SOPHIA_RUNTIME.md"),
+        _load_prompt_file(prompts_dir, "sophia_voice_spec.md"),
+        _load_prompt_file(prompts_dir, "sophia_scripts.md"),
+    ]
 
     if spanish:
-        extended_path = os.path.join(
-            prompts_dir,
-            "sophia_extended.md",
+        prompt_parts.append(
+            _load_prompt_file(prompts_dir, "sophia_extended.md")
         )
 
-        if os.path.exists(extended_path):
-            with open(extended_path) as f:
-                base_prompt = (
-                    base_prompt
-                    + "\n\n"
-                    + f.read().strip()
-                )
+        prompt_parts.append(
+            """
+LANGUAGE MODE: SPANISH DETECTED
 
-        base_prompt += (
-            "\n\nLANGUAGE MODE: SPANISH DETECTED\n\n"
-            "The caller is speaking Spanish. "
-            "Switch fully to Spanish now. "
-            "Use Sophia's California Spanish voice. "
-            "Natural, Central Valley Latina. "
-            "Not textbook Spanish. "
-            "Mix English words when natural. "
-            "End responses with questions."
+The caller is speaking Spanish.
+Switch fully to Spanish now.
+Use Sophia's natural Central Valley California Spanish.
+Do not sound like textbook Spanish.
+Code-switch only when natural.
+Keep responses short and conversational.
+""".strip()
         )
+
+    base_prompt = "\n\n".join(
+        part for part in prompt_parts if part
+    )
 
     base_prompt = _strip_markdown(base_prompt)
 
     opener = _build_opener(call_context)
+
     property_context_str = call_context.get(
         "property_context_str",
         "No property context available.",
@@ -155,24 +158,23 @@ def _load_boss_prompt(briefing: str) -> str:
     return f"""
 You are Sophia Reyes, acquisitions coordinator for San Joaquin House Buyers.
 
-You are talking to Angelo — your boss, Alanzo.
-This is a private check-in call.
+You are talking to Angelo, your boss.
+This is a private owner check-in call.
 
 Be casual, direct, and natural.
 No seller persona.
 No scripts.
 
-You know the full pipeline.
-You give him real numbers and real talk.
+You know the pipeline.
+You give real numbers and real talk.
 
-You can look up any property by address if he asks.
-
-You answer questions about:
+You can answer questions about:
 - specific leads
 - scores
 - ARVs
 - MAOs
 - call history
+- follow-up status
 
 Keep answers tight.
 Angelo is busy.
@@ -187,8 +189,9 @@ def _build_tools_schema() -> ToolsSchema:
     schemas = []
 
     for tool in SOPHIA_TOOLS:
-        props = tool["input_schema"]["properties"]
-        required = tool["input_schema"].get("required", [])
+        input_schema = tool.get("input_schema", {})
+        props = input_schema.get("properties", {})
+        required = input_schema.get("required", [])
 
         schemas.append(
             FunctionSchema(
@@ -206,7 +209,7 @@ def _build_tools_schema() -> ToolsSchema:
 
 def _make_tool_handler(
     tool_name: str,
-    call_ctx=None,
+    call_ctx: CallContext | None = None,
     lf_trace=None,
 ):
     async def handler(params: FunctionCallParams) -> None:
@@ -222,21 +225,19 @@ def _make_tool_handler(
     return handler
 
 
-async def _build_tts(call_ctx_ref):
+async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
     api_key = os.environ.get("CARTESIA_API_KEY", "")
     voice_id = os.environ.get("CARTESIA_VOICE_ID", "")
     model = os.environ.get("CARTESIA_MODEL", "sonic-2")
 
     if not api_key:
-        logger.error("CARTESIA_API_KEY missing")
         raise RuntimeError("CARTESIA_API_KEY missing")
 
     if not voice_id:
-        logger.error("CARTESIA_VOICE_ID missing")
         raise RuntimeError("CARTESIA_VOICE_ID missing")
 
-    logger.warning(
-        "TTS_ACTIVE provider=cartesia model={} voice_id={} sample_rate=8000",
+    logger.info(
+        "tts active provider=cartesia model={} voice_id={} sample_rate=8000",
         model,
         voice_id,
     )
@@ -264,40 +265,35 @@ async def _create_stt_service(
         language,
     )
 
-    try:
-        stt = DeepgramSTTService(
-            api_key=api_key,
-            sample_rate=16000,
-            ttfs_p99_latency=0.8,
-            settings=DeepgramSTTService.Settings(
-                model=model,
-                language=language,
-                punctuate=True,
-                interim_results=False,
-                endpointing=200,
-            ),
-        )
-
-        logger.info(
-            "deepgram stt service created successfully model={}",
-            model,
-        )
-
-        return stt
-
-    except Exception as e:
-        logger.error(
-            "deepgram stt init FAILED error={} params=model:{} language:{}",
-            str(e),
-            model,
-            language,
-        )
-        raise
+    return DeepgramSTTService(
+        api_key=api_key,
+        sample_rate=16000,
+        ttfs_p99_latency=0.8,
+        settings=DeepgramSTTService.Settings(
+            model=model,
+            language=language,
+            punctuate=True,
+            interim_results=False,
+            endpointing=120,
+        ),
+    )
 
 
 class TTSFrameProbe(FrameProcessor):
-    _LIFECYCLE_TYPES = frozenset(["TTSStartedFrame", "TTSStoppedFrame", "ErrorFrame"])
-    _AUDIO_TYPES = frozenset(["TTSAudioRawFrame", "OutputAudioRawFrame"])
+    _LIFECYCLE_TYPES = frozenset(
+        [
+            "TTSStartedFrame",
+            "TTSStoppedFrame",
+            "ErrorFrame",
+        ]
+    )
+
+    _AUDIO_TYPES = frozenset(
+        [
+            "TTSAudioRawFrame",
+            "OutputAudioRawFrame",
+        ]
+    )
 
     def __init__(self):
         super().__init__()
@@ -307,12 +303,20 @@ class TTSFrameProbe(FrameProcessor):
         frame_type = type(frame).__name__
 
         if frame_type in self._LIFECYCLE_TYPES:
-            logger.warning("TTS_PROBE frame={} direction={}", frame_type, direction)
+            logger.debug(
+                "tts_probe frame={} direction={}",
+                frame_type,
+                direction,
+            )
 
-        elif frame_type in self._AUDIO_TYPES and self._audio_logged < 3:
+        elif (
+            frame_type in self._AUDIO_TYPES
+            and self._audio_logged < 3
+        ):
             self._audio_logged += 1
-            logger.warning(
-                "TTS_PROBE frame={} size={} sample_rate={} count={}",
+
+            logger.debug(
+                "tts_probe audio frame={} size={} sample_rate={} count={}",
                 frame_type,
                 len(frame.audio) if hasattr(frame, "audio") else 0,
                 getattr(frame, "sample_rate", "unknown"),
@@ -336,39 +340,31 @@ class _LoggingWebSocket:
             event = parsed.get("event", "unknown")
 
             if event == "media":
-                payload_len = len(parsed.get("media", {}).get("payload", ""))
+                payload_len = len(
+                    parsed.get("media", {}).get("payload", "")
+                )
 
                 if self._send_count <= 3:
-                    logger.warning(
-                        "WS_SEND_TEXT count={} event=media payload_len={}",
+                    logger.debug(
+                        "ws_send_text count={} event=media payload_len={}",
                         self._send_count,
                         payload_len,
                     )
 
             else:
-                logger.warning(
-                    "WS_SEND_TEXT count={} event={}",
+                logger.debug(
+                    "ws_send_text count={} event={}",
                     self._send_count,
                     event,
                 )
 
-        except Exception as parse_err:
-            logger.warning(
-                "WS_SEND_TEXT parse_error={} len={}",
-                parse_err,
+        except Exception:
+            logger.debug(
+                "ws_send_text non_json len={}",
                 len(data),
             )
 
-        try:
-            await self._ws.send_text(data)
-
-        except Exception as send_err:
-            logger.error(
-                "WS_SEND_TEXT_FAILED count={} error={}",
-                self._send_count,
-                str(send_err),
-            )
-            raise
+        await self._ws.send_text(data)
 
     def __getattr__(self, name):
         return getattr(self._ws, name)
@@ -377,6 +373,7 @@ class _LoggingWebSocket:
 class _LoggingTwilioSerializer(TwilioFrameSerializer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         self._packet_count = 0
 
     async def serialize(self, frame):
@@ -384,8 +381,8 @@ class _LoggingTwilioSerializer(TwilioFrameSerializer):
             self._packet_count += 1
 
             if self._packet_count <= 3:
-                logger.warning(
-                    "SERIALIZER_ENTER count={} bytes={} sample_rate={}",
+                logger.debug(
+                    "serializer_enter count={} bytes={} sample_rate={}",
                     self._packet_count,
                     len(frame.audio),
                     getattr(frame, "sample_rate", "unknown"),
@@ -395,7 +392,7 @@ class _LoggingTwilioSerializer(TwilioFrameSerializer):
 
         if isinstance(frame, AudioRawFrame) and result is None:
             logger.error(
-                "SERIALIZER_NONE count={} sample_rate={} — encoding mismatch",
+                "serializer_none count={} sample_rate={}",
                 self._packet_count,
                 getattr(frame, "sample_rate", "unknown"),
             )
@@ -407,8 +404,8 @@ async def run_sophia_agent(
     websocket,
     call_sid: str,
     call_context: dict,
-    startup_clips: dict = None,
-    metrics_store: dict = None,
+    startup_clips: dict | None = None,
+    metrics_store: dict | None = None,
 ) -> None:
     logger.info(
         "sophia agent starting call_sid={}",
@@ -422,84 +419,24 @@ async def run_sophia_agent(
         call_context,
     )
 
-    stream_sid = call_sid
-    stream_sid_source = "fallback_call_sid"
-
-    try:
-        for i in range(10):
-            message = await asyncio.wait_for(
-                websocket.receive(),
-                timeout=5.0,
-            )
-
-            if "text" in message:
-                raw = message["text"]
-
-            elif "bytes" in message:
-                raw = message["bytes"].decode("utf-8")
-
-            else:
-                logger.warning(
-                    "ws_unknown_frame_type keys={}",
-                    list(message.keys()),
-                )
-                continue
-
-            msg = json.loads(raw)
-            event_type = msg.get("event")
-
-            logger.debug(
-                "ws_event i={} type={}",
-                i,
-                event_type,
-            )
-
-            if event_type == "start":
-                start_obj = msg.get("start", {})
-                top_level_sid = msg.get("streamSid")
-                nested_sid = start_obj.get("streamSid")
-
-                if top_level_sid:
-                    stream_sid = top_level_sid
-                    stream_sid_source = "top_level"
-
-                elif nested_sid:
-                    stream_sid = nested_sid
-                    stream_sid_source = "nested_start"
-
-                else:
-                    stream_sid = call_sid
-                    stream_sid_source = "fallback_call_sid"
-
-                break
-
-    except asyncio.TimeoutError:
-        logger.warning(
-            "ws_start_event_timeout call_sid={}",
-            call_sid,
-        )
-
-    except Exception as e:
-        logger.warning(
-            "ws_start_event_error error={}",
-            str(e),
-        )
-
-    logger.info(
-        "stream_routing stream_sid={} call_sid={} source={}",
-        stream_sid,
-        call_sid,
-        stream_sid_source,
+    stream_sid = await _read_stream_sid(
+        websocket=websocket,
+        call_sid=call_sid,
     )
 
-    spanish_detected = call_context.get("spanish_detected", False)
+    spanish_detected = bool(
+        call_context.get("spanish_detected")
+    )
+
     lead = call_context.get("lead")
     seller_memory = None
 
     if lead and lead.get("id"):
         from backend.voice.memory import SellerMemory
 
-        seller_memory = SellerMemory.load(lead["id"])
+        seller_memory = SellerMemory.load(
+            lead["id"]
+        )
 
     if call_context.get("boss_mode"):
         system_prompt = _load_boss_prompt(
@@ -524,12 +461,6 @@ async def run_sophia_agent(
     from backend.voice.prompt_budget import apply_budget
 
     system_prompt = apply_budget(system_prompt)
-
-    logger.info(
-        "transport init stream_sid={} call_sid={}",
-        stream_sid,
-        call_sid,
-    )
 
     logging_ws = _LoggingWebSocket(websocket)
 
@@ -593,8 +524,6 @@ async def run_sophia_agent(
         )
 
     tts = await _build_tts(call_ctx)
-    transport_output = transport.output()
-    tts_frame_probe = TTSFrameProbe()
 
     messages = [
         {
@@ -613,7 +542,9 @@ async def run_sophia_agent(
         llm_context=context,
     )
 
-    spoken_renderer = SpokenRendererProcessor(call_ctx=call_ctx)
+    spoken_renderer = SpokenRendererProcessor(
+        call_ctx=call_ctx,
+    )
 
     context_aggregator = LLMContextAggregatorPair(
         context,
@@ -623,33 +554,35 @@ async def run_sophia_agent(
                     TurnAnalyzerUserTurnStopStrategy(
                         turn_analyzer=LocalSmartTurnAnalyzerV3()
                     )
-                ]
+                ],
             ),
             vad_analyzer=SileroVADAnalyzer(
-                sample_rate=8000,
+                sample_rate=16000,
                 params=VADParams(
                     confidence=0.7,
                     start_secs=0.12,
-                    stop_secs=0.2,
+                    stop_secs=0.16,
                     min_volume=0.6,
                 ),
             ),
-            user_turn_stop_timeout=0.9,
+            user_turn_stop_timeout=0.75,
         ),
     )
 
-    pipeline = Pipeline([
-        transport.input(),
-        stt,
-        context_tracker,
-        context_aggregator.user(),
-        llm,
-        spoken_renderer,
-        tts,
-        tts_frame_probe,
-        transport_output,
-        context_aggregator.assistant(),
-    ])
+    pipeline = Pipeline(
+        [
+            transport.input(),
+            stt,
+            context_tracker,
+            context_aggregator.user(),
+            llm,
+            spoken_renderer,
+            tts,
+            TTSFrameProbe(),
+            transport.output(),
+            context_aggregator.assistant(),
+        ]
+    )
 
     task = PipelineTask(
         pipeline,
@@ -666,9 +599,13 @@ async def run_sophia_agent(
             call_sid,
         )
 
-        await task.queue_frames([
-            TTSSpeakFrame(_build_opener(call_context))
-        ])
+        await task.queue_frames(
+            [
+                TTSSpeakFrame(
+                    _build_opener(call_context)
+                )
+            ]
+        )
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):
@@ -684,29 +621,104 @@ async def run_sophia_agent(
     try:
         await runner.run(task)
 
-    except Exception as e:
+    except Exception as error:
         logger.error(
             "sophia agent error call_sid={} error={}",
             call_sid,
-            str(e),
+            str(error),
         )
 
     finally:
         await _handle_call_end(
-            call_sid,
-            call_context,
-            context,
-            call_ctx,
-            seller_memory,
-            lf_trace,
+            call_sid=call_sid,
+            call_context=call_context,
+            context=context,
+            call_ctx=call_ctx,
+            seller_memory=seller_memory,
+            lf_trace=lf_trace,
         )
+
+
+async def _read_stream_sid(
+    websocket,
+    call_sid: str,
+) -> str:
+    stream_sid = call_sid
+    stream_sid_source = "fallback_call_sid"
+
+    try:
+        for index in range(10):
+            message = await asyncio.wait_for(
+                websocket.receive(),
+                timeout=5.0,
+            )
+
+            if "text" in message:
+                raw = message["text"]
+
+            elif "bytes" in message:
+                raw = message["bytes"].decode("utf-8")
+
+            else:
+                logger.debug(
+                    "ws_unknown_frame_type keys={}",
+                    list(message.keys()),
+                )
+                continue
+
+            payload = json.loads(raw)
+            event_type = payload.get("event")
+
+            logger.debug(
+                "ws_event index={} type={}",
+                index,
+                event_type,
+            )
+
+            if event_type != "start":
+                continue
+
+            start_obj = payload.get("start", {})
+            top_level_sid = payload.get("streamSid")
+            nested_sid = start_obj.get("streamSid")
+
+            if top_level_sid:
+                stream_sid = top_level_sid
+                stream_sid_source = "top_level"
+
+            elif nested_sid:
+                stream_sid = nested_sid
+                stream_sid_source = "nested_start"
+
+            break
+
+    except asyncio.TimeoutError:
+        logger.warning(
+            "ws_start_event_timeout call_sid={}",
+            call_sid,
+        )
+
+    except Exception as error:
+        logger.warning(
+            "ws_start_event_error error={}",
+            str(error),
+        )
+
+    logger.info(
+        "stream_routing stream_sid={} call_sid={} source={}",
+        stream_sid,
+        call_sid,
+        stream_sid_source,
+    )
+
+    return stream_sid
 
 
 async def _handle_call_end(
     call_sid: str,
     call_context: dict,
     context: LLMContext,
-    call_ctx=None,
+    call_ctx: CallContext | None = None,
     seller_memory=None,
     lf_trace=None,
 ) -> None:
@@ -716,7 +728,9 @@ async def _handle_call_end(
     )
 
     try:
-        transcript = _build_transcript(context.messages)
+        transcript = _build_transcript(
+            context.messages
+        )
 
         disposition = (
             call_ctx.disposition
@@ -732,55 +746,21 @@ async def _handle_call_end(
 
                 seller_memory.save()
 
-            except Exception as mem_err:
+            except Exception as error:
                 logger.error(
                     "seller_memory save failed error={}",
-                    str(mem_err),
+                    str(error),
                 )
 
         lead = call_context.get("lead")
 
         if lead:
-            call_data = {
-                "lead_id": lead["id"],
-                "property_id": lead.get("property_id"),
-                "signalwire_call_id": call_sid,
-                "direction": "inbound",
-                "transcript": transcript,
-                "call_disposition": disposition,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-
-            call_id_db = insert_call(call_data)
-
-            if call_id_db:
-                chunks = _build_transcript_chunks(context.messages)
-
-                if chunks:
-                    from backend.lib.db import insert_transcript_chunks
-
-                    insert_transcript_chunks(
-                        call_id_db,
-                        lead["id"],
-                        chunks,
-                    )
-
-                from backend.voice.events import emit_event, TRANSCRIPT_COMPLETED
-
-                emit_event(
-                    TRANSCRIPT_COMPLETED,
-                    call_id_db,
-                    lead["id"],
-                    {
-                        "chunk_count": len(chunks)
-                    },
-                )
-
-            if disposition:
-                update_lead_for_disposition(
-                    lead["id"],
-                    disposition,
-                )
+            call_id_db = await _persist_call_result(
+                call_sid=call_sid,
+                lead=lead,
+                transcript=transcript,
+                disposition=disposition,
+            )
 
             asyncio.create_task(
                 _run_qa_async(
@@ -792,36 +772,85 @@ async def _handle_call_end(
 
             asyncio.create_task(
                 _run_transcript_intel_async(
-                    transcript,
-                    lead["id"],
-                    call_sid,
-                    call_id_db,
-                    disposition,
+                    transcript=transcript,
+                    lead_id=lead["id"],
+                    call_sid=call_sid,
+                    call_id_db=call_id_db,
+                    disposition=disposition,
                 )
             )
 
         from backend.observability import trace_call_end
-
-        turn_count = (
-            call_ctx.turn_count
-            if call_ctx
-            else 0
-        )
 
         trace_call_end(
             lf_trace,
             call_sid,
             disposition,
             len(transcript),
-            turn_count,
+            call_ctx.turn_count if call_ctx else 0,
         )
 
-    except Exception as e:
+    except Exception as error:
         logger.error(
             "handle_call_end error call_sid={} error={}",
             call_sid,
-            str(e),
+            str(error),
         )
+
+
+async def _persist_call_result(
+    call_sid: str,
+    lead: dict,
+    transcript: str,
+    disposition: str | None,
+) -> str | None:
+    call_data = {
+        "lead_id": lead["id"],
+        "property_id": lead.get("property_id"),
+        "signalwire_call_id": call_sid,
+        "direction": "inbound",
+        "transcript": transcript,
+        "call_disposition": disposition,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+    call_id_db = insert_call(call_data)
+
+    if not call_id_db:
+        return None
+
+    chunks = _build_transcript_chunks_from_text(
+        transcript
+    )
+
+    if chunks:
+        from backend.lib.db import insert_transcript_chunks
+
+        insert_transcript_chunks(
+            call_id_db,
+            lead["id"],
+            chunks,
+        )
+
+        from backend.voice.events import TRANSCRIPT_COMPLETED
+        from backend.voice.events import emit_event
+
+        emit_event(
+            TRANSCRIPT_COMPLETED,
+            call_id_db,
+            lead["id"],
+            {
+                "chunk_count": len(chunks),
+            },
+        )
+
+    if disposition:
+        update_lead_for_disposition(
+            lead["id"],
+            disposition,
+        )
+
+    return call_id_db
 
 
 async def _run_qa_async(
@@ -838,15 +867,15 @@ async def _run_qa_async(
         )
 
         logger.info(
-            "QA grading complete call_sid={}",
+            "qa grading complete call_sid={}",
             call_sid,
         )
 
-    except Exception as e:
+    except Exception as error:
         logger.error(
-            "QA grading failed call_sid={} error={}",
+            "qa grading failed call_sid={} error={}",
             call_sid,
-            str(e),
+            str(error),
         )
 
 
@@ -884,60 +913,28 @@ async def _run_transcript_intel_async(
             call_sid,
         )
 
-    except Exception as e:
+    except Exception as error:
         logger.error(
             "transcript_intel failed call_sid={} error={}",
             call_sid,
-            str(e),
+            str(error),
         )
 
 
 def _build_transcript(
     messages: list[dict],
 ) -> str:
-    lines = []
+    lines: list[str] = []
 
-    for msg in messages:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-
-        if (
-            isinstance(content, str)
-            and role in ("user", "assistant")
-        ):
-            if content == "[call started]":
-                continue
-
-            speaker = (
-                "SELLER"
-                if role == "user"
-                else "SOPHIA"
-            )
-
-            lines.append(
-                f"{speaker}: {content}"
-            )
-
-    return "\n".join(lines)
-
-
-def _build_transcript_chunks(
-    messages: list[dict],
-) -> list[dict]:
-    chunks = []
-    seq = 0
-
-    for msg in messages:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
+    for message in messages:
+        role = message.get("role", "")
+        content = message.get("content", "")
 
         if (
             not isinstance(content, str)
             or role not in ("user", "assistant")
+            or content == "[call started]"
         ):
-            continue
-
-        if content == "[call started]":
             continue
 
         speaker = (
@@ -946,14 +943,81 @@ def _build_transcript_chunks(
             else "SOPHIA"
         )
 
-        chunks.append({
-            "speaker": speaker,
-            "text": content,
-            "chunk_type": "final",
-            "sequence_order": seq,
-            "confidence": None,
-        })
+        lines.append(
+            f"{speaker}: {content}"
+        )
 
-        seq += 1
+    return "\n".join(lines)
+
+
+def _build_transcript_chunks(
+    transcript_messages: list[dict],
+) -> list[dict]:
+    chunks: list[dict] = []
+    sequence_order = 0
+
+    for message in transcript_messages:
+        role = message.get("role", "")
+        content = message.get("content", "")
+
+        if (
+            not isinstance(content, str)
+            or role not in ("user", "assistant")
+            or content == "[call started]"
+        ):
+            continue
+
+        speaker = (
+            "SELLER"
+            if role == "user"
+            else "SOPHIA"
+        )
+
+        chunks.append(
+            {
+                "speaker": speaker,
+                "text": content,
+                "chunk_type": "final",
+                "sequence_order": sequence_order,
+                "confidence": None,
+            }
+        )
+
+        sequence_order += 1
+
+    return chunks
+
+
+def _build_transcript_chunks_from_text(
+    transcript: str,
+) -> list[dict]:
+    chunks: list[dict] = []
+
+    for sequence_order, line in enumerate(
+        transcript.splitlines()
+    ):
+        if not line.strip():
+            continue
+
+        if line.startswith("SELLER:"):
+            speaker = "SELLER"
+            text = line.removeprefix("SELLER:").strip()
+
+        elif line.startswith("SOPHIA:"):
+            speaker = "SOPHIA"
+            text = line.removeprefix("SOPHIA:").strip()
+
+        else:
+            continue
+
+        chunks.append(
+            {
+                "speaker": speaker,
+                "text": text,
+                "chunk_type": "final",
+                "sequence_order": sequence_order,
+                "confidence": None,
+            }
+        )
 
     return chunks
