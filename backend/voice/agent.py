@@ -213,11 +213,12 @@ def _make_tool_handler(
     lf_trace=None,
 ):
     async def handler(params: FunctionCallParams) -> None:
-        result = execute_tool(
+        result = await asyncio.to_thread(
+            execute_tool,
             tool_name,
             dict(params.arguments),
-            call_ctx=call_ctx,
-            lf_trace=lf_trace,
+            call_ctx,
+            lf_trace,
         )
 
         await params.result_callback(result)
@@ -513,15 +514,18 @@ async def run_sophia_agent(
     if metrics_store is not None:
         metrics_store[call_sid] = call_ctx
 
-    for tool in SOPHIA_TOOLS:
-        llm.register_function(
-            tool["name"],
-            _make_tool_handler(
+    boss_mode = call_context.get("boss_mode", False)
+
+    if not boss_mode:
+        for tool in SOPHIA_TOOLS:
+            llm.register_function(
                 tool["name"],
-                call_ctx,
-                lf_trace,
-            ),
-        )
+                _make_tool_handler(
+                    tool["name"],
+                    call_ctx,
+                    lf_trace,
+                ),
+            )
 
     tts = await _build_tts(call_ctx)
 
@@ -534,7 +538,7 @@ async def run_sophia_agent(
 
     context = LLMContext(
         messages=messages,
-        tools=_build_tools_schema(),
+        tools=_build_tools_schema() if not boss_mode else None,
     )
 
     context_tracker = ContextTrackerProcessor(
@@ -744,7 +748,7 @@ async def _handle_call_end(
                     f"Call {call_sid[:8]}: {transcript[:200]}"
                 )
 
-                seller_memory.save()
+                await asyncio.to_thread(seller_memory.save)
 
             except Exception as error:
                 logger.error(
@@ -814,7 +818,7 @@ async def _persist_call_result(
         "created_at": datetime.now(UTC).isoformat(),
     }
 
-    call_id_db = insert_call(call_data)
+    call_id_db = await asyncio.to_thread(insert_call, call_data)
 
     if not call_id_db:
         return None
@@ -826,7 +830,8 @@ async def _persist_call_result(
     if chunks:
         from backend.lib.db import insert_transcript_chunks
 
-        insert_transcript_chunks(
+        await asyncio.to_thread(
+            insert_transcript_chunks,
             call_id_db,
             lead["id"],
             chunks,
@@ -845,7 +850,8 @@ async def _persist_call_result(
         )
 
     if disposition:
-        update_lead_for_disposition(
+        await asyncio.to_thread(
+            update_lead_for_disposition,
             lead["id"],
             disposition,
         )
@@ -859,15 +865,24 @@ async def _run_qa_async(
     call_sid: str,
 ) -> None:
     try:
-        await asyncio.to_thread(
-            grade_call,
-            transcript,
-            lead_id,
-            call_sid,
+        await asyncio.wait_for(
+            asyncio.to_thread(
+                grade_call,
+                transcript,
+                lead_id,
+                call_sid,
+            ),
+            timeout=30.0,
         )
 
         logger.info(
             "qa grading complete call_sid={}",
+            call_sid,
+        )
+
+    except asyncio.TimeoutError:
+        logger.error(
+            "qa grading timeout call_sid={}",
             call_sid,
         )
 
@@ -889,27 +904,39 @@ async def _run_transcript_intel_async(
     try:
         from backend.qa.transcript_intel import analyze_transcript
 
-        intel = await asyncio.to_thread(
-            analyze_transcript,
-            transcript,
-            lead_id,
-            call_sid,
-            call_id_db,
+        intel = await asyncio.wait_for(
+            asyncio.to_thread(
+                analyze_transcript,
+                transcript,
+                lead_id,
+                call_sid,
+                call_id_db,
+            ),
+            timeout=60.0,
         )
 
         if intel and call_id_db and lead_id:
             from backend.workflows.engine import trigger_from_call_outcome
 
-            await asyncio.to_thread(
-                trigger_from_call_outcome,
-                call_id_db,
-                lead_id,
-                disposition,
-                intel,
+            await asyncio.wait_for(
+                asyncio.to_thread(
+                    trigger_from_call_outcome,
+                    call_id_db,
+                    lead_id,
+                    disposition,
+                    intel,
+                ),
+                timeout=15.0,
             )
 
         logger.info(
             "transcript_intel complete call_sid={}",
+            call_sid,
+        )
+
+    except asyncio.TimeoutError:
+        logger.error(
+            "transcript_intel timeout call_sid={}",
             call_sid,
         )
 
