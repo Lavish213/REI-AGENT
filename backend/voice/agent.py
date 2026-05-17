@@ -309,7 +309,7 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
             model=model,
             language=language,
             punctuate=True,
-            interim_results=True,
+            interim_results=False,
             endpointing=300,
         ),
     )
