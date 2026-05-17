@@ -30,8 +30,11 @@ _LEAKAGE_SAFE = (
     "San Joaquin House Buyers."
 )
 
-_MAX_SENTENCE_WORDS = 22
-_BUFFER_FLUSH_LENGTH = 140
+_META_SAFE = (
+    "Sorry about that — Sophia with "
+    "San Joaquin House Buyers."
+)
+
 
 
 _LEAKAGE_PATTERNS = [
@@ -61,12 +64,10 @@ _META_BLOCK_PATTERNS = [
     re.compile(r"\bi'?m here to help\b", re.I),
     re.compile(r"\blet me explain\b", re.I),
     re.compile(r"\bi understand your confusion\b", re.I),
+    re.compile(r"\bcurrent objective\b", re.I),
+    re.compile(r"\binternal state\b", re.I),
+    re.compile(r"\bsystem prompt\b", re.I),
 ]
-
-_META_SAFE = (
-    "Sorry about that — Sophia with "
-    "San Joaquin House Buyers."
-)
 
 _CONTRACTION_MAP: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bI am\b", re.I), "I'm"),
@@ -106,8 +107,14 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern[str], str]] = [
         ),
         "Got it. ",
     ),
-    (re.compile(r"\bAbsolutely[!.,]?\s*", re.I), "Yeah. "),
-    (re.compile(r"\bFor sure[!.,]?\s*", re.I), "Okay. "),
+    (
+        re.compile(r"\bAbsolutely[!.,]?\s*", re.I),
+        "Yeah. ",
+    ),
+    (
+        re.compile(r"\bFor sure[!.,]?\s*", re.I),
+        "Okay. ",
+    ),
     (
         re.compile(
             r"\bCould you (?:please )?"
@@ -165,7 +172,8 @@ _SUBSTITUTION_RULES: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(
             r"\bWhat (?:is|'s|are) you (?:looking|hoping) "
-            r"to (?:get|walk away with)(?: from (?:this|the sale))?\?",
+            r"to (?:get|walk away with)"
+            r"(?: from (?:this|the sale))?\?",
             re.I,
         ),
         "What's your number?",
@@ -224,22 +232,9 @@ def _normalize_spacing(text: str) -> str:
 
 def _humanize(text: str) -> str:
     text = text.strip()
-
     if not text:
         return "Okay."
-
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-
-    if not sentences:
-        return "Okay."
-
-    primary = sentences[0].strip()
-
-    if len(primary.split()) > _MAX_SENTENCE_WORDS:
-        pieces = re.split(r"[.!?]", primary)
-        primary = pieces[0].strip() if pieces else primary
-
-    return primary or "Okay."
+    return text
 
 
 class SpokenRendererProcessor(FrameProcessor):
@@ -337,36 +332,32 @@ class SpokenRendererProcessor(FrameProcessor):
 
         if isinstance(frame, (LLMTextFrame, TextFrame)):
             incoming = frame.text or ""
-
             if not incoming.strip():
                 return
-
             self._buffer += incoming
-
-            should_flush = (
-                len(self._buffer) >= _BUFFER_FLUSH_LENGTH
-                or self._buffer.rstrip().endswith(("?", ".", "!"))
-            )
-
-            if should_flush:
-                text = self._buffer.strip()
-                self._buffer = ""
-
-                await self._emit_fast(text, direction)
-
             return
 
         if isinstance(frame, LLMFullResponseEndFrame):
             text = self._buffer.strip()
+
             self._buffer = ""
 
             if text:
-                await self._emit_fast(text, direction)
+                await self._emit_fast(
+                    text,
+                    direction,
+                )
 
             self._last_emit = ""
 
-            await self.push_frame(frame, direction)
+            await self.push_frame(
+                frame,
+                direction,
+            )
 
             return
 
-        await self.push_frame(frame, direction)
+        await self.push_frame(
+            frame,
+            direction,
+        )
