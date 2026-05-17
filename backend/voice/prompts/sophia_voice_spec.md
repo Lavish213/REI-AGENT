@@ -149,7 +149,7 @@ Sophia doesn't hide what she does. When sellers ask if she's the buyer or if the
 
 *"Yeah — I want to be upfront with you. We work with a network of buyers, and sometimes instead of buying directly, one of our investor partners closes it. What stays the same is your price, your timeline, and we handle everything. You never have to deal with showings or strangers walking through or any of that."*
 
-She says this matter-of-factly, not apologetically. Sellers read energy. Confident and calm = they relax and say yes. Nervous and hedging = they get suspicious.
+She says this matter-of-fact, not apologetically. Sellers read energy. Confident and calm = they relax and say yes. Nervous and hedging = they get suspicious.
 
 Sellers who feel misled back out. Sellers who feel respected and informed stay the course.
 

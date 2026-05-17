@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-from pipecat.frames.frames import AudioRawFrame
+from pipecat.frames.frames import AudioRawFrame, TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.pipeline.runner import PipelineRunner
@@ -67,26 +67,28 @@ def _build_opener(call_context: dict) -> str:
     if not is_outbound:
         return (
             "Just so you know this call may be recorded. "
-            "Hey — this is Sophia with San Joaquin House Buyers. "
-            "Are you the one that reached out about your property?"
+            "Hey, this is Sophia with San Joaquin House Buyers. "
+            "Are you calling about selling a property?"
         )
 
     if name and address:
         return (
-            f"Hey, is this {name}? Hey, this is Sophia. "
-            f"I know this is kind of out of nowhere, but I was calling about your place on {address}. "
+            f"Hey, is this {name}? This is Sophia with San Joaquin House Buyers. "
+            f"I was calling about the property on {address}. "
             f"Did I catch you at an okay time?"
         )
+
     if address:
         return (
-            f"Hey, this is Sophia. I know this is kind of out of nowhere, "
-            f"but I was calling about the property on {address}. "
+            f"Hey, this is Sophia with San Joaquin House Buyers. "
+            f"I was calling about the property on {address}. "
             f"Did I catch you at an okay time?"
         )
+
     return (
         "Hey, this is Sophia with San Joaquin House Buyers. "
-        "I know this is kind of out of nowhere, but I was reaching out to see "
-        "if you had any interest in selling a property. Did I catch you at an okay time?"
+        "I was reaching out about a property. "
+        "Did I catch you at an okay time?"
     )
 
 
@@ -186,11 +188,7 @@ def _build_tools_schema() -> ToolsSchema:
 
     for tool in SOPHIA_TOOLS:
         props = tool["input_schema"]["properties"]
-
-        required = tool["input_schema"].get(
-            "required",
-            [],
-        )
+        required = tool["input_schema"].get("required", [])
 
         schemas.append(
             FunctionSchema(
@@ -245,9 +243,11 @@ async def _build_tts(call_ctx_ref):
 
     return CartesiaTTSService(
         api_key=api_key,
-        voice_id=voice_id,
-        model=model,
         sample_rate=8000,
+        settings=CartesiaTTSService.Settings(
+            voice=voice_id,
+            model=model,
+        ),
     )
 
 
@@ -256,7 +256,7 @@ async def _create_stt_service(
     spanish: bool,
 ) -> DeepgramSTTService:
     language = "es" if spanish else "en-US"
-    model = "nova-2"
+    model = os.environ.get("DEEPGRAM_MODEL", "nova-2")
 
     logger.info(
         "deepgram stt initializing model={} language={}",
@@ -267,14 +267,14 @@ async def _create_stt_service(
     try:
         stt = DeepgramSTTService(
             api_key=api_key,
-            sample_rate=16000,
-            ttfs_p99_latency=1.5,
+            sample_rate=8000,
+            ttfs_p99_latency=0.8,
             settings=DeepgramSTTService.Settings(
                 model=model,
                 language=language,
                 punctuate=True,
                 interim_results=False,
-                endpointing=400,
+                endpointing=200,
             ),
         )
 
@@ -293,21 +293,6 @@ async def _create_stt_service(
             language,
         )
         raise
-
-
-class STTFrameProbe(FrameProcessor):
-    async def process_frame(self, frame, direction):
-        frame_type = type(frame).__name__
-        text = getattr(frame, "text", None)
-        is_final = getattr(frame, "is_final", None)
-        logger.warning(
-            "STT_PROBE frame={} text={!r} final={}",
-            frame_type,
-            (text[:120] if text else None),
-            is_final,
-        )
-        await super().process_frame(frame, direction)
-        await self.push_frame(frame, direction)
 
 
 class TTSFrameProbe(FrameProcessor):
@@ -348,13 +333,10 @@ class _LoggingWebSocket:
 
         try:
             parsed = json.loads(data)
-
             event = parsed.get("event", "unknown")
 
             if event == "media":
-                payload_len = len(
-                    parsed.get("media", {}).get("payload", "")
-                )
+                payload_len = len(parsed.get("media", {}).get("payload", ""))
 
                 if self._send_count <= 3:
                     logger.warning(
@@ -400,6 +382,7 @@ class _LoggingTwilioSerializer(TwilioFrameSerializer):
     async def serialize(self, frame):
         if isinstance(frame, AudioRawFrame):
             self._packet_count += 1
+
             if self._packet_count <= 3:
                 logger.warning(
                     "SERIALIZER_ENTER count={} bytes={} sample_rate={}",
@@ -463,7 +446,6 @@ async def run_sophia_agent(
                 continue
 
             msg = json.loads(raw)
-
             event_type = msg.get("event")
 
             logger.debug(
@@ -474,7 +456,6 @@ async def run_sophia_agent(
 
             if event_type == "start":
                 start_obj = msg.get("start", {})
-
                 top_level_sid = msg.get("streamSid")
                 nested_sid = start_obj.get("streamSid")
 
@@ -511,21 +492,14 @@ async def run_sophia_agent(
         stream_sid_source,
     )
 
-    spanish_detected = call_context.get(
-        "spanish_detected",
-        False,
-    )
-
+    spanish_detected = call_context.get("spanish_detected", False)
     lead = call_context.get("lead")
-
     seller_memory = None
 
     if lead and lead.get("id"):
         from backend.voice.memory import SellerMemory
 
-        seller_memory = SellerMemory.load(
-            lead["id"]
-        )
+        seller_memory = SellerMemory.load(lead["id"])
 
     if call_context.get("boss_mode"):
         system_prompt = _load_boss_prompt(
@@ -563,7 +537,7 @@ async def run_sophia_agent(
         websocket=logging_ws,
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
-            audio_in_sample_rate=16000,
+            audio_in_sample_rate=8000,
             audio_out_enabled=True,
             audio_out_sample_rate=8000,
             add_wav_header=False,
@@ -591,7 +565,7 @@ async def run_sophia_agent(
         settings=AnthropicLLMService.Settings(
             model=voice_model,
             enable_prompt_caching=True,
-            max_tokens=80,
+            max_tokens=70,
         ),
     )
 
@@ -619,21 +593,14 @@ async def run_sophia_agent(
         )
 
     tts = await _build_tts(call_ctx)
-
     transport_output = transport.output()
-
-    stt_frame_probe = STTFrameProbe()
     tts_frame_probe = TTSFrameProbe()
 
     messages = [
         {
             "role": "system",
             "content": system_prompt,
-        },
-        {
-            "role": "user",
-            "content": "[call started]",
-        },
+        }
     ]
 
     context = LLMContext(
@@ -652,27 +619,28 @@ async def run_sophia_agent(
         context,
         user_params=LLMUserAggregatorParams(
             user_turn_strategies=UserTurnStrategies(
-                stop=[TurnAnalyzerUserTurnStopStrategy(
-                    turn_analyzer=LocalSmartTurnAnalyzerV3()
-                )]
+                stop=[
+                    TurnAnalyzerUserTurnStopStrategy(
+                        turn_analyzer=LocalSmartTurnAnalyzerV3()
+                    )
+                ]
             ),
             vad_analyzer=SileroVADAnalyzer(
-                sample_rate=16000,
+                sample_rate=8000,
                 params=VADParams(
                     confidence=0.7,
-                    start_secs=0.2,
+                    start_secs=0.12,
                     stop_secs=0.2,
                     min_volume=0.6,
                 ),
             ),
-            user_turn_stop_timeout=3.0,
+            user_turn_stop_timeout=0.9,
         ),
     )
 
     pipeline = Pipeline([
         transport.input(),
         stt,
-        stt_frame_probe,
         context_tracker,
         context_aggregator.user(),
         llm,
@@ -699,7 +667,7 @@ async def run_sophia_agent(
         )
 
         await task.queue_frames([
-            context_aggregator.user()._get_context_frame()
+            TTSSpeakFrame(_build_opener(call_context))
         ])
 
     @transport.event_handler("on_client_disconnected")
@@ -748,9 +716,7 @@ async def _handle_call_end(
     )
 
     try:
-        transcript = _build_transcript(
-            context.messages
-        )
+        transcript = _build_transcript(context.messages)
 
         disposition = (
             call_ctx.disposition
@@ -782,22 +748,16 @@ async def _handle_call_end(
                 "direction": "inbound",
                 "transcript": transcript,
                 "call_disposition": disposition,
-                "created_at": datetime.now(
-                    timezone.utc
-                ).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
 
             call_id_db = insert_call(call_data)
 
             if call_id_db:
-                chunks = _build_transcript_chunks(
-                    context.messages
-                )
+                chunks = _build_transcript_chunks(context.messages)
 
                 if chunks:
-                    from backend.lib.db import (
-                        insert_transcript_chunks,
-                    )
+                    from backend.lib.db import insert_transcript_chunks
 
                     insert_transcript_chunks(
                         call_id_db,
@@ -805,10 +765,7 @@ async def _handle_call_end(
                         chunks,
                     )
 
-                from backend.voice.events import (
-                    emit_event,
-                    TRANSCRIPT_COMPLETED,
-                )
+                from backend.voice.events import emit_event, TRANSCRIPT_COMPLETED
 
                 emit_event(
                     TRANSCRIPT_COMPLETED,
@@ -901,9 +858,7 @@ async def _run_transcript_intel_async(
     disposition: str | None = None,
 ) -> None:
     try:
-        from backend.qa.transcript_intel import (
-            analyze_transcript,
-        )
+        from backend.qa.transcript_intel import analyze_transcript
 
         intel = await asyncio.to_thread(
             analyze_transcript,
@@ -914,9 +869,7 @@ async def _run_transcript_intel_async(
         )
 
         if intel and call_id_db and lead_id:
-            from backend.workflows.engine import (
-                trigger_from_call_outcome,
-            )
+            from backend.workflows.engine import trigger_from_call_outcome
 
             await asyncio.to_thread(
                 trigger_from_call_outcome,
@@ -972,7 +925,6 @@ def _build_transcript_chunks(
     messages: list[dict],
 ) -> list[dict]:
     chunks = []
-
     seq = 0
 
     for msg in messages:
