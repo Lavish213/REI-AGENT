@@ -268,6 +268,7 @@ async def _create_stt_service(
         stt = DeepgramSTTService(
             api_key=api_key,
             sample_rate=8000,
+            ttfs_p99_latency=1.5,
             settings=DeepgramSTTService.Settings(
                 model=model,
                 language=language,
@@ -643,7 +644,7 @@ async def run_sophia_agent(
                 params=VADParams(
                     confidence=0.7,
                     start_secs=0.2,
-                    stop_secs=0.4,
+                    stop_secs=0.2,
                     min_volume=0.6,
                 ),
             ),
