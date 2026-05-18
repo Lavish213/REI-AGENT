@@ -311,6 +311,8 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
             punctuate=True,
             interim_results=False,
             endpointing=300,
+            numerals=True,
+            smart_format=True,
         ),
     )
 
@@ -468,7 +470,7 @@ async def run_sophia_agent(
         settings=AnthropicLLMService.Settings(
             model=voice_model,
             enable_prompt_caching=True,
-            max_tokens=200,
+            max_tokens=250,
         ),
     )
 
@@ -492,7 +494,18 @@ async def run_sophia_agent(
 
     tts = await _build_tts(call_ctx)
 
-    messages = [{"role": "system", "content": system_prompt}]
+    messages = [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        }
+    ]
 
     context = LLMContext(
         messages=messages,

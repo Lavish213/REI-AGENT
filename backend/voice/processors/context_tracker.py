@@ -68,6 +68,14 @@ _INTENT_PHRASES = [
     "need to move",
     "have to sell",
     "must sell",
+    "moving to",
+    "we're moving",
+    "i'm moving",
+    "relocating to",
+    "relocating",
+    "moving away",
+    "gotta sell",
+    "need to get out",
 ]
 
 
@@ -112,6 +120,7 @@ _MOTIVATION_PATTERNS = [
     (r"\b(foreclosure|behind on|auction)\b", "foreclosure"),
     (r"\b(inherited|estate|probate|passed away)\b", "inheritance"),
     (r"\b(relocating|moving|job transfer)\b", "relocation"),
+    (r"\b(moving to|relocating to|we're moving|i'm moving)\b", "relocation"),
     (r"\b(bad tenant|tenant|renter)\b", "landlord"),
 ]
 
@@ -472,31 +481,43 @@ class ContextTrackerProcessor(FrameProcessor):
     def _inject_context_prefix(self) -> None:
         if not self._llm_context:
             return
-
-        if not getattr(self._llm_context, "messages", None):
+        messages = getattr(
+            self._llm_context, "messages", None
+        )
+        if not messages:
             return
-
-        if not self._llm_context.messages:
-            return
-
         prefix = self._ctx.build_context_prefix()
-
         if prefix == self._last_context_prefix:
             return
-
-        system_message = self._llm_context.messages[0]
-        content = system_message.get("content", "")
-
-        content = re.sub(
-            r"\n*\[CTX:[^\]]*\]\s*",
-            "\n",
-            content,
-        ).rstrip()
-
-        system_message["content"] = f"{content}\n\n{prefix}"
+        last_user = next(
+            (m for m in reversed(messages)
+             if m.get("role") == "user"),
+            None,
+        )
+        if not last_user:
+            return
+        content = last_user.get("content", "")
+        if isinstance(content, str):
+            content = re.sub(
+                r"\[CTX:[^\]]*\]\s*", "", content
+            ).strip()
+            last_user["content"] = (
+                f"{prefix}\n{content}"
+            )
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    block["text"] = re.sub(
+                        r"\[CTX:[^\]]*\]\s*", "", block["text"]
+                    ).strip()
+                    block["text"] = (
+                        f"{prefix}\n{block['text']}"
+                    )
+                    break
         self._last_context_prefix = prefix
-
-        logger.debug("context prefix updated prefix={}", prefix)
+        logger.debug(
+            "context prefix updated prefix={}", prefix
+        )
 
     def _analyze(self, text: str) -> None:
         lower = text.lower()
