@@ -116,6 +116,7 @@ _ISSUE_PATTERNS = [
 
 _MOTIVATION_PATTERNS = [
     (r"\b(need to sell|must sell|sell fast|asap)\b", "urgent"),
+    (r"\b(need to move|want to move|need the cash|need cash|gotta move|trying to move)\b", "urgent"),
     (r"\b(divorce|divorcing)\b", "divorce"),
     (r"\b(foreclosure|behind on|auction)\b", "foreclosure"),
     (r"\b(inherited|estate|probate|passed away)\b", "inheritance"),

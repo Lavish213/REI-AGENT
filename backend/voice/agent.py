@@ -287,6 +287,10 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
         settings=CartesiaTTSService.Settings(
             voice=voice_id,
             model=model,
+            generation_config=CartesiaTTSService.GenerationConfig(
+                speed=0.8,
+                volume=0.85,
+            ),
         ),
     )
 
@@ -529,8 +533,8 @@ async def run_sophia_agent(
                 sample_rate=16000,
                 params=VADParams(
                     confidence=0.85,
-                    start_secs=0.3,
-                    stop_secs=0.6,
+                    start_secs=0.15,
+                    stop_secs=0.2,
                     min_volume=0.75,
                 ),
             ),
