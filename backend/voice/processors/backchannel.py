@@ -1,112 +1,168 @@
-import asyncio
-import os
-import random
+from __future__ import annotations
 
-import httpx
+import random
+import re
+from dataclasses import dataclass
+from typing import Any
+
 from loguru import logger
 
-from pipecat.frames.frames import BotStartedSpeakingFrame, BotStoppedSpeakingFrame, Frame, OutputAudioRawFrame, UserStartedSpeakingFrame, UserStoppedSpeakingFrame
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.frames.frames import Frame
+from pipecat.frames.frames import InterimTranscriptionFrame
+from pipecat.frames.frames import LLMFullResponseEndFrame
+from pipecat.frames.frames import TTSTextFrame
+from pipecat.processors.frame_processor import FrameDirection
+from pipecat.processors.frame_processor import FrameProcessor
 
 
-BACKCHANNEL_PHRASES = ["Mhm", "Yeah", "Right", "Uh-huh", "Mm", "Okay", "I see", "Got it"]
+_BACKCHANNELS = [
+    "mmhm",
+    "yeah",
+    "right",
+    "gotcha",
+    "okay",
+]
+
+_EMOTIONAL_BACKCHANNELS = [
+    "yeah",
+    "oh man",
+    "mmhm",
+]
+
+_SKEPTICAL_BACKCHANNELS = [
+    "yeah",
+    "right",
+]
+
+_BLOCKING_PHRASES = [
+    "hold on",
+    "wait",
+    "stop",
+    "what do you mean",
+    "i don't understand",
+    "are you a robot",
+    "are you ai",
+]
+
+_EMOTIONAL_PHRASES = [
+    "passed away",
+    "divorce",
+    "foreclosure",
+    "behind on",
+    "overwhelmed",
+    "stress",
+    "probate",
+]
+
+_SKEPTICAL_PHRASES = [
+    "scam",
+    "legit",
+    "not sure",
+    "who are you",
+]
+
+_SUPPRESS_EMOTIONAL_STATES = frozenset(["HOSTILE", "GRIEVING"])
+_SUPPRESS_RESISTANCE_LEVELS = frozenset(["BLOCKING"])
+
+_MIN_WORDS_BEFORE_BACKCHANNEL = 8
+_MAX_BACKCHANNELS_PER_TURN = 2
+_BACKCHANNEL_PROBABILITY = 0.28
 
 
-async def _generate_clip_elevenlabs(text: str, api_key: str, voice_id: str, sample_rate: int) -> bytes:
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-    headers = {
-        "xi-api-key": api_key,
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "text": text,
-        "model_id": os.environ.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5"),
-    }
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(url, headers=headers, json=payload, params={"output_format": f"pcm_{sample_rate}"})
-        resp.raise_for_status()
-        return resp.content
+@dataclass(slots=True)
+class BackchannelState:
+    seller_words_this_turn: int = 0
+    backchannels_this_turn: int = 0
+    last_backchannel: str | None = None
 
-
-async def pregenerate_backchannel_clips(
-    api_key: str = None,
-    voice_id: str = None,
-    sample_rate: int = 16000,
-) -> dict[str, bytes]:
-    api_key = api_key or os.environ.get("ELEVENLABS_API_KEY", "")
-    voice_id = voice_id or os.environ.get("ELEVENLABS_VOICE_ID", "")
-    clips = {}
-    for phrase in BACKCHANNEL_PHRASES:
-        try:
-            pcm = await _generate_clip_elevenlabs(phrase, api_key, voice_id, sample_rate)
-            clips[phrase] = pcm
-            logger.info("backchannel clip ready phrase={}", phrase)
-        except Exception as e:
-            logger.warning("backchannel clip failed phrase={} error={}", phrase, str(e))
-        await asyncio.sleep(0.3)
-    return clips
+    def reset(self) -> None:
+        self.seller_words_this_turn = 0
+        self.backchannels_this_turn = 0
+        self.last_backchannel = None
 
 
 class BackchannelProcessor(FrameProcessor):
-    def __init__(self, transport_output: FrameProcessor, sample_rate: int = 16000, clips: dict = None):
+    def __init__(self, call_ctx: Any | None = None):
         super().__init__()
-        self._transport_output = transport_output
-        self._clips = clips if clips is not None else {}
-        self._sample_rate = sample_rate
-        self._speaking = False
-        self._bot_speaking = False
-        self._speaking_task: asyncio.Task | None = None
-        self._phrase_list = list(self._clips.keys())
-        self._last_phrase: str | None = None
+        self._state = BackchannelState()
+        self._call_ctx = call_ctx
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, BotStartedSpeakingFrame):
-            self._bot_speaking = True
+        if isinstance(frame, InterimTranscriptionFrame):
+            text = (frame.text or "").strip()
+            if text:
+                await self._maybe_backchannel(text=text, direction=direction)
+            await self.push_frame(frame, direction)
+            return
 
-        elif isinstance(frame, BotStoppedSpeakingFrame):
-            self._bot_speaking = False
-
-        elif isinstance(frame, UserStartedSpeakingFrame):
-            self._speaking = True
-            if self._speaking_task:
-                self._speaking_task.cancel()
-            self._speaking_task = asyncio.create_task(self._monitor())
-
-        elif isinstance(frame, UserStoppedSpeakingFrame):
-            self._speaking = False
-            if self._speaking_task:
-                self._speaking_task.cancel()
-                self._speaking_task = None
+        if isinstance(frame, LLMFullResponseEndFrame):
+            self._state.reset()
+            await self.push_frame(frame, direction)
+            return
 
         await self.push_frame(frame, direction)
 
-    async def _monitor(self):
-        try:
-            await asyncio.sleep(4.0)
-            while self._speaking and not self._bot_speaking:
-                if self._clips:
-                    await self._inject()
-                interval = random.uniform(4.0, 8.0)
-                await asyncio.sleep(interval)
-        except asyncio.CancelledError:
-            pass
+    async def _maybe_backchannel(self, text: str, direction: FrameDirection) -> None:
+        if self._call_ctx is not None:
+            emotional_state = getattr(self._call_ctx, "emotional_state", "NEUTRAL")
+            resistance_level = getattr(self._call_ctx, "resistance_level", "NONE")
+            if emotional_state in _SUPPRESS_EMOTIONAL_STATES:
+                return
+            if resistance_level in _SUPPRESS_RESISTANCE_LEVELS:
+                return
 
-    async def _inject(self):
-        if not self._phrase_list or self._bot_speaking:
+        words = re.findall(r"\b\w+\b", text)
+        if not words:
             return
-        candidates = [p for p in self._phrase_list if p != self._last_phrase]
-        if not candidates:
-            candidates = self._phrase_list
-        phrase = random.choice(candidates)
-        self._last_phrase = phrase
-        pcm = self._clips.get(phrase)
-        if not pcm:
+
+        self._state.seller_words_this_turn += len(words)
+
+        if self._state.seller_words_this_turn < _MIN_WORDS_BEFORE_BACKCHANNEL:
             return
-        frame = OutputAudioRawFrame(audio=pcm, sample_rate=self._sample_rate, num_channels=1)
-        try:
-            await self._transport_output.push_frame(frame)
-            logger.debug("backchannel injected phrase={}", phrase)
-        except Exception as e:
-            logger.warning("backchannel inject failed error={}", str(e))
+
+        if self._state.backchannels_this_turn >= _MAX_BACKCHANNELS_PER_TURN:
+            return
+
+        if not self._should_backchannel(text):
+            return
+
+        phrase = self._pick_backchannel(text)
+        if not phrase:
+            return
+
+        self._state.backchannels_this_turn += 1
+        self._state.last_backchannel = phrase
+        self._state.seller_words_this_turn = 0
+
+        logger.debug("backchannel emitted phrase={}", phrase)
+
+        await self.push_frame(TTSTextFrame(text=phrase), direction)
+
+    def _should_backchannel(self, text: str) -> bool:
+        lower = text.lower()
+
+        if "?" in text:
+            return False
+
+        if any(phrase in lower for phrase in _BLOCKING_PHRASES):
+            return False
+
+        if len(text.split()) < _MIN_WORDS_BEFORE_BACKCHANNEL:
+            return False
+
+        return random.random() < _BACKCHANNEL_PROBABILITY
+
+    def _pick_backchannel(self, text: str) -> str:
+        lower = text.lower()
+
+        if any(phrase in lower for phrase in _EMOTIONAL_PHRASES):
+            options = _EMOTIONAL_BACKCHANNELS
+        elif any(phrase in lower for phrase in _SKEPTICAL_PHRASES):
+            options = _SKEPTICAL_BACKCHANNELS
+        else:
+            options = _BACKCHANNELS
+
+        filtered = [o for o in options if o != self._state.last_backchannel]
+        return random.choice(filtered or options)

@@ -9,89 +9,44 @@ from typing import Any
 
 from loguru import logger
 
-from pipecat.adapters.schemas.function_schema import (
-    FunctionSchema,
-)
-from pipecat.adapters.schemas.tools_schema import (
-    ToolsSchema,
-)
-from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
-    LocalSmartTurnAnalyzerV3,
-)
-from pipecat.audio.vad.silero import (
-    SileroVADAnalyzer,
-)
-from pipecat.audio.vad.vad_analyzer import (
-    VADParams,
-)
-from pipecat.frames.frames import (
-    AudioRawFrame,
-    TTSSpeakFrame,
-)
+from pipecat.adapters.schemas.function_schema import FunctionSchema
+from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.frames.frames import AudioRawFrame, TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import (
-    PipelineParams,
-    PipelineTask,
-)
-from pipecat.processors.aggregators.llm_context import (
-    LLMContext,
-)
+from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
-from pipecat.processors.frame_processor import (
-    FrameDirection,
-    FrameProcessor,
-)
-from pipecat.serializers.twilio import (
-    TwilioFrameSerializer,
-)
-from pipecat.services.anthropic.llm import (
-    AnthropicLLMService,
-)
-from pipecat.services.cartesia.tts import (
-    CartesiaTTSService,
-)
-from pipecat.services.deepgram.stt import (
-    DeepgramSTTService,
-)
-from pipecat.services.llm_service import (
-    FunctionCallParams,
-)
-from pipecat.transports.websocket.fastapi import (
-    FastAPIWebsocketParams,
-    FastAPIWebsocketTransport,
-)
-from pipecat.turns.user_stop import (
-    TurnAnalyzerUserTurnStopStrategy,
-)
-from pipecat.turns.user_turn_strategies import (
-    UserTurnStrategies,
-)
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.serializers.twilio import TwilioFrameSerializer
+from pipecat.services.anthropic.llm import AnthropicLLMService
+from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.llm_service import FunctionCallParams
+from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
+from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
-from backend.lib.db import (
-    insert_call,
-    update_lead_for_disposition,
-)
+from backend.lib.db import insert_call, update_lead_for_disposition
 from backend.qa.grader import grade_call
-from backend.voice.processors.context_tracker import (
-    CallContext,
-    ContextTrackerProcessor,
-)
-from backend.voice.processors.spoken_renderer import (
-    SpokenRendererProcessor,
-)
-from backend.voice.tools import (
-    SOPHIA_TOOLS,
-    execute_tool,
-)
+from backend.voice.emotional_state_engine import EmotionalStateEngine
+from backend.voice.momentum_tracker import MomentumTracker
+from backend.voice.objective_engine import ObjectiveEngine
+from backend.voice.processors.backchannel import BackchannelProcessor
+from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
+from backend.voice.processors.interruption import InterruptionAckProcessor
+from backend.voice.processors.spoken_renderer import SpokenRendererProcessor
+from backend.voice.resistance_tracker import ResistanceTracker
+from backend.voice.tools import SOPHIA_TOOLS, execute_tool
+from backend.voice.trust_tracker import TrustTracker
 
-_MD_STRIP_PATTERN = re.compile(
-    r"^#{1,3}\s+|[*`]|^---+$",
-    re.MULTILINE,
-)
+_MD_STRIP_PATTERN = re.compile(r"^#{1,3}\s+|[*`]|^---+$", re.MULTILINE)
 
 _DEFAULT_LLM_MODEL = "claude-haiku-4-5-20251001"
 _DEFAULT_DEEPGRAM_MODEL = "nova-2"
@@ -102,6 +57,14 @@ _MAX_TRANSCRIPT_INTEL_TIMEOUT = 60.0
 _MAX_WORKFLOW_TIMEOUT = 15.0
 _STREAM_SID_TIMEOUT = 5.0
 _STREAM_SID_MAX_READS = 10
+
+_SITUATION_OPENERS = {
+    "inherited_property": "I'm sorry for your loss first of all.",
+    "probate": "I'm sorry for your loss first of all.",
+    "preforeclosure": "I know this might be a tough time.",
+    "tired_landlord": "Hey — you still own that rental?",
+    "divorce": "I know things might be a bit complicated right now.",
+}
 
 
 def _require_env(name: str) -> str:
@@ -121,32 +84,40 @@ def _build_opener(call_context: dict[str, Any]) -> str:
     is_outbound = bool(call_context.get("is_outbound"))
     name = (call_context.get("owner_first_name") or "").strip()
     address = (call_context.get("address") or "").strip()
+    situation = (call_context.get("situation_label") or "").strip()
+    situation_opener = _SITUATION_OPENERS.get(situation, "")
 
     if not is_outbound:
-        return "San Joaquin House Buyers — hey, this is Sophia."
+        base = "San Joaquin House Buyers — hey, this is Sophia."
+        if situation_opener:
+            return f"{base} {situation_opener}"
+        return base
 
     if name and address:
-        return (
+        base = (
             f"Hey — is this {name}? "
             "Hey, it's Sophia. "
             "I know this is kinda random. "
             f"I was looking at your place on {address}. "
             "You got like two minutes?"
         )
-
-    if address:
-        return (
+    elif address:
+        base = (
             "Hey, it's Sophia. "
             "I know this is kinda random. "
             f"I was looking at the place on {address}. "
             "You got like two minutes?"
         )
+    else:
+        base = (
+            "Hey, it's Sophia with San Joaquin House Buyers. "
+            "I know this is kinda random. "
+            "You got like two minutes?"
+        )
 
-    return (
-        "Hey, it's Sophia with San Joaquin House Buyers. "
-        "I know this is kinda random. "
-        "You got like two minutes?"
-    )
+    if situation_opener:
+        return f"{situation_opener} {base}"
+    return base
 
 
 def _load_prompt_file(prompts_dir: str, filename: str) -> str:
@@ -158,20 +129,13 @@ def _load_prompt_file(prompts_dir: str, filename: str) -> str:
         return file.read().strip()
 
 
-def _load_system_prompt(
-    call_context: dict[str, Any],
-    spanish: bool = False,
-) -> str:
+def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> str:
     prompts_dir = os.path.join(os.path.dirname(__file__), "prompts")
 
-    prompt_parts = [
-        _load_prompt_file(prompts_dir, "sophia_core.md"),
-    ]
+    prompt_parts = [_load_prompt_file(prompts_dir, "sophia_core.md")]
 
     if spanish:
-        prompt_parts.append(
-            _load_prompt_file(prompts_dir, "sophia_extended.md")
-        )
+        prompt_parts.append(_load_prompt_file(prompts_dir, "sophia_extended.md"))
         prompt_parts.append(
             "LANGUAGE MODE: SPANISH DETECTED\n\n"
             "The caller is speaking Spanish. "
@@ -186,10 +150,7 @@ def _load_system_prompt(
     base_prompt = _strip_markdown(base_prompt)
 
     opener = _build_opener(call_context)
-    property_context_str = call_context.get(
-        "property_context_str",
-        "No property context available.",
-    )
+    property_context_str = call_context.get("property_context_str", "No property context available.")
 
     return (
         f"{base_prompt}\n\n"
@@ -244,11 +205,7 @@ def _build_tools_schema() -> ToolsSchema:
     return ToolsSchema(standard_tools=schemas)
 
 
-def _make_tool_handler(
-    tool_name: str,
-    call_ctx: CallContext | None = None,
-    lf_trace=None,
-):
+def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_trace=None):
     async def handler(params: FunctionCallParams) -> None:
         try:
             result = await asyncio.to_thread(
@@ -259,11 +216,7 @@ def _make_tool_handler(
                 lf_trace,
             )
         except Exception as error:
-            logger.exception(
-                "tool execution failed tool={} error={}",
-                tool_name,
-                str(error),
-            )
+            logger.exception("tool execution failed tool={} error={}", tool_name, str(error))
             result = {"success": False, "error": str(error)}
         await params.result_callback(result)
     return handler
@@ -275,11 +228,7 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
     voice_id = _require_env("CARTESIA_VOICE_ID")
     model = os.environ.get("CARTESIA_MODEL", _DEFAULT_CARTESIA_MODEL)
 
-    logger.info(
-        "tts active provider=cartesia model={} voice_id={} sample_rate=8000",
-        model,
-        voice_id,
-    )
+    logger.info("tts active provider=cartesia model={} voice_id={} sample_rate=8000", model, voice_id)
 
     return CartesiaTTSService(
         api_key=api_key,
@@ -299,11 +248,7 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
     language = "es" if spanish else "en-US"
     model = os.environ.get("DEEPGRAM_MODEL", _DEFAULT_DEEPGRAM_MODEL)
 
-    logger.info(
-        "deepgram stt initializing model={} language={}",
-        model,
-        language,
-    )
+    logger.info("deepgram stt initializing model={} language={}", model, language)
 
     return DeepgramSTTService(
         api_key=api_key,
@@ -334,7 +279,6 @@ class TTSFrameProbe(FrameProcessor):
 
         if frame_type in self._LIFECYCLE_TYPES:
             logger.debug("tts_probe frame={} direction={}", frame_type, direction)
-
         elif frame_type in self._AUDIO_TYPES and self._audio_logged < 3:
             self._audio_logged += 1
             logger.debug(
@@ -368,11 +312,7 @@ class _LoggingWebSocket:
                         payload_len,
                     )
             else:
-                logger.debug(
-                    "ws_send_text count={} event={}",
-                    self._send_count,
-                    event,
-                )
+                logger.debug("ws_send_text count={} event={}", self._send_count, event)
         except Exception:
             logger.debug("ws_send_text non_json len={}", len(data))
         await self._ws.send_text(data)
@@ -434,9 +374,7 @@ async def run_sophia_agent(
         seller_memory = SellerMemory.load(lead["id"])
 
     if call_context.get("boss_mode"):
-        system_prompt = _load_boss_prompt(
-            call_context.get("briefing", "No briefing available.")
-        )
+        system_prompt = _load_boss_prompt(call_context.get("briefing", "No briefing available."))
     else:
         system_prompt = _load_system_prompt(call_context, spanish=spanish_detected)
 
@@ -483,6 +421,10 @@ async def run_sophia_agent(
     call_ctx = CallContext()
     if call_context.get("address"):
         call_ctx.address_known = True
+    if call_context.get("situation_label"):
+        call_ctx.situation_label = call_context["situation_label"]
+    if call_context.get("initial_trust_score"):
+        call_ctx.trust_score = float(call_context["initial_trust_score"])
 
     if metrics_store is not None:
         metrics_store[call_sid] = call_ctx
@@ -516,7 +458,15 @@ async def run_sophia_agent(
         tools=_build_tools_schema() if not boss_mode else None,
     )
 
+    backchannel_processor = BackchannelProcessor(call_ctx=call_ctx)
+    interruption_ack = InterruptionAckProcessor()
+    emotional_engine = EmotionalStateEngine(call_ctx)
+    trust_tracker = TrustTracker(call_ctx)
+    resistance_tracker = ResistanceTracker(call_ctx)
+    momentum_tracker = MomentumTracker(call_ctx)
+    objective_engine = ObjectiveEngine()
     context_tracker = ContextTrackerProcessor(call_ctx=call_ctx, llm_context=context)
+    context_tracker.set_objective_engine(objective_engine)
     spoken_renderer = SpokenRendererProcessor(call_ctx=call_ctx)
 
     context_aggregator = LLMContextAggregatorPair(
@@ -546,6 +496,12 @@ async def run_sophia_agent(
         [
             transport.input(),
             stt,
+            backchannel_processor,
+            interruption_ack,
+            emotional_engine,
+            trust_tracker,
+            resistance_tracker,
+            momentum_tracker,
             context_tracker,
             context_aggregator.user(),
             llm,
@@ -569,6 +525,7 @@ async def run_sophia_agent(
     async def on_connected(transport, client):
         del transport, client
         logger.info("client connected call_sid={}", call_sid)
+        await asyncio.sleep(0.35)
         await task.queue_frames([TTSSpeakFrame(_build_opener(call_context))])
 
     @transport.event_handler("on_client_disconnected")
@@ -666,9 +623,7 @@ async def _handle_call_end(
 
         if seller_memory and transcript:
             try:
-                seller_memory.add_call_summary(
-                    f"Call {call_sid[:8]}: {transcript[:200]}"
-                )
+                seller_memory.add_call_summary(f"Call {call_sid[:8]}: {transcript[:200]}")
                 await asyncio.to_thread(seller_memory.save)
             except Exception as error:
                 logger.exception("seller_memory save failed error={}", str(error))
