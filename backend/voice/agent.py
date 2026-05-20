@@ -35,19 +35,26 @@ from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
 from backend.lib.db import insert_call, update_lead_for_disposition
 from backend.qa.grader import grade_call
+from backend.voice.deal_heat_scorer import DealHeatScorer
 from backend.voice.emotional_state_engine import EmotionalStateEngine
+from backend.voice.fatigue_detector import FatigueDetector
 from backend.voice.microstate_engine import MicrostateEngine
 from backend.voice.momentum_tracker import MomentumTracker
 from backend.voice.objective_engine import ObjectiveEngine
+from backend.voice.pacing_controller import PacingController
 from backend.voice.processors.backchannel import BackchannelProcessor
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
 from backend.voice.processors.interruption import InterruptionAckProcessor
 from backend.voice.processors.spoken_renderer import SpokenRendererProcessor
 from backend.voice.resistance_tracker import ResistanceTracker
 from backend.voice.response_compressor import ResponseCompressor
+from backend.voice.runtime_orchestrator import RuntimeOrchestrator
+from backend.voice.seller_profile_engine import SellerProfileEngine
+from backend.voice.silence_handler import SilenceHandler
 from backend.voice.speech_chunker import SpeechChunker
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.voice.trust_tracker import TrustTracker
+from backend.voice.turn_controller import TurnController
 
 _MD_STRIP_PATTERN = re.compile(r"^#{1,3}\s+|[*`]|^---+$", re.MULTILINE)
 
@@ -226,10 +233,11 @@ def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_t
 
 
 async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
-    del call_ctx_ref
     api_key = _require_env("CARTESIA_API_KEY")
     voice_id = _require_env("CARTESIA_VOICE_ID")
     model = os.environ.get("CARTESIA_MODEL", _DEFAULT_CARTESIA_MODEL)
+    speed = getattr(call_ctx_ref, "tts_speed", 0.8)
+    volume = getattr(call_ctx_ref, "tts_volume", 0.85)
 
     logger.info("tts active provider=cartesia model={} voice_id={} sample_rate=8000", model, voice_id)
 
@@ -240,8 +248,8 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
             voice=voice_id,
             model=model,
             generation_config=CartesiaTTSService.GenerationConfig(
-                speed=0.8,
-                volume=0.85,
+                speed=speed,
+                volume=volume,
             ),
         ),
     )
@@ -467,13 +475,19 @@ async def run_sophia_agent(
     trust_tracker = TrustTracker(call_ctx)
     resistance_tracker = ResistanceTracker(call_ctx)
     momentum_tracker = MomentumTracker(call_ctx)
+    fatigue_detector = FatigueDetector(call_ctx)
+    deal_heat_scorer = DealHeatScorer(call_ctx)
+    seller_profile_engine = SellerProfileEngine(call_ctx)
     microstate_engine = MicrostateEngine(call_ctx)
     objective_engine = ObjectiveEngine()
+    runtime_orchestrator = RuntimeOrchestrator()
     context_tracker = ContextTrackerProcessor(call_ctx=call_ctx, llm_context=context)
     context_tracker.set_objective_engine(objective_engine)
+    turn_controller = TurnController(call_ctx)
     response_compressor = ResponseCompressor(call_ctx)
-    speech_chunker = SpeechChunker(call_ctx)
     spoken_renderer = SpokenRendererProcessor(call_ctx=call_ctx)
+    speech_chunker = SpeechChunker(call_ctx)
+    pacing_controller = PacingController(call_ctx)
 
     context_aggregator = LLMContextAggregatorPair(
         context,
@@ -502,19 +516,30 @@ async def run_sophia_agent(
         [
             transport.input(),
             stt,
+
             backchannel_processor,
             interruption_ack,
+
             emotional_engine,
             trust_tracker,
             resistance_tracker,
             momentum_tracker,
+            fatigue_detector,
+            deal_heat_scorer,
+            seller_profile_engine,
             microstate_engine,
+
             context_tracker,
             context_aggregator.user(),
+            turn_controller,
+
             llm,
+
             response_compressor,
-            speech_chunker,
             spoken_renderer,
+            speech_chunker,
+            pacing_controller,
+
             tts,
             TTSFrameProbe(),
             transport.output(),
@@ -530,6 +555,8 @@ async def run_sophia_agent(
         ),
     )
 
+    silence_handler = SilenceHandler(call_ctx, task)
+
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
         del transport, client
@@ -542,6 +569,17 @@ async def run_sophia_agent(
         del transport, client
         logger.info("client disconnected call_sid={}", call_sid)
         await task.cancel()
+
+    @transport.event_handler("on_bot_stopped_speaking")
+    async def on_bot_stopped(transport, client):
+        del transport, client
+        silence_handler.start_timer()
+
+    @transport.event_handler("on_user_started_speaking")
+    async def on_user_started(transport, client):
+        del transport, client
+        silence_handler.cancel_timer()
+        silence_handler.reset_consecutive()
 
     runner = PipelineRunner()
 
@@ -669,6 +707,35 @@ async def _handle_call_end(
 
     except Exception as error:
         logger.exception("handle_call_end error call_sid={} error={}", call_sid, str(error))
+
+
+async def _handle_orchestrator_decision(
+    call_ctx: CallContext,
+    orchestrator: RuntimeOrchestrator,
+    task: PipelineTask,
+) -> None:
+    decision = orchestrator.decide(call_ctx)
+
+    if decision.objective_override:
+        call_ctx.objective = decision.objective_override
+
+    if decision.inject_instruction:
+        call_ctx.runtime_instruction = decision.inject_instruction
+
+    if decision.response_length_cap:
+        call_ctx.orchestrator_length_cap = decision.response_length_cap
+
+    if decision.end_call:
+        logger.info(
+            "orchestrator end_call reason={}",
+            decision.end_reason,
+        )
+        call_ctx.call_should_end = True
+        try:
+            from pipecat.frames.frames import TTSSpeakFrame
+            await task.queue_frames([TTSSpeakFrame("Okay. Thanks for picking up. Talk soon.")])
+        except Exception:
+            pass
 
 
 async def _persist_call_result(

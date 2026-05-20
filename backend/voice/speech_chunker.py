@@ -124,9 +124,10 @@ class SpeechChunker(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, TextFrame) and direction == FrameDirection.DOWNSTREAM:
-            if frame.text:
-                self._buffer.append(frame.text)
+        if isinstance(frame, (TextFrame, TTSTextFrame)) and direction == FrameDirection.DOWNSTREAM:
+            text = frame.text if hasattr(frame, "text") else ""
+            if text:
+                self._buffer.append(text)
                 self._collecting = True
             return
 

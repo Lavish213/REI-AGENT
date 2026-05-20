@@ -162,6 +162,7 @@ class CallContext:
     has_agent: bool = False
     mortgage_status: str = "unknown"
     free_and_clear: bool = False
+    price_resistance: bool = False
 
     objective: str = "GET_MOTIVATION"
     runtime_instruction: str | None = None
@@ -174,10 +175,18 @@ class CallContext:
     momentum_score: float = 5.0
     momentum_direction: str = "STABLE"
     deal_heat: float = 0.0
+    deal_heat_level: str = "COLD"
     fatigue_level: str = "FRESH"
     microstate: str = "NEUTRAL"
+    microstate_duration: int = 1
     comm_style: str = "STANDARD"
     financial_pressure: str = "NONE"
+    seller_sophistication: str = "AVERAGE"
+    consecutive_silences: int = 0
+    call_should_end: bool = False
+    last_sophia_words: int = 0
+    tts_speed: float = 0.85
+    tts_volume: float = 0.85
 
     def get_seller_mode(self) -> str:
         if self.emotional_state in {"DISTRESSED", "GRIEVING"}:
@@ -267,15 +276,21 @@ class ContextTrackerProcessor(FrameProcessor):
 
                 logger.info(
                     "context_tracker turn={} energy={} situation={} "
-                    "obj={} addr={} intent={} trust={:.1f} heat={:.1f} text={!r}",
+                    "obj={} mode={} addr={} intent={} "
+                    "trust={:.1f} heat={:.1f} resistance={} "
+                    "microstate={} fatigue={} text={!r}",
                     self._ctx.turn_count,
                     self._ctx.seller_energy,
                     self._ctx.situation_label,
                     self._ctx.objective,
+                    self._ctx.get_seller_mode(),
                     self._ctx.address_known,
                     self._ctx.intent_locked,
                     self._ctx.trust_score,
                     self._ctx.deal_heat,
+                    self._ctx.resistance_level,
+                    self._ctx.microstate,
+                    self._ctx.fatigue_level,
                     text,
                 )
 
