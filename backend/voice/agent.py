@@ -36,6 +36,7 @@ from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from backend.lib.db import insert_call, update_lead_for_disposition
 from backend.qa.grader import grade_call
 from backend.voice.emotional_state_engine import EmotionalStateEngine
+from backend.voice.microstate_engine import MicrostateEngine
 from backend.voice.momentum_tracker import MomentumTracker
 from backend.voice.objective_engine import ObjectiveEngine
 from backend.voice.processors.backchannel import BackchannelProcessor
@@ -43,6 +44,8 @@ from backend.voice.processors.context_tracker import CallContext, ContextTracker
 from backend.voice.processors.interruption import InterruptionAckProcessor
 from backend.voice.processors.spoken_renderer import SpokenRendererProcessor
 from backend.voice.resistance_tracker import ResistanceTracker
+from backend.voice.response_compressor import ResponseCompressor
+from backend.voice.speech_chunker import SpeechChunker
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.voice.trust_tracker import TrustTracker
 
@@ -464,9 +467,12 @@ async def run_sophia_agent(
     trust_tracker = TrustTracker(call_ctx)
     resistance_tracker = ResistanceTracker(call_ctx)
     momentum_tracker = MomentumTracker(call_ctx)
+    microstate_engine = MicrostateEngine(call_ctx)
     objective_engine = ObjectiveEngine()
     context_tracker = ContextTrackerProcessor(call_ctx=call_ctx, llm_context=context)
     context_tracker.set_objective_engine(objective_engine)
+    response_compressor = ResponseCompressor(call_ctx)
+    speech_chunker = SpeechChunker(call_ctx)
     spoken_renderer = SpokenRendererProcessor(call_ctx=call_ctx)
 
     context_aggregator = LLMContextAggregatorPair(
@@ -502,9 +508,12 @@ async def run_sophia_agent(
             trust_tracker,
             resistance_tracker,
             momentum_tracker,
+            microstate_engine,
             context_tracker,
             context_aggregator.user(),
             llm,
+            response_compressor,
+            speech_chunker,
             spoken_renderer,
             tts,
             TTSFrameProbe(),
