@@ -11,7 +11,6 @@ from loguru import logger
 
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import AudioRawFrame, TTSSpeakFrame
@@ -30,8 +29,6 @@ from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
-from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
-from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
 from backend.lib.db import insert_call, update_lead_for_disposition
 from backend.qa.grader import grade_call
@@ -492,19 +489,12 @@ async def run_sophia_agent(
     context_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
-            user_turn_strategies=UserTurnStrategies(
-                stop=[
-                    TurnAnalyzerUserTurnStopStrategy(
-                        turn_analyzer=LocalSmartTurnAnalyzerV3()
-                    )
-                ],
-            ),
             vad_analyzer=SileroVADAnalyzer(
                 sample_rate=16000,
                 params=VADParams(
                     confidence=0.85,
                     start_secs=0.15,
-                    stop_secs=0.2,
+                    stop_secs=0.4,
                     min_volume=0.75,
                 ),
             ),
@@ -726,13 +716,9 @@ async def _handle_orchestrator_decision(
         call_ctx.orchestrator_length_cap = decision.response_length_cap
 
     if decision.end_call:
-        logger.info(
-            "orchestrator end_call reason={}",
-            decision.end_reason,
-        )
+        logger.info("orchestrator end_call reason={}", decision.end_reason)
         call_ctx.call_should_end = True
         try:
-            from pipecat.frames.frames import TTSSpeakFrame
             await task.queue_frames([TTSSpeakFrame("Okay. Thanks for picking up. Talk soon.")])
         except Exception:
             pass
