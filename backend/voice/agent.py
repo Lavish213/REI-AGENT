@@ -230,11 +230,11 @@ def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_t
 
 
 async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
+    from pipecat.services.cartesia.tts import GenerationConfig
+
     api_key = _require_env("CARTESIA_API_KEY")
     voice_id = _require_env("CARTESIA_VOICE_ID")
     model = os.environ.get("CARTESIA_MODEL", _DEFAULT_CARTESIA_MODEL)
-    speed = getattr(call_ctx_ref, "tts_speed", 0.8)
-    volume = getattr(call_ctx_ref, "tts_volume", 0.85)
 
     logger.info("tts active provider=cartesia model={} voice_id={} sample_rate=8000", model, voice_id)
 
@@ -244,8 +244,10 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
         settings=CartesiaTTSService.Settings(
             voice=voice_id,
             model=model,
-            speed=speed,
-            volume=volume,
+            generation_config=GenerationConfig(
+                speed=0.85,
+                volume=0.85,
+            ),
         ),
     )
 

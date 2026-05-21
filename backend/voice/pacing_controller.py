@@ -70,6 +70,21 @@ class PacingController(FrameProcessor):
                 self._ctx.tts_speed = speed
                 self._ctx.tts_volume = volume
 
+                try:
+                    from pipecat.services.cartesia.tts import GenerationConfig
+                    from pipecat.services.tts_service import TTSUpdateSettingsFrame
+                    await self.push_frame(
+                        TTSUpdateSettingsFrame(
+                            settings={"generation_config": GenerationConfig(
+                                speed=speed,
+                                volume=volume,
+                            )}
+                        ),
+                        direction,
+                    )
+                except Exception:
+                    pass
+
         await self.push_frame(frame, direction)
 
     def _compute_pacing(self) -> tuple[float, float]:
