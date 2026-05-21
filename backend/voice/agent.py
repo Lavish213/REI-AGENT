@@ -244,10 +244,8 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
         settings=CartesiaTTSService.Settings(
             voice=voice_id,
             model=model,
-            generation_config=CartesiaTTSService.GenerationConfig(
-                speed=speed,
-                volume=volume,
-            ),
+            speed=speed,
+            volume=volume,
         ),
     )
 
