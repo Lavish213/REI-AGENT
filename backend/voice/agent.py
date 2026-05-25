@@ -13,7 +13,12 @@ from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import AudioRawFrame, TTSSpeakFrame
+from pipecat.frames.frames import (
+    AudioRawFrame,
+    BotStoppedSpeakingFrame,
+    TTSSpeakFrame,
+    UserStartedSpeakingFrame,
+)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -25,7 +30,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.anthropic.llm import AnthropicLLMService
-from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
@@ -62,8 +67,8 @@ _DEFAULT_CARTESIA_MODEL = "sonic-3"
 _MAX_QA_TIMEOUT = 30.0
 _MAX_TRANSCRIPT_INTEL_TIMEOUT = 60.0
 _MAX_WORKFLOW_TIMEOUT = 15.0
-_STREAM_SID_TIMEOUT = 5.0
-_STREAM_SID_MAX_READS = 10
+_STREAM_SID_TIMEOUT = 2.0
+_STREAM_SID_MAX_READS = 5
 
 _SITUATION_OPENERS = {
     "inherited_property": "I'm sorry for your loss first of all.",
@@ -230,8 +235,6 @@ def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_t
 
 
 async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
-    from pipecat.services.cartesia.tts import GenerationConfig
-
     api_key = _require_env("CARTESIA_API_KEY")
     voice_id = _require_env("CARTESIA_VOICE_ID")
     model = os.environ.get("CARTESIA_MODEL", _DEFAULT_CARTESIA_MODEL)
@@ -245,8 +248,8 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
             voice=voice_id,
             model=model,
             generation_config=GenerationConfig(
-                speed=0.85,
-                volume=0.85,
+                speed=1.05,
+                volume=1.1,
             ),
         ),
     )
@@ -267,7 +270,7 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
             language=language,
             punctuate=True,
             interim_results=False,
-            endpointing=300,
+            endpointing=600,
             numerals=True,
             smart_format=True,
         ),
@@ -298,6 +301,23 @@ class TTSFrameProbe(FrameProcessor):
             )
 
         await super().process_frame(frame, direction)
+        await self.push_frame(frame, direction)
+
+
+class BotSpeakingMonitor(FrameProcessor):
+    def __init__(self, silence_handler: SilenceHandler):
+        super().__init__()
+        self._sh = silence_handler
+
+    async def process_frame(self, frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, BotStoppedSpeakingFrame):
+            self._sh.start_timer()
+            logger.debug("bot_speaking_monitor bot_stopped_speaking")
+        elif isinstance(frame, UserStartedSpeakingFrame):
+            self._sh.cancel_timer()
+            self._sh.reset_consecutive()
+            logger.debug("bot_speaking_monitor user_started_speaking")
         await self.push_frame(frame, direction)
 
 
@@ -486,19 +506,22 @@ async def run_sophia_agent(
     speech_chunker = SpeechChunker(call_ctx)
     pacing_controller = PacingController(call_ctx)
 
+    silence_handler = SilenceHandler(call_ctx, task=None)
+    bot_speaking_monitor = BotSpeakingMonitor(silence_handler)
+
     context_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
             vad_analyzer=SileroVADAnalyzer(
                 sample_rate=16000,
                 params=VADParams(
-                    confidence=0.85,
-                    start_secs=0.15,
-                    stop_secs=0.4,
-                    min_volume=0.75,
+                    confidence=0.92,
+                    start_secs=0.3,
+                    stop_secs=0.6,
+                    min_volume=0.90,
                 ),
             ),
-            user_turn_stop_timeout=0.75,
+            user_turn_stop_timeout=1.2,
         ),
     )
 
@@ -506,10 +529,8 @@ async def run_sophia_agent(
         [
             transport.input(),
             stt,
-
             backchannel_processor,
             interruption_ack,
-
             emotional_engine,
             trust_tracker,
             resistance_tracker,
@@ -518,21 +539,18 @@ async def run_sophia_agent(
             deal_heat_scorer,
             seller_profile_engine,
             microstate_engine,
-
             context_tracker,
             context_aggregator.user(),
             turn_controller,
-
             llm,
-
             response_compressor,
             spoken_renderer,
             speech_chunker,
             pacing_controller,
-
             tts,
             TTSFrameProbe(),
             transport.output(),
+            bot_speaking_monitor,
             context_aggregator.assistant(),
         ]
     )
@@ -542,15 +560,18 @@ async def run_sophia_agent(
         params=PipelineParams(
             enable_metrics=True,
             enable_usage_metrics=True,
+            aggregation_timeout=0.3,
         ),
     )
 
-    silence_handler = SilenceHandler(call_ctx, task)
+    silence_handler._task = task
 
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
         del transport, client
         logger.info("client connected call_sid={}", call_sid)
+        from backend.karpathys import emitter
+        asyncio.create_task(emitter.emit_call_created(call_sid, call_context))
         await asyncio.sleep(0.35)
         await task.queue_frames([TTSSpeakFrame(_build_opener(call_context))])
 
@@ -558,18 +579,9 @@ async def run_sophia_agent(
     async def on_disconnected(transport, client):
         del transport, client
         logger.info("client disconnected call_sid={}", call_sid)
+        from backend.karpathys import emitter
+        asyncio.create_task(emitter.emit_call_ended(call_sid))
         await task.cancel()
-
-    @transport.event_handler("on_bot_stopped_speaking")
-    async def on_bot_stopped(transport, client):
-        del transport, client
-        silence_handler.start_timer()
-
-    @transport.event_handler("on_user_started_speaking")
-    async def on_user_started(transport, client):
-        del transport, client
-        silence_handler.cancel_timer()
-        silence_handler.reset_consecutive()
 
     runner = PipelineRunner()
 
@@ -666,6 +678,7 @@ async def _handle_call_end(
                 logger.exception("seller_memory save failed error={}", str(error))
 
         lead = call_context.get("lead")
+        call_id_db = None
 
         if lead:
             call_id_db = await _persist_call_result(
@@ -693,6 +706,14 @@ async def _handle_call_end(
             disposition,
             len(transcript),
             call_ctx.turn_count if call_ctx else 0,
+        )
+
+        from backend.karpathys import emitter
+        await emitter.emit_call_completed(
+            call_sid=call_sid,
+            disposition=disposition,
+            turn_count=call_ctx.turn_count if call_ctx else 0,
+            transcript_length=len(transcript),
         )
 
     except Exception as error:
@@ -754,6 +775,14 @@ async def _persist_call_result(
 
         from backend.voice.events import TRANSCRIPT_COMPLETED, emit_event
         emit_event(TRANSCRIPT_COMPLETED, call_id_db, lead["id"], {"chunk_count": len(chunks)})
+
+        from backend.karpathys import emitter
+        await emitter.emit_transcript_completed(
+            call_sid=call_sid,
+            call_id_db=call_id_db,
+            lead_id=lead["id"],
+            chunk_count=len(chunks),
+        )
 
     if disposition:
         await asyncio.to_thread(update_lead_for_disposition, lead["id"], disposition)
