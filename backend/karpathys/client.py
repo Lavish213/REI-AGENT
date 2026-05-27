@@ -18,7 +18,7 @@ async def post_event(endpoint: str, payload: dict[str, Any]) -> bool:
         logger.debug("karpathys url not set skipping event={}", endpoint)
         return False
 
-    url = f"{_KARPATHYS_URL}/api/ingest/{endpoint}"
+    url = f"{_KARPATHYS_URL}/api/v1/ingest/{endpoint}"
     headers = {
         "Content-Type": "application/json",
         "X-Karpathys-Secret": _KARPATHYS_SECRET,
