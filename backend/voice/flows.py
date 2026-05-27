@@ -1,112 +1,239 @@
-import os
+from __future__ import annotations
+
 from enum import Enum
+
 from loguru import logger
-from anthropic import Anthropic
 
 
 class CallState(str, Enum):
-    WARM_OPEN = "warm_open"
+    OPENING = "opening"
     DISCOVERY = "discovery"
-    PRICE_DISCUSSION = "price_discussion"
-    OBJECTION_HANDLING = "objection_handling"
-    CLOSE = "close"
+    QUALIFICATION = "qualification"
+    APPOINTMENT_TRANSITION = "appointment_transition"
+    FOLLOW_UP_HOLD = "follow_up_hold"
+    RECOVERY = "recovery"
     END_CALL = "end_call"
 
 
-STATE_TRANSITIONS = {
-    CallState.WARM_OPEN: [CallState.DISCOVERY, CallState.END_CALL],
-    CallState.DISCOVERY: [CallState.PRICE_DISCUSSION, CallState.CLOSE, CallState.END_CALL],
-    CallState.PRICE_DISCUSSION: [CallState.OBJECTION_HANDLING, CallState.CLOSE, CallState.END_CALL],
-    CallState.OBJECTION_HANDLING: [CallState.PRICE_DISCUSSION, CallState.CLOSE, CallState.END_CALL],
-    CallState.CLOSE: [CallState.END_CALL, CallState.OBJECTION_HANDLING],
+STATE_TRANSITIONS: dict[CallState, list[CallState]] = {
+    CallState.OPENING: [
+        CallState.DISCOVERY,
+        CallState.RECOVERY,
+        CallState.END_CALL,
+    ],
+    CallState.DISCOVERY: [
+        CallState.QUALIFICATION,
+        CallState.APPOINTMENT_TRANSITION,
+        CallState.FOLLOW_UP_HOLD,
+        CallState.RECOVERY,
+        CallState.END_CALL,
+    ],
+    CallState.QUALIFICATION: [
+        CallState.APPOINTMENT_TRANSITION,
+        CallState.FOLLOW_UP_HOLD,
+        CallState.RECOVERY,
+        CallState.END_CALL,
+    ],
+    CallState.APPOINTMENT_TRANSITION: [
+        CallState.END_CALL,
+        CallState.FOLLOW_UP_HOLD,
+        CallState.RECOVERY,
+    ],
+    CallState.FOLLOW_UP_HOLD: [
+        CallState.END_CALL,
+        CallState.RECOVERY,
+    ],
+    CallState.RECOVERY: [
+        CallState.DISCOVERY,
+        CallState.QUALIFICATION,
+        CallState.APPOINTMENT_TRANSITION,
+        CallState.FOLLOW_UP_HOLD,
+        CallState.END_CALL,
+    ],
     CallState.END_CALL: [],
 }
 
-STATE_INSTRUCTIONS = {
-    CallState.WARM_OPEN: """
-You are in the WARM OPEN state.
-Goal: Greet warmly, confirm it's okay to talk, break the ice.
-Keep it short — 1-2 exchanges max then move to DISCOVERY.
-Do NOT discuss price yet.
-Do NOT ask multiple questions at once.
-Transition to DISCOVERY when seller confirms they have a minute.
+
+STATE_INSTRUCTIONS: dict[CallState, str] = {
+    CallState.OPENING: """
+You are in the OPENING state.
+
+Goal:
+- lower defenses
+- establish humanity
+- make the conversation feel safe
+- avoid sounding scripted
+
+Rules:
+- keep responses short
+- stay interruptible
+- do not pitch aggressively
+- do not discuss price
+- do not rapid-fire questions
+
+Transition out once the seller begins engaging naturally.
 """.strip(),
 
     CallState.DISCOVERY: """
 You are in the DISCOVERY state.
-Goal: Learn the seller's situation, motivation, timeline, and property condition.
-Ask ONE question at a time. Listen carefully. React before responding.
-Learn: why they might sell, how long they've owned it, condition of property,
-their timeline, whether they live there or it's vacant, any complications.
-Transition to PRICE_DISCUSSION when you have enough context.
-Transition to CLOSE if seller is clearly very motivated and ready.
+
+Goal:
+understand:
+- motivation
+- timeline
+- emotional situation
+- property condition
+- selling goals
+
+Rules:
+- ask ONE thing at a time
+- react before asking another question
+- follow emotional openings first
+- let discovery feel story-driven
+
+Priority order:
+1. motivation
+2. timeline
+3. emotional state
+4. condition
+5. price
+
+Never sound procedural.
 """.strip(),
 
-    CallState.PRICE_DISCUSSION: """
-You are in the PRICE DISCUSSION state.
-Goal: Deliver a verbal price range and handle the seller's reaction.
-Use the ARV and MAO from your property context.
-Anchor ABOVE the MAO. Never reveal the MAO directly.
-Frame as a range: "we'd probably be looking somewhere in the X to Y range"
-Always caveat with "before the walkthrough".
-Transition to OBJECTION_HANDLING if seller pushes back on price.
-Transition to CLOSE if seller seems open to the range.
+    CallState.QUALIFICATION: """
+You are in the QUALIFICATION state.
+
+Goal:
+determine:
+- seriousness
+- equity likelihood
+- walkthrough viability
+- follow-up viability
+
+Rules:
+- qualification must feel invisible
+- never sound like underwriting
+- do not interrogate
+- keep conversational flow alive
+
+You are still building trust here.
 """.strip(),
 
-    CallState.OBJECTION_HANDLING: """
-You are in the OBJECTION HANDLING state.
-Goal: Handle seller resistance with empathy and strategy.
-Always acknowledge their concern before pivoting.
-Use the "feel, felt, found" approach naturally.
-Ask what number would work for them.
-Never give up on the first objection.
-Transition back to PRICE_DISCUSSION if you adjust strategy.
-Transition to CLOSE when objection is resolved.
+    CallState.APPOINTMENT_TRANSITION: """
+You are in the APPOINTMENT TRANSITION state.
+
+Goal:
+make the walkthrough feel:
+- logical
+- low pressure
+- helpful
+- natural
+
+Correct energy:
+"Honestly the best next step is probably just
+to come take a quick look."
+
+Avoid:
+"Let's get you scheduled."
+
+If seller agrees:
+- use booking tool
+- confirm details naturally
+- maintain relaxed energy
 """.strip(),
 
-    CallState.CLOSE: """
-You are in the CLOSE state.
-Goal: Ask for the walkthrough appointment directly and book it.
-Be direct but warm. Offer specific times.
-Handle scheduling objections by offering alternatives.
-When seller agrees: use the book_appointment tool immediately.
-Send confirmation SMS after booking.
-Transition to END_CALL after appointment is booked or seller declines.
+    CallState.FOLLOW_UP_HOLD: """
+You are in the FOLLOW UP HOLD state.
+
+Used when:
+- seller not ready
+- timing unclear
+- emotional hesitation exists
+- future potential exists
+
+Goal:
+preserve relationship warmth.
+
+Rules:
+- never guilt
+- never pressure
+- never emotionally withdraw
+
+Exit feeling should be easy and comfortable.
+""".strip(),
+
+    CallState.RECOVERY: """
+You are in the RECOVERY state.
+
+Used after:
+- awkwardness
+- confusion
+- interruptions
+- distrust
+- emotional tension
+- talking too much
+
+Recovery sequence:
+1. slow down
+2. acknowledge
+3. simplify
+4. reconnect
+5. continue naturally
+
+Good examples:
+"Sorry let me simplify that."
+
+or:
+
+"Honestly ignore all that —
+what's the main thing you're trying to solve?"
+
+Never become defensive.
 """.strip(),
 
     CallState.END_CALL: """
 You are in the END CALL state.
-Goal: Wrap up the call warmly with a clear next step.
-Thank them genuinely.
-Confirm next step (appointment, callback, or follow-up SMS).
-Use the end_call tool to properly close the conversation.
-Keep it brief — 1-2 sentences max.
+
+Goal:
+wrap the conversation naturally.
+
+Rules:
+- keep it brief
+- confirm next step
+- sound warm
+- avoid corporate closers
+
+Possible outcomes:
+- appointment booked
+- future follow-up
+- polite exit
+- callback scheduled
+
+Seller should leave feeling:
+"that felt easy."
 """.strip(),
 }
 
-TURN_LIMITS = {
-    CallState.WARM_OPEN: 2,
-    CallState.DISCOVERY: 6,
-    CallState.PRICE_DISCUSSION: 4,
-    CallState.OBJECTION_HANDLING: 4,
-    CallState.CLOSE: 4,
+
+TURN_LIMITS: dict[CallState, int] = {
+    CallState.OPENING: 2,
+    CallState.DISCOVERY: 10,
+    CallState.QUALIFICATION: 5,
+    CallState.APPOINTMENT_TRANSITION: 4,
+    CallState.FOLLOW_UP_HOLD: 2,
+    CallState.RECOVERY: 3,
     CallState.END_CALL: 2,
 }
 
 
 class ConversationFlow:
     def __init__(self, property_context: dict):
-        self.current_state = CallState.WARM_OPEN
+        self.current_state = CallState.OPENING
         self.state_turn_count = 0
         self.total_turns = 0
         self.property_context = property_context
-        self.state_history = [CallState.WARM_OPEN]
-        self._client: Anthropic | None = None
-
-    def _get_client(self) -> Anthropic:
-        if self._client is None:
-            self._client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-        return self._client
+        self.state_history = [CallState.OPENING]
 
     def get_state_instruction(self) -> str:
         return STATE_INSTRUCTIONS.get(self.current_state, "")
@@ -115,83 +242,193 @@ class ConversationFlow:
         self.state_turn_count += 1
         self.total_turns += 1
 
-    def should_transition(self, last_sophia_response: str) -> CallState | None:
+    def should_transition(self, last_sophia_response: str = "") -> CallState | None:
         limit = TURN_LIMITS.get(self.current_state, 999)
-        if self.state_turn_count >= limit:
-            valid_next = STATE_TRANSITIONS.get(self.current_state, [])
-            if valid_next:
-                return valid_next[0]
+
+        if self.state_turn_count < limit:
+            return None
+
+        if self.current_state == CallState.OPENING:
+            return CallState.DISCOVERY
+
+        if self.current_state == CallState.DISCOVERY:
+            return CallState.QUALIFICATION
+
+        if self.current_state == CallState.QUALIFICATION:
+            return CallState.APPOINTMENT_TRANSITION
+
+        if self.current_state == CallState.APPOINTMENT_TRANSITION:
+            return CallState.FOLLOW_UP_HOLD
+
+        if self.current_state == CallState.RECOVERY:
+            return CallState.DISCOVERY
+
+        if self.current_state == CallState.FOLLOW_UP_HOLD:
+            return CallState.END_CALL
+
         return None
 
     def transition_to(self, new_state: CallState) -> None:
-        if new_state in STATE_TRANSITIONS.get(self.current_state, []):
-            logger.info(
-                "state transition {} -> {}",
-                self.current_state.value,
-                new_state.value,
-            )
-            self.current_state = new_state
-            self.state_turn_count = 0
-            self.state_history.append(new_state)
-        else:
-            logger.warning(
-                "invalid transition {} -> {} skipping",
-                self.current_state.value,
-                new_state.value,
-            )
+        valid_next = STATE_TRANSITIONS.get(self.current_state, [])
 
-    def detect_state_from_response(self, sophia_response: str, seller_response: str) -> CallState | None:
+        if new_state not in valid_next:
+            logger.warning(
+                "invalid transition {} -> {} skipped",
+                self.current_state.value,
+                new_state.value,
+            )
+            return
+
+        logger.info(
+            "state transition {} -> {}",
+            self.current_state.value,
+            new_state.value,
+        )
+
+        self.current_state = new_state
+        self.state_turn_count = 0
+        self.state_history.append(new_state)
+
+    def detect_state_from_response(
+        self,
+        sophia_response: str,
+        seller_response: str,
+    ) -> CallState | None:
         response_lower = sophia_response.lower()
         seller_lower = seller_response.lower()
 
-        appointment_signals = [
-            "see you", "we'll be there", "confirmed", "thursday", "friday",
-            "monday", "tuesday", "wednesday", "saturday", "what time works",
-            "book_appointment",
-        ]
-        if any(s in response_lower for s in appointment_signals):
+        if self._has_any(
+            response_lower,
+            [
+                "talk soon",
+                "have a good day",
+                "take care",
+                "i'll follow up",
+                "i will follow up",
+                "see you then",
+                "confirmed",
+                "end_call",
+            ],
+        ):
             return CallState.END_CALL
 
-        close_signals = [
-            "come take a look", "walk through", "schedule a time",
-            "what does your schedule", "when are you available",
-        ]
-        if any(s in response_lower for s in close_signals):
-            return CallState.CLOSE
+        if self._has_any(
+            response_lower,
+            [
+                "come take a look",
+                "walkthrough",
+                "walk through",
+                "quick look",
+                "what time works",
+                "when are you available",
+                "what does your schedule look like",
+                "book_appointment",
+            ],
+        ):
+            return CallState.APPOINTMENT_TRANSITION
 
-        objection_signals = [
-            "too low", "not enough", "someone else offered", "already have",
-            "need to think", "talk to my", "not ready",
-        ]
-        if any(s in seller_lower for s in objection_signals):
-            return CallState.OBJECTION_HANDLING
+        if self._has_any(
+            seller_lower,
+            [
+                "wait",
+                "what do you mean",
+                "i don't understand",
+                "that sounds sketchy",
+                "are you a robot",
+                "are you ai",
+                "stop calling",
+            ],
+        ) or self._has_any(
+            response_lower,
+            [
+                "sorry",
+                "let me simplify",
+                "ignore all that",
+                "what i'm trying to say",
+            ],
+        ):
+            return CallState.RECOVERY
 
-        price_signals = [
-            "we'd be looking", "range", "ballpark", "offer", "arv",
-            "based on what i'm seeing",
-        ]
-        if any(s in response_lower for s in price_signals):
-            return CallState.PRICE_DISCUSSION
+        if self._has_any(
+            seller_lower,
+            [
+                "not ready",
+                "call me later",
+                "maybe later",
+                "need to think",
+                "talk to my wife",
+                "talk to my husband",
+                "talk to my family",
+                "not right now",
+            ],
+        ):
+            return CallState.FOLLOW_UP_HOLD
+
+        if self._has_any(
+            seller_lower,
+            [
+                "owe",
+                "mortgage",
+                "cash offer",
+                "timeline",
+                "condition",
+                "repairs",
+                "roof",
+                "hvac",
+                "tenant",
+                "vacant",
+            ],
+        ):
+            return CallState.QUALIFICATION
+
+        if self._has_any(
+            seller_lower,
+            [
+                "thinking about selling",
+                "need to move",
+                "tired of it",
+                "want to sell",
+                "rental",
+                "inherited",
+                "divorce",
+                "passed away",
+                "behind on payments",
+                "overwhelmed",
+            ],
+        ):
+            return CallState.DISCOVERY
 
         return None
 
     def get_full_state_context(self) -> str:
         instruction = self.get_state_instruction()
-        valid_next = [s.value for s in STATE_TRANSITIONS.get(self.current_state, [])]
+        valid_next = [
+            state.value
+            for state in STATE_TRANSITIONS.get(self.current_state, [])
+        ]
+
         return (
             f"CURRENT STATE: {self.current_state.value.upper()}\n\n"
             f"{instruction}\n\n"
             f"VALID NEXT STATES: {', '.join(valid_next)}\n"
-            f"TURNS IN THIS STATE: {self.state_turn_count}/{TURN_LIMITS.get(self.current_state, '?')}"
+            f"TURNS IN THIS STATE: "
+            f"{self.state_turn_count}/{TURN_LIMITS.get(self.current_state, '?')}"
         )
 
     def is_complete(self) -> bool:
-        return self.current_state == CallState.END_CALL and self.state_turn_count >= 1
+        return (
+            self.current_state == CallState.END_CALL
+            and self.state_turn_count >= 1
+        )
 
     def get_summary(self) -> dict:
         return {
             "final_state": self.current_state.value,
             "total_turns": self.total_turns,
-            "state_history": [s.value for s in self.state_history],
+            "state_history": [state.value for state in self.state_history],
             "completed": self.is_complete(),
         }
+
+    @staticmethod
+    def _has_any(text: str, phrases: list[str]) -> bool:
+        return any(phrase in text for phrase in phrases)

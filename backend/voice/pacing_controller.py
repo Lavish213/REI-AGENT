@@ -1,114 +1,150 @@
 from __future__ import annotations
 
+import asyncio
+import random
+
 from loguru import logger
 
-from pipecat.frames.frames import Frame, TTSTextFrame
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-
-_BASE_SPEED: dict[str, float] = {
-    "GRIEVING":    0.70,
-    "OVERWHELMED": 0.72,
-    "DISTRESSED":  0.75,
-    "HOSTILE":     0.78,
-    "SKEPTICAL":   0.80,
-    "NEUTRAL":     0.85,
-    "OPEN":        0.88,
-    "URGENT":      0.90,
-    "EXCITED":     0.92,
+_RECOVERY_PHRASES: dict[str, list[str]] = {
+    "standard": [
+        "You still there?",
+        "Still with me?",
+        "Hey — you there?",
+    ],
+    "post_emotional": [
+        "Take your time.",
+        "No rush.",
+        "Still here whenever you're ready.",
+    ],
+    "post_price": [
+        "Still there?",
+        "Did I lose you?",
+    ],
+    "post_appointment": [
+        "Did I lose you?",
+        "You still there?",
+    ],
+    "consecutive_2": [
+        "Hey — still there?",
+        "Hello?",
+    ],
 }
 
-_BASE_VOLUME: dict[str, float] = {
-    "GRIEVING":    0.75,
-    "OVERWHELMED": 0.78,
-    "DISTRESSED":  0.80,
-    "HOSTILE":     0.82,
-    "SKEPTICAL":   0.82,
-    "NEUTRAL":     0.85,
-    "OPEN":        0.87,
-    "URGENT":      0.88,
-    "EXCITED":     0.90,
+_TIMEOUTS: dict[str, float] = {
+    "standard": 6.0,
+    "post_emotional": 8.0,
+    "post_price": 7.0,
+    "post_appointment": 8.0,
+    "consecutive_2": 4.0,
 }
 
-_MOMENTUM_SPEED_DELTA = 0.03
-_MOMENTUM_VOLUME_DELTA = 0.02
-_SPEED_MIN = 0.70
-_SPEED_MAX = 0.95
-_VOLUME_MIN = 0.75
-_VOLUME_MAX = 0.92
-_DEFAULT_SPEED = 0.85
-_DEFAULT_VOLUME = 0.85
+_EMOTIONAL_MULTIPLIERS: dict[str, float] = {
+    "DISTRESSED": 1.4,
+    "GRIEVING": 1.5,
+    "OVERWHELMED": 1.4,
+    "HOSTILE": 0.6,
+    "EXCITED": 0.8,
+}
+
+_CONSECUTIVE_SILENCE_END = 3
+_DISTRESSED_STATES = frozenset(["DISTRESSED", "GRIEVING", "OVERWHELMED"])
 
 
-class PacingController(FrameProcessor):
-    def __init__(self, call_ctx):
-        super().__init__()
+def _get_context(call_ctx) -> str:
+    objective = getattr(call_ctx, "objective", "GET_MOTIVATION")
+    emotional_state = getattr(call_ctx, "emotional_state", "NEUTRAL")
+    consecutive = getattr(call_ctx, "consecutive_silences", 0)
+
+    if consecutive >= 2:
+        return "consecutive_2"
+
+    if objective == "BOOK_APPOINTMENT":
+        return "post_appointment"
+
+    if getattr(call_ctx, "last_price_mentioned", None):
+        return "post_price"
+
+    if emotional_state in _DISTRESSED_STATES:
+        return "post_emotional"
+
+    return "standard"
+
+
+def _get_timeout(context: str, call_ctx) -> float:
+    base = _TIMEOUTS.get(context, 6.0)
+    emotional_state = getattr(call_ctx, "emotional_state", "NEUTRAL")
+    multiplier = _EMOTIONAL_MULTIPLIERS.get(emotional_state, 1.0)
+    return base * multiplier
+
+
+class SilenceHandler:
+    def __init__(self, call_ctx, task):
         self._ctx = call_ctx
-        self._current_speed: float = _DEFAULT_SPEED
-        self._current_volume: float = _DEFAULT_VOLUME
+        self._task = task
+        self._timer: asyncio.Task | None = None
+        self._last_phrase: str | None = None
+        self._consecutive_silences: int = 0
 
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
+    def start_timer(self) -> None:
+        self.cancel_timer()
+        self._timer = asyncio.create_task(self._run_timer())
 
-        if isinstance(frame, TTSTextFrame):
-            speed, volume = self._compute_pacing()
+    def cancel_timer(self) -> None:
+        if self._timer and not self._timer.done():
+            self._timer.cancel()
+            self._timer = None
 
-            if (
-                abs(speed - self._current_speed) > 0.01
-                or abs(volume - self._current_volume) > 0.01
-            ):
-                logger.debug(
-                    "pacing_controller speed={:.2f} volume={:.2f} "
-                    "emotional_state={} momentum={}",
-                    speed,
-                    volume,
-                    getattr(self._ctx, "emotional_state", "NEUTRAL"),
-                    getattr(self._ctx, "momentum_direction", "STABLE"),
+    async def _run_timer(self) -> None:
+        try:
+            context = _get_context(self._ctx)
+            timeout = _get_timeout(context, self._ctx)
+
+            logger.debug(
+                "silence_handler timer started context={} timeout={:.1f}s",
+                context,
+                timeout,
+            )
+
+            await asyncio.sleep(timeout)
+
+            self._consecutive_silences += 1
+            self._ctx.consecutive_silences = self._consecutive_silences
+
+            if self._consecutive_silences >= _CONSECUTIVE_SILENCE_END:
+                logger.info(
+                    "silence_handler consecutive_limit reached count={} ending call",
+                    self._consecutive_silences,
                 )
-                self._current_speed = speed
-                self._current_volume = volume
-                self._ctx.tts_speed = speed
-                self._ctx.tts_volume = volume
+                self._ctx.call_should_end = True
+                self._consecutive_silences = 0
+                self._ctx.consecutive_silences = 0
+                return
 
-                try:
-                    from pipecat.services.cartesia.tts import GenerationConfig
-                    from pipecat.services.tts_service import TTSUpdateSettingsFrame
-                    await self.push_frame(
-                        TTSUpdateSettingsFrame(
-                            settings={"generation_config": GenerationConfig(
-                                speed=speed,
-                                volume=volume,
-                            )}
-                        ),
-                        direction,
-                    )
-                except Exception:
-                    pass
+            phrase = self._pick_phrase(context)
 
-        await self.push_frame(frame, direction)
+            logger.info(
+                "silence_handler firing phrase={!r} context={} consecutive={}",
+                phrase,
+                context,
+                self._consecutive_silences,
+            )
 
-    def _compute_pacing(self) -> tuple[float, float]:
-        emotional_state = getattr(self._ctx, "emotional_state", "NEUTRAL")
-        momentum_direction = getattr(self._ctx, "momentum_direction", "STABLE")
-        microstate = getattr(self._ctx, "microstate", "NEUTRAL")
+            from pipecat.frames.frames import TTSSpeakFrame
+            await self._task.queue_frames([TTSSpeakFrame(phrase)])
 
-        speed = _BASE_SPEED.get(emotional_state, _DEFAULT_SPEED)
-        volume = _BASE_VOLUME.get(emotional_state, _DEFAULT_VOLUME)
+        except asyncio.CancelledError:
+            pass
+        except Exception as error:
+            logger.exception("silence_handler error error={}", str(error))
 
-        if momentum_direction == "RISING":
-            speed += _MOMENTUM_SPEED_DELTA
-            volume += _MOMENTUM_VOLUME_DELTA
-        elif momentum_direction == "FALLING":
-            speed -= _MOMENTUM_SPEED_DELTA
-            volume -= _MOMENTUM_VOLUME_DELTA
+    def _pick_phrase(self, context: str) -> str:
+        options = _RECOVERY_PHRASES.get(context, _RECOVERY_PHRASES["standard"])
+        filtered = [p for p in options if p != self._last_phrase]
+        phrase = random.choice(filtered or options)
+        self._last_phrase = phrase
+        return phrase
 
-        if microstate == "COMMITTING":
-            speed = min(speed + 0.02, _SPEED_MAX)
-        elif microstate == "VENTING":
-            speed = max(speed - 0.03, _SPEED_MIN)
-            volume = max(volume - 0.02, _VOLUME_MIN)
-
-        speed = max(_SPEED_MIN, min(_SPEED_MAX, speed))
-        volume = max(_VOLUME_MIN, min(_VOLUME_MAX, volume))
-
-        return speed, volume
+    def reset_consecutive(self) -> None:
+        self._consecutive_silences = 0
+        self._ctx.consecutive_silences = 0
