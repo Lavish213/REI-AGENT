@@ -43,7 +43,6 @@ from backend.voice.fatigue_detector import FatigueDetector
 from backend.voice.microstate_engine import MicrostateEngine
 from backend.voice.momentum_tracker import MomentumTracker
 from backend.voice.objective_engine import ObjectiveEngine
-from backend.voice.pacing_controller import PacingController
 from backend.voice.processors.backchannel import BackchannelProcessor
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
 from backend.voice.processors.interruption import InterruptionAckProcessor
@@ -504,7 +503,6 @@ async def run_sophia_agent(
     response_compressor = ResponseCompressor(call_ctx)
     spoken_renderer = SpokenRendererProcessor(call_ctx=call_ctx)
     speech_chunker = SpeechChunker(call_ctx)
-    pacing_controller = PacingController(call_ctx)
 
     silence_handler = SilenceHandler(call_ctx, task=None)
     bot_speaking_monitor = BotSpeakingMonitor(silence_handler)
@@ -546,7 +544,6 @@ async def run_sophia_agent(
             response_compressor,
             spoken_renderer,
             speech_chunker,
-            pacing_controller,
             tts,
             TTSFrameProbe(),
             transport.output(),
