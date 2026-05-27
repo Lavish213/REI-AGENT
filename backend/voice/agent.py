@@ -100,7 +100,7 @@ def _build_opener(call_context: dict[str, Any]) -> str:
     situation_opener = _SITUATION_OPENERS.get(situation, "")
 
     if not is_outbound:
-        base = "San Joaquin House Buyers — hey, this is Sophia."
+        base = "San Joaquin House Buyers — hey, this is Sophia. Just so you know, this call may be recorded."
         if situation_opener:
             return f"{base} {situation_opener}"
         return base
