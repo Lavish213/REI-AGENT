@@ -516,7 +516,7 @@ async def run_sophia_agent(
                 sample_rate=16000,
                 params=VADParams(
                     confidence=0.92,
-                    start_secs=0.3,
+                    start_secs=0.15,
                     stop_secs=0.6,
                     min_volume=0.90,
                 ),
