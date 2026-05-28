@@ -4,7 +4,7 @@ import re
 
 from loguru import logger
 
-from pipecat.frames.frames import Frame, LLMFullResponseEndFrame, TextFrame, TTSTextFrame
+from pipecat.frames.frames import AggregationType, Frame, LLMFullResponseEndFrame, TextFrame, TTSTextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
@@ -146,7 +146,7 @@ class SpeechChunker(FrameProcessor):
                 )
 
                 for chunk in chunks:
-                    await self.push_frame(TTSTextFrame(text=chunk), direction)
+                    await self.push_frame(TTSTextFrame(text=chunk, aggregated_by=AggregationType.SENTENCE), direction)
 
             self._buffer = []
             self._collecting = False
