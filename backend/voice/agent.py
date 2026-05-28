@@ -141,6 +141,7 @@ def _load_prompt_file(prompts_dir: str, filename: str) -> str:
 
 
 def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> str:
+    from backend.voice.prompt_budget import apply_budget
     prompts_dir = os.path.join(os.path.dirname(__file__), "prompts")
 
     prompt_parts = [_load_prompt_file(prompts_dir, "sophia_core.md")]
