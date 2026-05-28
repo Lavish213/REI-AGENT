@@ -273,12 +273,8 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
             punctuate=True,
             interim_results=False,
             endpointing=300,
-            utterance_end_ms=1000,
             numerals=True,
             smart_format=False,
-            keywords=["Stockton:2", "Lodi:2", "Manteca:2", "Tracy:2",
-                      "San Joaquin:2", "Alanzo:3", "Sophia:3",
-                      "as-is:2", "foreclosure:2", "wholesaler:2"],
         ),
     )
 
