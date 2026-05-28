@@ -72,7 +72,7 @@ class ObjectiveEngine:
             logger.debug("objective=LEAN_IN softening=True")
             return "LEAN_IN"
 
-        if fatigue_level in _CRITICAL_FATIGUE:
+        if fatigue_level in _CRITICAL_FATIGUE and turn_count >= 4:
             logger.debug("objective=NURTURE_EXIT fatigue=CRITICAL")
             return "NURTURE_EXIT"
 

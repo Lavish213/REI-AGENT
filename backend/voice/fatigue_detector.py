@@ -62,7 +62,10 @@ class FatigueDetector(FrameProcessor):
             self._consecutive_short = 0
 
         avg = sum(self._history) / len(self._history)
+        turn_count = getattr(self._ctx, "turn_count", 0)
         level = _words_to_level(avg, self._consecutive_short)
+        if level == "CRITICAL" and turn_count < 4:
+            level = "HIGH"
 
         if level != self._prev_level:
             logger.info(

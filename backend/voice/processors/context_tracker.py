@@ -206,18 +206,53 @@ class CallContext:
         return "STANDARD"
 
     def build_context_prefix(self) -> str:
-        addr = 1 if self.address_known else 0
-        intent = 1 if self.intent_locked else 0
-        obj = self.objective
-        mode = self.get_seller_mode()
+        _OBJ_MAP = {
+            "GET_ADDRESS": "ask which property they own, naturally",
+            "GET_MOTIVATION": "find out what is going on with the property",
+            "GET_TIMELINE": "surface how soon they need to move",
+            "GET_CONDITION": "find out what shape the property is in",
+            "GET_MORTGAGE": "surface loan status naturally",
+            "GET_PRICE_ANCHOR": "ask what number would work for them",
+            "BOOK_APPOINTMENT": "close to a walkthrough",
+            "HANDLE_OBJECTION": "address their concern first before moving forward",
+            "TRUST_REPAIR": "slow down, build trust, stop pushing",
+            "EMOTIONAL_HOLD": "follow their emotional thread before any business",
+            "NURTURE_EXIT": "wrap up warmly and keep the door open",
+            "LEAN_IN": "they are softening, move forward gently",
+        }
+        _MODE_MAP = {
+            "FAST": "keep it brief and get to the point",
+            "DISTRESSED": "slow down and follow their story",
+            "HOT": "move toward setting the appointment",
+            "SKEPTICAL": "shorter responses, grounded language, answer their questions",
+            "INHERITED": "acknowledge the loss naturally before anything else",
+            "EMOTIONAL": "match their energy and follow the emotion first",
+            "LANDLORD": "lead with simplicity and no hassle",
+            "STANDARD": "normal curious discovery flow",
+        }
 
-        tag = f"[CTX:OBJ={obj}|MODE={mode}|ADDR={addr}|INTENT={intent}]"
+        obj = self.objective or "GET_MOTIVATION"
+        mode = self.get_seller_mode()
+        addr = "yes" if self.address_known else "no"
+        intent = "yes" if self.intent_locked else "no"
+        appt = "yes" if getattr(self, "appointment_set", False) else "no"
+
+        goal = _OBJ_MAP.get(obj, "understand their situation")
+        tone = _MODE_MAP.get(mode, "stay curious and warm")
+
+        tag = (
+            f"Current goal: {goal}\n"
+            f"Seller tone: {tone}\n"
+            f"Address collected: {addr}\n"
+            f"Selling intent confirmed: {intent}\n"
+            f"Appointment set: {appt}"
+        )
 
         if self.objections_raised:
-            tag = tag[:-1] + f"|OBJ_LAST={self.objections_raised[-1]}]"
+            tag += f"\nLast objection raised: {self.objections_raised[-1]}"
 
         if self.runtime_instruction:
-            tag += f"\n[RUNTIME: {self.runtime_instruction}]"
+            tag += f"\nNote: {self.runtime_instruction}"
             self.runtime_instruction = None
 
         return tag

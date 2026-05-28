@@ -158,18 +158,20 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
         )
 
     base_prompt = "\n\n".join(part for part in prompt_parts if part)
-    base_prompt = _strip_markdown(base_prompt)
-
     opener = _build_opener(call_context)
-    property_context_str = call_context.get("property_context_str", "No property context available.")
+    property_context_str = call_context.get("property_context_str", "Caller: unknown. Address: unknown. Call type: inbound.")
 
-    return (
+    full_prompt = (
         f"{base_prompt}\n\n"
-        f"OPENER\n\n"
-        f"{opener}\n\n"
         f"CALLER PROPERTY CONTEXT\n\n"
-        f"{property_context_str}"
+        f"{property_context_str}\n\n"
+        f"OPENER\n\n"
+        f"{opener}"
     )
+
+    full_prompt = apply_budget(full_prompt)
+    full_prompt = _strip_markdown(full_prompt)
+    return full_prompt
 
 
 def _load_boss_prompt(briefing: str) -> str:
@@ -269,9 +271,14 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
             language=language,
             punctuate=True,
             interim_results=False,
-            endpointing=600,
+            endpointing=300,
+            utterance_end_ms=1000,
+            vad_events=True,
             numerals=True,
-            smart_format=True,
+            smart_format=False,
+            keywords=["Stockton:2", "Lodi:2", "Manteca:2", "Tracy:2",
+                      "San Joaquin:2", "Alanzo:3", "Sophia:3",
+                      "as-is:2", "foreclosure:2", "wholesaler:2"],
         ),
     )
 
@@ -439,7 +446,8 @@ async def run_sophia_agent(
         settings=AnthropicLLMService.Settings(
             model=voice_model,
             enable_prompt_caching=True,
-            max_tokens=250,
+            max_tokens=300,
+            temperature=0.3,
         ),
     )
 
@@ -515,11 +523,11 @@ async def run_sophia_agent(
                 params=VADParams(
                     confidence=0.92,
                     start_secs=0.15,
-                    stop_secs=0.6,
-                    min_volume=0.90,
+                    stop_secs=0.8,
+                    min_volume=0.95,
                 ),
             ),
-            user_turn_stop_timeout=1.2,
+            user_turn_stop_timeout=0.8,
         ),
     )
 

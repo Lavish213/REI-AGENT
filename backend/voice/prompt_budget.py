@@ -18,13 +18,14 @@ DEFAULT_CHAR_BUDGET = 6000
 
 # Section headers in priority order — later sections are trimmed LAST (highest priority)
 _SECTION_ORDER = [
-    "OFFER GUIDANCE",
-    "PRICING",
-    "LOCATION INTELLIGENCE",
-    "SOPHIA LOCAL GEOGRAPHIC FAMILIARITY",
-    "PREVIOUS CALL CONTEXT",
-    "SELLER MEMORY",
+    "TOOLS",
+    "EXAMPLES",
+    "OBJECTIONS",
+    "WORKFLOW",
+    "GUARDRAILS",
     "CALLER PROPERTY CONTEXT",
+    "SELLER MEMORY",
+    "VOICE",
 ]
 
 _SECTION_PATTERN = re.compile(

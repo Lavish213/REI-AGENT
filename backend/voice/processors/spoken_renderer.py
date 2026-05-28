@@ -67,7 +67,18 @@ _META_BLOCK_PATTERNS = [
     re.compile(r"\bcurrent objective\b", re.I),
     re.compile(r"\binternal state\b", re.I),
     re.compile(r"\bsystem prompt\b", re.I),
+    re.compile(r"\blanguage model\b", re.I),
+    re.compile(r"\bmy instructions\b", re.I),
+    re.compile(r"\bmy programming\b", re.I),
+    re.compile(r"\baccording to my\b", re.I),
+    re.compile(r"\bi was trained\b", re.I),
+    re.compile(r"\bignore (?:previous|prior|all)\b", re.I),
+    re.compile(r"\bdeveloper mode\b", re.I),
+    re.compile(r"\bno restrictions\b", re.I),
 ]
+
+_CTX_STRIP_PATTERN = re.compile(r"Current goal:[^\n]*(?:\n[^\n]+)*", re.MULTILINE)
+_BRACKET_STRIP_PATTERN = re.compile(r"\[[A-Z][^\]]{0,40}\]")
 
 _CONTRACTION_MAP: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bI am\b", re.I), "I'm"),
@@ -260,6 +271,8 @@ class SpokenRendererProcessor(FrameProcessor):
 
                 return _META_SAFE
 
+        text = _CTX_STRIP_PATTERN.sub("", text).strip()
+        text = _BRACKET_STRIP_PATTERN.sub("", text).strip()
         text = _strip_markdown(text)
 
         for pattern, replacement in _CONTRACTION_MAP:
