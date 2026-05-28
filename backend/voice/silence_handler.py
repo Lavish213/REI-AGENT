@@ -7,28 +7,11 @@ from loguru import logger
 
 
 _RECOVERY_PHRASES: dict[str, list[str]] = {
-    "standard": [
-        "You still there?",
-        "Still with me?",
-        "Hey — you there?",
-    ],
-    "post_emotional": [
-        "Take your time.",
-        "No rush.",
-        "Still here whenever you're ready.",
-    ],
-    "post_price": [
-        "Still there?",
-        "Did I lose you?",
-    ],
-    "post_appointment": [
-        "Did I lose you?",
-        "You still there?",
-    ],
-    "consecutive_2": [
-        "Hey — still there?",
-        "Hello?",
-    ],
+    "standard": ["You still there?", "Still with me?", "Hey — you there?"],
+    "post_emotional": ["Take your time.", "No rush.", "Still here whenever you're ready."],
+    "post_price": ["Still there?", "Did I lose you?"],
+    "post_appointment": ["Did I lose you?", "You still there?"],
+    "consecutive_2": ["Hey — still there?", "Hello?"],
 }
 
 _TIMEOUTS: dict[str, float] = {
@@ -58,16 +41,12 @@ def _get_context(call_ctx) -> str:
 
     if consecutive >= 2:
         return "consecutive_2"
-
     if objective == "BOOK_APPOINTMENT":
         return "post_appointment"
-
     if getattr(call_ctx, "last_price_mentioned", None):
         return "post_price"
-
     if emotional_state in _DISTRESSED_STATES:
         return "post_emotional"
-
     return "standard"
 
 
@@ -100,11 +79,7 @@ class SilenceHandler:
             context = _get_context(self._ctx)
             timeout = _get_timeout(context, self._ctx)
 
-            logger.debug(
-                "silence_handler timer started context={} timeout={:.1f}s",
-                context,
-                timeout,
-            )
+            logger.debug("silence_handler timer started context={} timeout={:.1f}s", context, timeout)
 
             await asyncio.sleep(timeout)
 
@@ -112,23 +87,20 @@ class SilenceHandler:
             self._ctx.consecutive_silences = self._consecutive_silences
 
             if self._consecutive_silences >= _CONSECUTIVE_SILENCE_END:
-                logger.info(
-                    "silence_handler consecutive_limit reached count={} ending call",
-                    self._consecutive_silences,
-                )
+                logger.info("silence_handler consecutive_limit reached count={} ending call", self._consecutive_silences)
+                from pipecat.frames.frames import TTSSpeakFrame
+                await self._task.queue_frames([TTSSpeakFrame(
+                    "Hey — even if the timing's not right, "
+                    "do you know anyone else around there thinking about selling?"
+                )])
+                await asyncio.sleep(4.0)
                 self._ctx.call_should_end = True
                 self._consecutive_silences = 0
                 self._ctx.consecutive_silences = 0
                 return
 
             phrase = self._pick_phrase(context)
-
-            logger.info(
-                "silence_handler firing phrase={!r} context={} consecutive={}",
-                phrase,
-                context,
-                self._consecutive_silences,
-            )
+            logger.info("silence_handler firing phrase={!r} context={} consecutive={}", phrase, context, self._consecutive_silences)
 
             from pipecat.frames.frames import TTSSpeakFrame
             await self._task.queue_frames([TTSSpeakFrame(phrase)])

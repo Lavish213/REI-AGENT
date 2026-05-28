@@ -1,14 +1,3 @@
-"""
-Provider orchestration registry for Sophia's runtime.
-
-Centralizes provider selection, fallback hierarchy, and health tracking.
-All provider instantiation should go through this module.
-
-Provider priority:
-  LLM:  Anthropic Claude Haiku (primary) → tools disabled
-  TTS:  ElevenLabs (primary) → Orpheus/Together (fallback)
-  STT:  Deepgram (primary, no fallback — call ends gracefully)
-"""
 from __future__ import annotations
 
 import os
@@ -18,8 +7,7 @@ from typing import Literal
 
 from loguru import logger
 
-
-ProviderName = Literal["anthropic", "groq", "elevenlabs", "orpheus", "deepgram"]
+ProviderName = Literal["anthropic", "groq", "cartesia", "elevenlabs", "orpheus", "deepgram"]
 
 
 @dataclass
@@ -67,48 +55,35 @@ class ProviderRegistry:
     _health: dict[ProviderName, ProviderHealth] = field(default_factory=dict)
 
     def __post_init__(self):
-        for name in ("anthropic", "groq", "elevenlabs", "orpheus", "deepgram"):
-            self._health[name] = ProviderHealth(name=name)  # type: ignore[arg-type]
+        for name in ("anthropic", "groq", "cartesia", "elevenlabs", "orpheus", "deepgram"):
+            self._health[name] = ProviderHealth(name=name)
 
     def health(self, name: ProviderName) -> ProviderHealth:
         return self._health[name]
 
     def select_llm(self) -> tuple[str, bool]:
-        """
-        Returns (provider_name, tools_supported).
-        Anthropic is primary and supports tools.
-        Groq is fallback but does NOT support tools reliably.
-        """
         groq_key = os.environ.get("GROQ_API_KEY", "")
         anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
-
         if anthropic_key and not self._health["anthropic"].is_circuit_open():
             return ("anthropic", True)
-
         if groq_key and not self._health["groq"].is_circuit_open():
             logger.warning("provider_registry selecting groq fallback — tools will not work")
             return ("groq", False)
-
         logger.error("provider_registry no LLM provider available")
-        return ("anthropic", True)  # force attempt — will fail loudly
+        return ("anthropic", True)
 
     def select_tts(self) -> str:
-        """
-        Returns provider name for TTS.
-        Orpheus (Together AI) takes priority when key present.
-        ElevenLabs is fallback.
-        """
+        cartesia_key = os.environ.get("CARTESIA_API_KEY", "")
         together_key = os.environ.get("TOGETHER_AI_API_KEY", "")
         elevenlabs_key = os.environ.get("ELEVENLABS_API_KEY", "")
-
+        if cartesia_key and not self._health["cartesia"].is_circuit_open():
+            return "cartesia"
         if together_key and not self._health["orpheus"].is_circuit_open():
             return "orpheus"
-
         if elevenlabs_key and not self._health["elevenlabs"].is_circuit_open():
             return "elevenlabs"
-
         logger.error("provider_registry no TTS provider available")
-        return "elevenlabs"
+        return "cartesia"
 
     def get_llm_model(self) -> str:
         return os.environ.get("VOICE_LLM_MODEL", "claude-haiku-4-5-20251001")
@@ -125,7 +100,6 @@ class ProviderRegistry:
         }
 
 
-# Module-level singleton — shared across all calls
 _registry: ProviderRegistry | None = None
 
 

@@ -43,12 +43,12 @@ from backend.voice.fatigue_detector import FatigueDetector
 from backend.voice.microstate_engine import MicrostateEngine
 from backend.voice.momentum_tracker import MomentumTracker
 from backend.voice.objective_engine import ObjectiveEngine
+from backend.voice.processors.analysis_callbacks import AnalysisCallbackProcessor
 from backend.voice.processors.backchannel import BackchannelProcessor
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
 from backend.voice.processors.interruption import InterruptionAckProcessor
-from backend.voice.processors.spoken_renderer import SpokenRendererProcessor
+from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor
 from backend.voice.resistance_tracker import ResistanceTracker
-from backend.voice.response_compressor import ResponseCompressor
 from backend.voice.runtime_orchestrator import RuntimeOrchestrator
 from backend.voice.seller_profile_engine import SellerProfileEngine
 from backend.voice.silence_handler import SilenceHandler
@@ -60,7 +60,7 @@ from backend.voice.turn_controller import TurnController
 _MD_STRIP_PATTERN = re.compile(r"^#{1,3}\s+|[*`]|^---+$", re.MULTILINE)
 
 _DEFAULT_LLM_MODEL = "claude-haiku-4-5-20251001"
-_DEFAULT_DEEPGRAM_MODEL = "nova-2"
+_DEFAULT_DEEPGRAM_MODEL = "nova-3"
 _DEFAULT_CARTESIA_MODEL = "sonic-3"
 
 _MAX_QA_TIMEOUT = 30.0
@@ -68,6 +68,15 @@ _MAX_TRANSCRIPT_INTEL_TIMEOUT = 60.0
 _MAX_WORKFLOW_TIMEOUT = 15.0
 _STREAM_SID_TIMEOUT = 2.0
 _STREAM_SID_MAX_READS = 5
+
+if os.environ.get("GROQ_API_KEY", "").strip():
+    import sys
+    print(
+        "CRITICAL: GROQ_API_KEY is set. Tools (book_appointment, set_disposition, "
+        "end_call, transfer_call) will NOT work on the Groq LLM path. "
+        "Unset GROQ_API_KEY to restore full functionality.",
+        file=sys.stderr,
+    )
 
 _SITUATION_OPENERS = {
     "inherited_property": "I'm sorry for your loss first of all.",
@@ -271,10 +280,10 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
             model=model,
             language=language,
             punctuate=True,
-            interim_results=False,
+            interim_results=True,
             endpointing=300,
             numerals=True,
-            smart_format=False,
+            smart_format=True,
         ),
     )
 
@@ -489,6 +498,7 @@ async def run_sophia_agent(
         tools=_build_tools_schema() if not boss_mode else None,
     )
 
+    stt_mute = BotSpeakingSTTMuteProcessor()
     backchannel_processor = BackchannelProcessor(call_ctx=call_ctx)
     interruption_ack = InterruptionAckProcessor()
     emotional_engine = EmotionalStateEngine(call_ctx)
@@ -503,9 +513,19 @@ async def run_sophia_agent(
     runtime_orchestrator = RuntimeOrchestrator()
     context_tracker = ContextTrackerProcessor(call_ctx=call_ctx, llm_context=context)
     context_tracker.set_objective_engine(objective_engine)
+    analysis_callbacks = AnalysisCallbackProcessor(
+        call_ctx=call_ctx,
+        emotional_engine=emotional_engine,
+        trust_tracker=trust_tracker,
+        resistance_tracker=resistance_tracker,
+        momentum_tracker=momentum_tracker,
+        fatigue_detector=fatigue_detector,
+        deal_heat_scorer=deal_heat_scorer,
+        seller_profile_engine=seller_profile_engine,
+        microstate_engine=microstate_engine,
+        runtime_orchestrator=runtime_orchestrator,
+    )
     turn_controller = TurnController(call_ctx)
-    response_compressor = ResponseCompressor(call_ctx)
-    spoken_renderer = SpokenRendererProcessor(call_ctx=call_ctx)
     speech_chunker = SpeechChunker(call_ctx)
 
     silence_handler = SilenceHandler(call_ctx, task=None)
@@ -517,19 +537,20 @@ async def run_sophia_agent(
             vad_analyzer=SileroVADAnalyzer(
                 sample_rate=16000,
                 params=VADParams(
-                    confidence=0.92,
-                    start_secs=0.15,
-                    stop_secs=0.8,
-                    min_volume=0.95,
+                    confidence=0.7,
+                    start_secs=0.2,
+                    stop_secs=0.3,
+                    min_volume=0.6,
                 ),
             ),
-            user_turn_stop_timeout=0.8,
+            user_turn_stop_timeout=0.4,
         ),
     )
 
     pipeline = Pipeline(
         [
             transport.input(),
+            stt_mute,
             stt,
             backchannel_processor,
             interruption_ack,
@@ -542,11 +563,10 @@ async def run_sophia_agent(
             seller_profile_engine,
             microstate_engine,
             context_tracker,
+            analysis_callbacks,
             context_aggregator.user(),
             turn_controller,
             llm,
-            response_compressor,
-            spoken_renderer,
             speech_chunker,
             tts,
             TTSFrameProbe(),
@@ -673,7 +693,12 @@ async def _handle_call_end(
 
         if seller_memory and transcript:
             try:
-                seller_memory.add_call_summary(f"Call {call_sid[:8]}: {transcript[:200]}")
+                summary_label = (
+                    f"Call {call_sid[:8]}: "
+                    f"disposition={disposition or 'unknown'} "
+                    f"turns={getattr(call_ctx, 'turn_count', 0)}"
+                )
+                seller_memory.add_call_summary(summary_label)
                 await asyncio.to_thread(seller_memory.save)
             except Exception as error:
                 logger.exception("seller_memory save failed error={}", str(error))

@@ -37,4 +37,4 @@ class InterruptionAckProcessor(FrameProcessor):
         ack = random.choice(candidates)
         self._last_ack = ack
         logger.debug("interruption ack={}", ack)
-        await self.push_frame(TTSSpeakFrame(text=ack))
+        await self.push_frame(TTSSpeakFrame(text=ack), FrameDirection.DOWNSTREAM)

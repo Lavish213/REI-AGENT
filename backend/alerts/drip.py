@@ -82,7 +82,7 @@ DAY0_YES_REPLY = (
 )
 
 DAY0_YES_REPLY_ES = (
-    "Qué bueno! Sophia con San Joaquin House Buyers. Compramos as-is, cash, rapido. "
+    "Que bueno! Sophia con San Joaquin House Buyers. Compramos as-is, cash, rapido. "
     "\u00bfTe interesa una oferta? Reply STOP pa' salir"
 )
 
@@ -96,7 +96,7 @@ DISTRESS_TO_SEQUENCE: dict[str, str] = {
 }
 
 HOT_KEYWORDS = {"yes", "interested", "call me", "info", "yeah", "sure", "ok", "okay",
-                "yep", "call", "definitely", "si", "sí", "claro", "órale", "sale"}
+                "yep", "call", "definitely", "si", "s\u00ed", "claro", "\u00f3rale", "sale"}
 OPT_OUT_KEYWORDS = {"stop", "unsubscribe", "quit", "cancel", "end", "optout", "opt out", "opt-out"}
 
 _scheduler: BackgroundScheduler | None = None
@@ -112,6 +112,47 @@ def _get_first_name(lead: dict, prop: dict) -> str:
     owner = lead.get("owner_name") or (prop or {}).get("owner_name") or ""
     parts = owner.strip().split()
     return parts[0] if parts else "there"
+
+
+def _personalize_sms(template: str, lead: dict, prop: dict) -> str:
+    prop = prop or {}
+    distress_type = lead.get("situation_label") or prop.get("distress_type") or "general"
+    first_name = _get_first_name(lead, prop)
+    city = prop.get("city", "")
+    years_owned = lead.get("years_owned") or ""
+    call_summary = lead.get("call_summary") or ""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        system = (
+            "You write short, personal outreach SMS messages for a local home buyer "
+            "in San Joaquin County, CA. Messages must be under 155 characters, "
+            "sound human and conversational, reference the seller's specific situation, "
+            "and end with a soft call to action. Never use exclamation marks. "
+            "Never sound like a mass text. Return ONLY the message text, nothing else."
+        )
+        user = (
+            f"Write a personalized SMS to {first_name or 'the homeowner'} "
+            f"about their property{(' in ' + city) if city else ''}. "
+            f"Situation: {distress_type}. "
+            f"{('They have owned it for ' + str(years_owned) + ' years. ') if years_owned else ''}"
+            f"{('Prior contact summary: ' + call_summary[:100] + '. ') if call_summary else ''}"
+            f"Original template for context: {template[:80]}"
+        )
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=80,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        msg = response.content[0].text.strip().strip('"').strip("'")
+        if len(msg) > 155:
+            msg = msg[:152] + "..."
+        return msg
+    except Exception as e:
+        logger.warning("personalize_sms failed falling back to template error={}", str(e))
+        return _render(template, lead, prop)
 
 
 def _render(template: str, lead: dict, prop: dict) -> str:
@@ -176,9 +217,12 @@ def _process_lead(lead: dict) -> None:
 
     day, template = next_step
     prop = lead.get("properties") or {}
-    body = _render(template, lead, prop)
-
     is_first_message = current_day < 0
+    if is_first_message:
+        body = _personalize_sms(template, lead, prop)
+    else:
+        body = _render(template, lead, prop)
+
     if is_first_message and "reply stop" not in body.lower():
         body = body + " Reply STOP to opt out"
 
@@ -255,7 +299,7 @@ def handle_inbound_reply(from_phone: str, body: str, message_sid: str) -> str:
                 response_body = DAY0_YES_REPLY.format(first_name=first_name, address=address)
         else:
             if is_spanish:
-                response_body = f"\u00a1Qu\u00e9 bueno! Te llamo pronto. \u00bfCu\u00e1l es el mejor momento hoy? - Sophia"
+                response_body = "\u00a1Qu\u00e9 bueno! Te llamo pronto. \u00bfCu\u00e1l es el mejor momento hoy? - Sophia"
             else:
                 response_body = "Great! I'll give you a call shortly. What's the best time today? - Sophia"
 
@@ -293,7 +337,6 @@ def handle_inbound_reply(from_phone: str, body: str, message_sid: str) -> str:
 
 
 def send_appointment_reminder(lead_id: str, phone: str, first_name: str, address: str, appointment_dt: datetime) -> bool:
-    dt_str = appointment_dt.strftime("%A at %-I:%M %p")
     body = f"Hey {first_name}! Quick reminder \u2014 we're stopping by {address} tomorrow at {appointment_dt.strftime('%-I:%M %p')}. See you then! - Sophia \U0001f3e1"
     return send_drip_sms(to=phone, body=body, lead_id=lead_id)
 
@@ -334,13 +377,11 @@ def stop_drip_scheduler() -> None:
 def send_birthday_message(lead_id: str, first_name: str, phone: str) -> bool:
     from backend.alerts.sms import send_sms
     from backend.compliance.compliance import ComplianceEngine
-
     engine = ComplianceEngine()
     result = engine.check_sms_allowed(lead_id)
     if not result.allowed:
         logger.info("birthday_sms blocked lead_id={} reason={}", lead_id, result.reason)
         return False
-
     message = f"Happy birthday {first_name}! Hope you're having a great day. - Sophia, SJ House Buyers"
     return send_sms(phone, message)
 
@@ -348,13 +389,11 @@ def send_birthday_message(lead_id: str, first_name: str, phone: str) -> bool:
 def send_purchase_anniversary_message(lead_id: str, first_name: str, phone: str, address: str) -> bool:
     from backend.alerts.sms import send_sms
     from backend.compliance.compliance import ComplianceEngine
-
     engine = ComplianceEngine()
     result = engine.check_sms_allowed(lead_id)
     if not result.allowed:
         logger.info("anniversary_sms blocked lead_id={} reason={}", lead_id, result.reason)
         return False
-
     message = f"Hey {first_name} \u2014 hope life's been good since you bought on {address}. If you ever want to know what it's worth now just let us know! - Sophia"
     return send_sms(phone, message)
 
@@ -362,13 +401,11 @@ def send_purchase_anniversary_message(lead_id: str, first_name: str, phone: str,
 def send_wedding_anniversary_message(lead_id: str, first_name: str, spouse_name: str, phone: str) -> bool:
     from backend.alerts.sms import send_sms
     from backend.compliance.compliance import ComplianceEngine
-
     engine = ComplianceEngine()
     result = engine.check_sms_allowed(lead_id)
     if not result.allowed:
         logger.info("wedding_anniversary_sms blocked lead_id={} reason={}", lead_id, result.reason)
         return False
-
     message = f"Hey {first_name} \u2014 hope you and {spouse_name} are having a wonderful anniversary! - Sophia, San Joaquin House Buyers"
     return send_sms(phone, message)
 

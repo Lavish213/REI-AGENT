@@ -27,38 +27,14 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "date": {
-                    "type": "string",
-                    "description": "Date in YYYY-MM-DD format",
-                },
-                "time": {
-                    "type": "string",
-                    "description": "Time in HH:MM 24hr format",
-                },
-                "address": {
-                    "type": "string",
-                    "description": "Property address",
-                },
-                "lead_id": {
-                    "type": "string",
-                    "description": "Lead ID",
-                },
-                "seller_phone": {
-                    "type": "string",
-                    "description": "Seller phone number",
-                },
-                "seller_name": {
-                    "type": "string",
-                    "description": "Seller first name",
-                },
+                "date": {"type": "string", "description": "Date in YYYY-MM-DD format"},
+                "time": {"type": "string", "description": "Time in HH:MM 24hr format"},
+                "address": {"type": "string", "description": "Property address"},
+                "lead_id": {"type": "string", "description": "Lead ID"},
+                "seller_phone": {"type": "string", "description": "Seller phone number"},
+                "seller_name": {"type": "string", "description": "Seller first name"},
             },
-            "required": [
-                "date",
-                "time",
-                "address",
-                "lead_id",
-                "seller_phone",
-            ],
+            "required": ["date", "time", "address", "lead_id", "seller_phone"],
         },
     },
     {
@@ -70,26 +46,11 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "to": {
-                    "type": "string",
-                    "description": "Seller phone number",
-                },
-                "message": {
-                    "type": "string",
-                    "description": (
-                        "SMS under 160 characters"
-                    ),
-                },
-                "lead_id": {
-                    "type": "string",
-                    "description": "Lead ID",
-                },
+                "to": {"type": "string", "description": "Seller phone number"},
+                "message": {"type": "string", "description": "SMS under 160 characters"},
+                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": [
-                "to",
-                "message",
-                "lead_id",
-            ],
+            "required": ["to", "message", "lead_id"],
         },
     },
     {
@@ -124,63 +85,60 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "lead_id": {
-                    "type": "string",
-                    "description": "Lead ID",
-                },
-                "priority": {
-                    "type": "string",
-                    "enum": ["high", "medium", "low"],
-                    "description": "Follow-up priority",
-                },
-                "notes": {
-                    "type": "string",
-                    "description": "Callback notes",
-                },
-                "callback_time": {
-                    "type": "string",
-                    "description": "Requested callback timing",
-                },
+                "lead_id": {"type": "string", "description": "Lead ID"},
+                "priority": {"type": "string", "enum": ["high", "medium", "low"], "description": "Follow-up priority"},
+                "notes": {"type": "string", "description": "Callback notes"},
+                "callback_time": {"type": "string", "description": "Requested callback timing"},
             },
-            "required": [
-                "lead_id",
-                "priority",
-                "notes",
-            ],
+            "required": ["lead_id", "priority", "notes"],
         },
     },
     {
         "name": "end_call",
-        "description": (
-            "End the conversation after wrapping up."
-        ),
+        "description": "End the conversation after wrapping up.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "reason": {
                     "type": "string",
-                    "description": (
-                        "appointment_booked, "
-                        "not_interested, "
-                        "callback_scheduled, "
-                        "wrong_number, "
-                        "other"
-                    ),
+                    "description": "appointment_booked, not_interested, callback_scheduled, wrong_number, other",
                 },
-                "summary": {
-                    "type": "string",
-                    "description": "Short call summary",
-                },
-                "lead_id": {
-                    "type": "string",
-                    "description": "Lead ID",
-                },
+                "summary": {"type": "string", "description": "Short call summary"},
+                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": [
-                "reason",
-                "summary",
-                "lead_id",
-            ],
+            "required": ["reason", "summary", "lead_id"],
+        },
+    },
+    {
+        "name": "transfer_call",
+        "description": (
+            "Transfer this call to a human team member when the seller explicitly asks "
+            "to speak with a real person, asks to speak with the owner, or when the "
+            "situation requires human judgment such as legal questions or complex negotiations."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "reason": {"type": "string", "description": "Why transfer is needed"},
+                "lead_id": {"type": "string", "description": "Lead ID"},
+            },
+            "required": ["reason", "lead_id"],
+        },
+    },
+    {
+        "name": "get_offer_range",
+        "description": (
+            "Get a live offer range for the property based on current comps. "
+            "Use when seller asks what you would offer or what the property is worth. "
+            "Requires address to be known."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "address": {"type": "string", "description": "Property address"},
+                "lead_id": {"type": "string", "description": "Lead ID"},
+            },
+            "required": ["address", "lead_id"],
         },
     },
 ]
@@ -192,11 +150,7 @@ def execute_tool(
     call_ctx=None,
     lf_trace=None,
 ) -> str:
-    logger.info(
-        "execute_tool name={} input={}",
-        tool_name,
-        tool_input,
-    )
+    logger.info("execute_tool name={} input={}", tool_name, tool_input)
 
     try:
         if tool_name == "book_appointment":
@@ -213,35 +167,30 @@ def execute_tool(
 
         elif tool_name == "end_call":
             result = _end_call(tool_input)
+            if call_ctx is not None:
+                call_ctx.call_should_end = True
+                logger.info("end_call tool set call_should_end=True")
+
+        elif tool_name == "transfer_call":
+            result = _transfer_call(tool_input, call_ctx)
+
+        elif tool_name == "get_offer_range":
+            result = _get_offer_range(tool_input)
 
         else:
-            logger.warning(
-                "unknown tool called name={}",
-                tool_name,
-            )
+            logger.warning("unknown tool called name={}", tool_name)
             result = "Tool not found."
 
         try:
             from backend.observability import trace_tool_call
-
-            trace_tool_call(
-                lf_trace,
-                tool_name,
-                tool_input,
-                result,
-            )
-
+            trace_tool_call(lf_trace, tool_name, tool_input, result)
         except Exception:
             pass
 
         return result
 
     except Exception as e:
-        logger.exception(
-            "tool execution failed tool={} error={}",
-            tool_name,
-            str(e),
-        )
+        logger.exception("tool execution failed tool={} error={}", tool_name, str(e))
         return "Tool execution failed."
 
 
@@ -252,48 +201,25 @@ def _book_appointment(inp: dict) -> str:
     address = inp.get("address", "")
     seller_phone = inp.get("seller_phone", "")
     seller_name = inp.get("seller_name") or "there"
-
     owner_phone = os.environ.get("OWNER_PHONE", "")
-
     dt_pacific = None
 
     try:
-        dt_naive = datetime.strptime(
-            f"{date_str} {time_str}",
-            "%Y-%m-%d %H:%M",
-        )
-
+        dt_naive = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
         dt_pacific = _PACIFIC.localize(dt_naive)
-
-        dt_display = dt_naive.strftime(
-            "%A %b %d at %I:%M %p"
-        )
-
+        dt_display = dt_naive.strftime("%A %b %d at %I:%M %p")
         day_display = dt_naive.strftime("%A")
         time_display = dt_naive.strftime("%I:%M %p")
-
     except ValueError:
-        logger.warning(
-            "invalid appointment datetime date={} time={}",
-            date_str,
-            time_str,
-        )
-
+        logger.warning("invalid appointment datetime date={} time={}", date_str, time_str)
         dt_display = f"{date_str} at {time_str}"
         day_display = date_str
         time_display = time_str
 
     if lead_id:
-        update_lead_stage(
-            lead_id,
-            "walkthrough_booked",
-        )
-
+        update_lead_stage(lead_id, "walkthrough_booked")
         if dt_pacific:
-            update_lead_appointment(
-                lead_id,
-                dt_pacific.isoformat(),
-            )
+            update_lead_appointment(lead_id, dt_pacific.isoformat())
 
     confirmation_msg = (
         f"Hey {seller_name}, Sophia here — "
@@ -304,47 +230,18 @@ def _book_appointment(inp: dict) -> str:
 
     if seller_phone:
         try:
-            send_sms(
-                to=seller_phone,
-                body=confirmation_msg,
-            )
-
+            send_sms(to=seller_phone, body=confirmation_msg)
         except Exception as sms_err:
-            logger.warning(
-                "seller confirmation sms failed error={}",
-                str(sms_err),
-            )
+            logger.warning("seller confirmation sms failed error={}", str(sms_err))
 
     if owner_phone:
-        owner_alert = (
-            f"Walkthrough booked:\n"
-            f"{seller_name}\n"
-            f"{address}\n"
-            f"{dt_display}"
-        )
-
         try:
-            send_sms(
-                to=owner_phone,
-                body=owner_alert,
-            )
-
+            send_sms(to=owner_phone, body=f"Walkthrough booked:\n{seller_name}\n{address}\n{dt_display}")
         except Exception as owner_sms_err:
-            logger.warning(
-                "owner alert sms failed error={}",
-                str(owner_sms_err),
-            )
+            logger.warning("owner alert sms failed error={}", str(owner_sms_err))
 
-    logger.info(
-        "appointment booked lead_id={} address={}",
-        lead_id,
-        address,
-    )
-
-    return (
-        f"Appointment booked for "
-        f"{dt_display}."
-    )
+    logger.info("appointment booked lead_id={} address={}", lead_id, address)
+    return f"Appointment booked for {dt_display}."
 
 
 def _send_followup_sms(inp: dict) -> str:
@@ -353,100 +250,46 @@ def _send_followup_sms(inp: dict) -> str:
     lead_id = inp.get("lead_id", "")
 
     if not to or not message:
-        logger.warning(
-            "followup sms missing fields"
-        )
-        return (
-            "SMS not sent. Missing "
-            "phone number or message."
-        )
+        logger.warning("followup sms missing fields")
+        return "SMS not sent. Missing phone number or message."
 
     try:
-        send_sms(
-            to=to,
-            body=message,
-        )
-
+        send_sms(to=to, body=message)
         insert_sms({
             "lead_id": lead_id or None,
             "direction": "outbound",
             "body": message,
-            "sent_at": datetime.now(
-                timezone.utc,
-            ).isoformat(),
+            "sent_at": datetime.now(timezone.utc).isoformat(),
         })
-
-        logger.info(
-            "followup sms sent to={} lead_id={}",
-            to,
-            lead_id,
-        )
-
+        logger.info("followup sms sent to={} lead_id={}", to, lead_id)
         return "Follow-up SMS sent."
-
     except Exception as e:
-        logger.exception(
-            "followup sms failed error={}",
-            str(e),
-        )
+        logger.exception("followup sms failed error={}", str(e))
         return "SMS sending failed."
 
 
-def _set_disposition(
-    inp: dict,
-    call_ctx,
-) -> str:
-    disposition = (
-        inp.get("disposition", "")
-        .upper()
-        .strip()
-    )
-
-    valid = {
-        "HOT",
-        "WARM",
-        "COLD",
-        "DEAD",
-    }
+def _set_disposition(inp: dict, call_ctx) -> str:
+    disposition = inp.get("disposition", "").upper().strip()
+    valid = {"HOT", "WARM", "COLD", "DEAD"}
 
     if disposition not in valid:
-        return (
-            "Invalid disposition."
-        )
+        return "Invalid disposition."
 
     if call_ctx is not None:
         call_ctx.disposition = disposition
 
-    logger.info(
-        "set_disposition disposition={}",
-        disposition,
-    )
-
-    return (
-        f"Disposition set to "
-        f"{disposition}."
-    )
+    logger.info("set_disposition disposition={}", disposition)
+    return f"Disposition set to {disposition}."
 
 
 def _schedule_followup(inp: dict) -> str:
     lead_id = inp.get("lead_id", "")
     priority = inp.get("priority", "medium")
     notes = inp.get("notes", "").strip()
-    callback_time = inp.get(
-        "callback_time",
-        "",
-    ).strip()
+    callback_time = inp.get("callback_time", "").strip()
 
     if callback_time:
-        if notes:
-            notes = (
-                f"{notes} | "
-                f"Callback: {callback_time}"
-            )
-        else:
-            notes = (
-                f"Callback: {callback_time}"
-            )
+        notes = f"{notes} | Callback: {callback_time}" if notes else f"Callback: {callback_time}"
 
     try:
         followup_id = create_followup(
@@ -456,28 +299,11 @@ def _schedule_followup(inp: dict) -> str:
             notes=notes,
             created_by="sophia",
         )
-
-        logger.info(
-            "followup created id={} lead_id={}",
-            followup_id,
-            lead_id,
-        )
-
-        return (
-            f"Follow-up scheduled "
-            f"({priority})."
-        )
-
+        logger.info("followup created id={} lead_id={}", followup_id, lead_id)
+        return f"Follow-up scheduled ({priority})."
     except Exception as e:
-        logger.exception(
-            "schedule_followup failed error={}",
-            str(e),
-        )
-
-        return (
-            "Failed to schedule "
-            "follow-up."
-        )
+        logger.exception("schedule_followup failed error={}", str(e))
+        return "Failed to schedule follow-up."
 
 
 def _end_call(inp: dict) -> str:
@@ -492,32 +318,91 @@ def _end_call(inp: dict) -> str:
         "other": "contacted",
     }
 
-    stage = stage_map.get(
-        reason,
-        "contacted",
-    )
+    stage = stage_map.get(reason, "contacted")
 
     if lead_id:
         try:
-            update_lead_stage(
-                lead_id,
-                stage,
-            )
-
+            update_lead_stage(lead_id, stage)
         except Exception as stage_err:
-            logger.warning(
-                "update_lead_stage failed error={}",
-                str(stage_err),
+            logger.warning("update_lead_stage failed error={}", str(stage_err))
+
+    logger.info("end_call reason={} stage={} lead_id={}", reason, stage, lead_id)
+    return f"Call ended. Lead stage updated to {stage}."
+
+
+def _transfer_call(inp: dict, call_ctx=None) -> str:
+    reason = inp.get("reason", "seller requested human")
+    lead_id = inp.get("lead_id", "")
+    owner_phone = os.environ.get("OWNER_PHONE", "")
+
+    logger.info("transfer_call reason={} lead_id={}", reason, lead_id)
+
+    if call_ctx is not None:
+        call_ctx.call_should_end = True
+        call_ctx.disposition = "WARM"
+
+    if lead_id:
+        try:
+            update_lead_stage(lead_id, "contacted")
+        except Exception as e:
+            logger.warning("transfer update_stage failed error={}", str(e))
+
+    if owner_phone:
+        try:
+            alert = (
+                f"Sophia is transferring a call — seller asked for a real person.\n"
+                f"Reason: {reason}\n"
+                f"Lead ID: {lead_id}"
+            )
+            send_sms(to=owner_phone, body=alert)
+        except Exception as e:
+            logger.warning("transfer alert sms failed error={}", str(e))
+
+    return "Transferring you now — one moment."
+
+
+def _get_offer_range(inp: dict) -> str:
+    address = inp.get("address", "").strip()
+    lead_id = inp.get("lead_id", "")
+
+    if not address:
+        return "I need to walk through the property first to give you a real number."
+
+    try:
+        from backend.lib.db import get_lead_with_property
+        lead = get_lead_with_property(lead_id) if lead_id else None
+        prop = (lead.get("properties") or {}) if lead else {}
+
+        arv_cents = prop.get("estimated_arv")
+        mao_cents = prop.get("mao")
+        confidence = prop.get("arv_confidence", "low")
+
+        if arv_cents and mao_cents:
+            arv = int(arv_cents) // 100
+            mao = int(mao_cents) // 100
+            low = int(mao * 0.95)
+            high = int(mao * 1.05)
+
+            confidence_phrase = {
+                "high": "Based on several recent sales in your area",
+                "medium": "Based on what I'm seeing in your area",
+                "low": "Comps are a little thin out there, but roughly",
+            }.get(confidence, "Based on what I'm seeing")
+
+            return (
+                f"{confidence_phrase}, we'd probably be looking "
+                f"somewhere in the ${low:,} to ${high:,} range. "
+                f"That's before we take a look inside — "
+                f"once we walk through the number gets more precise. "
+                f"Does that ballpark work for your situation?"
             )
 
-    logger.info(
-        "end_call reason={} stage={} lead_id={}",
-        reason,
-        stage,
-        lead_id,
-    )
+    except Exception as e:
+        logger.warning("get_offer_range db lookup failed error={}", str(e))
 
     return (
-        f"Call ended. "
-        f"Lead stage updated to {stage}."
+        "So I want to give you a real number, not just throw something out. "
+        "Based on what I'm seeing for your area we're probably in a reasonable range — "
+        "but honestly the number gets more precise once we actually walk through. "
+        "Would that work?"
     )
