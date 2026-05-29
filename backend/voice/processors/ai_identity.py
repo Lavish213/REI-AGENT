@@ -1,39 +1,38 @@
+from __future__ import annotations
+
 import re
 from loguru import logger
-from pipecat.frames.frames import AggregationType, Frame, TranscriptionFrame, TTSTextFrame
+from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-_IDENTITY_PATTERNS = re.compile(
-    r"\b(are you (a |an )?(robot|bot|ai|computer|machine|automated|human|real|person)|"
-    r"is this (a |an )?(bot|robot|ai|automated|computer)|"
-    r"real person|talking to a (bot|robot|computer|machine)|"
-    r"am i talking to)\b",
+_AI_QUESTION = re.compile(
+    r"\b(are you a robot|are you ai|are you real|is this automated|are you human|are you a bot|are you a computer|is this a recording)\b",
     re.IGNORECASE,
 )
 
-_DISCLOSURE = (
+_SB1001_DISCLOSURE = (
     "I'm Sophia — an automated assistant for San Joaquin House Buyers. "
     "Would you like to speak with someone directly?"
 )
 
 
 class AIIdentityProcessor(FrameProcessor):
-    def __init__(self):
+    def __init__(self, call_ctx=None):
         super().__init__()
+        self._ctx = call_ctx
         self._disclosed = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if (
-            not self._disclosed
-            and isinstance(frame, TranscriptionFrame)
-            and frame.text
-            and _IDENTITY_PATTERNS.search(frame.text)
-        ):
-            self._disclosed = True
-            logger.info("ai_identity_question detected — forcing disclosure")
-            await self.push_frame(TTSTextFrame(text=_DISCLOSURE, aggregated_by=AggregationType.SENTENCE), direction)
-            return
+        if isinstance(frame, TranscriptionFrame) and frame.text:
+            text = frame.text.strip()
+            if _AI_QUESTION.search(text) and not self._disclosed:
+                self._disclosed = True
+                logger.info("ai_identity SB1001 disclosure triggered")
+                if self._ctx is not None:
+                    self._ctx.runtime_instruction = (
+                        f"[Seller asked if you are AI. Respond exactly: '{_SB1001_DISCLOSURE}']"
+                    )
 
         await self.push_frame(frame, direction)

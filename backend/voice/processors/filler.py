@@ -29,8 +29,8 @@ async def pregenerate_filler_clips(
     voice_id: str = None,
     sample_rate: int = 16000,
 ) -> dict[str, bytes]:
-    api_key = api_key or os.environ.get("ELEVENLABS_API_KEY", "")
-    voice_id = voice_id or os.environ.get("ELEVENLABS_VOICE_ID", "")
+    api_key = api_key or os.environ.get("CARTESIA_API_KEY", "")
+    voice_id = voice_id or os.environ.get("CARTESIA_VOICE_ID", "")
     clips = {}
     for phrase in FILLER_PHRASES:
         try:

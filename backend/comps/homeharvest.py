@@ -114,3 +114,25 @@ def _fallback(sqft: int | None) -> dict:
         "comp_range_high": 0,
         "source": "fallback",
     }
+
+
+def trigger_arv_computation(property_id: str, address: str, sqft: int | None = None) -> None:
+    import asyncio
+    try:
+        comps = pull_comps(address)
+        if not comps:
+            logger.warning("trigger_arv_computation no comps found address={}", address)
+            return
+        from backend.comps.calculator import calculate_arv
+        result = calculate_arv(comps, sqft)
+        if result.get("arv"):
+            from backend.lib.db import update_property_arv
+            update_property_arv(property_id, result)
+            logger.info(
+                "arv_computed property_id={} arv=${:.0f} confidence={}",
+                property_id,
+                result["arv"] / 100,
+                result["confidence"],
+            )
+    except Exception as e:
+        logger.warning("trigger_arv_computation failed property_id={} error={}", property_id, str(e))

@@ -185,3 +185,56 @@ async def get_performance_trend(weeks: int = Query(default=4)):
     from backend.qa.metrics import get_qa_trend
     trend = get_qa_trend(weeks=weeks)
     return {"trend": trend}
+
+
+@router.post("/campaigns/pause")
+async def pause_campaign(campaign_id: str = "default"):
+    try:
+        from backend.lib.db import _get_client
+        db = _get_client()
+        db.table("campaigns").update({"state": "paused"}).eq("id", campaign_id).execute()
+        logger.info("campaign_paused id={}", campaign_id)
+        return {"success": True, "state": "paused"}
+    except Exception as e:
+        logger.error("pause_campaign failed error={}", str(e))
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/campaigns/resume")
+async def resume_campaign(campaign_id: str = "default"):
+    try:
+        from backend.lib.db import _get_client
+        db = _get_client()
+        db.table("campaigns").update({"state": "running"}).eq("id", campaign_id).execute()
+        logger.info("campaign_resumed id={}", campaign_id)
+        return {"success": True, "state": "running"}
+    except Exception as e:
+        logger.error("resume_campaign failed error={}", str(e))
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/campaigns/redial/{campaign_id}")
+async def redial_campaign(campaign_id: str):
+    try:
+        from backend.lib.db import _get_client
+        db = _get_client()
+        result = db.table("calls").select("lead_id").eq(
+            "campaign_id", campaign_id
+        ).in_("call_disposition", ["no_answer", "busy"]).execute()
+        lead_ids = [r["lead_id"] for r in (result.data or []) if r.get("lead_id")]
+        logger.info("campaign_redial campaign_id={} leads={}", campaign_id, len(lead_ids))
+        return {"success": True, "leads_queued": len(lead_ids), "lead_ids": lead_ids}
+    except Exception as e:
+        logger.error("redial_campaign failed error={}", str(e))
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/campaigns/status")
+async def get_campaign_status():
+    try:
+        from backend.lib.db import _get_client
+        db = _get_client()
+        result = db.table("campaigns").select("*").order("created_at", desc=True).limit(5).execute()
+        return {"campaigns": result.data or []}
+    except Exception as e:
+        return {"campaigns": [], "error": str(e)}

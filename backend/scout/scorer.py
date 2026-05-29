@@ -169,6 +169,15 @@ def _move_score(prop: dict) -> int:
     if years is not None and years >= 7:
         score += 4
 
+    dom = prop.get("days_on_market") or 0
+    price_drops = prop.get("price_drop_count") or 0
+    if dom >= 30 and price_drops >= 2:
+        score += 15
+    elif dom >= 30:
+        score += 5
+    elif price_drops >= 2:
+        score += 5
+
     return min(score, 30)
 
 

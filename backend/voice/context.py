@@ -1,146 +1,59 @@
 from __future__ import annotations
 
 import os
-
-from anthropic import Anthropic
 from loguru import logger
 
-
-_client: Anthropic | None = None
-
-
-MAX_CONTEXT_MESSAGES = 12
-RECENT_MESSAGE_COUNT = 4
-SUMMARY_MAX_TOKENS = 300
+_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+_COMPRESS_AFTER = 30
 
 
-def _get_client() -> Anthropic:
-    global _client
-
-    if _client is None:
-        _client = Anthropic(
-            api_key=os.environ["ANTHROPIC_API_KEY"],
-        )
-
-    return _client
-
-
-def compress_context(
-    messages: list[dict],
-    current_state: str,
-) -> list[dict]:
-
-    if len(messages) <= MAX_CONTEXT_MESSAGES:
+async def compress_context(messages: list[dict], objective: str) -> list[dict]:
+    if len(messages) <= _COMPRESS_AFTER:
         return messages
 
-    system_messages = [
-        message
-        for message in messages
-        if message.get("role") == "system"
-    ]
+    system_msgs = [m for m in messages if m.get("role") == "system"]
+    convo_msgs = [m for m in messages if m.get("role") != "system"]
 
-    conversation_messages = [
-        message
-        for message in messages
-        if message.get("role") != "system"
-    ]
-
-    if len(conversation_messages) <= RECENT_MESSAGE_COUNT:
+    if len(convo_msgs) <= 10:
         return messages
 
-    historical_messages = conversation_messages[
-        :-RECENT_MESSAGE_COUNT
-    ]
-
-    recent_messages = conversation_messages[
-        -RECENT_MESSAGE_COUNT:
-    ]
-
-    transcript_parts: list[str] = []
-
-    for message in historical_messages:
-        content = message.get("content")
-
-        if not isinstance(content, str):
-            continue
-
-        role = (
-            "SELLER"
-            if message.get("role") == "user"
-            else "SOPHIA"
-        )
-
-        transcript_parts.append(
-            f"{role}: {content.strip()}"
-        )
-
-    transcript = "\n".join(transcript_parts).strip()
-
-    if not transcript:
-        return messages
+    to_summarize = convo_msgs[:-6]
+    keep_recent = convo_msgs[-6:]
 
     try:
-        client = _get_client()
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-        response = client.messages.create(
-            model=os.environ.get(
-                "LLM_MODEL",
-                "claude-sonnet-4-6",
-            ),
-            max_tokens=SUMMARY_MAX_TOKENS,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        "Summarize this real estate acquisitions "
-                        "conversation.\n\n"
-                        "Focus on:\n"
-                        "- seller motivation\n"
-                        "- emotional state\n"
-                        "- timeline\n"
-                        "- objections\n"
-                        "- property condition\n"
-                        "- price discussion\n"
-                        "- appointment progress\n"
-                        "- important relationship context\n\n"
-                        f"Current runtime state: "
-                        f"{current_state}\n\n"
-                        f"Conversation:\n{transcript}"
-                    ),
-                }
-            ],
+        transcript_lines = []
+        for m in to_summarize:
+            role = m.get("role", "")
+            content = m.get("content", "")
+            if isinstance(content, str) and role in ("user", "assistant"):
+                speaker = "SELLER" if role == "user" else "SOPHIA"
+                transcript_lines.append(f"{speaker}: {content}")
+
+        transcript = "\n".join(transcript_lines)
+
+        response = await client.messages.create(
+            model=_DEFAULT_MODEL,
+            max_tokens=300,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Summarize this real estate call transcript in 3-4 sentences. "
+                    f"Keep: seller motivation, timeline, condition, price mentioned, objections raised, emotional state. "
+                    f"Current objective: {objective}.\n\nTRANSCRIPT:\n{transcript}"
+                ),
+            }],
         )
 
-        summary_text = (
-            response.content[0].text.strip()
-        )
+        summary = response.content[0].text.strip()
+        summary_msg = {"role": "user", "content": f"[PRIOR CALL SUMMARY: {summary}]"}
+        compressed = system_msgs + [summary_msg] + keep_recent
 
-        compressed_summary_message = {
-            "role": "system",
-            "content": (
-                "[COMPRESSED CONVERSATION CONTEXT]\n"
-                f"{summary_text}"
-            ),
-        }
+        logger.info("context_compressed original={} compressed={}", len(messages), len(compressed))
+        return compressed
 
-        compressed_context = (
-            system_messages
-            + [compressed_summary_message]
-            + recent_messages
-        )
-
-        logger.info(
-            "context compressed original_messages={} compressed_messages={}",
-            len(messages),
-            len(compressed_context),
-        )
-
-        return compressed_context
-
-    except Exception as error:
-        logger.exception(
-            "context compression failed error={}",
-            str(error),
-        )
-
+    except Exception as e:
+        logger.warning("context_compress failed error={} returning original", str(e))
         return messages
