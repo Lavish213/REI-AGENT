@@ -8,29 +8,34 @@ from pipecat.frames.frames import AggregationType, Frame, LLMFullResponseEndFram
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
+_JARGON = [
+    (re.compile(r'\bARV\b'), "what it'd be worth after repairs"),
+    (re.compile(r'\bfix and flip\b', re.IGNORECASE), "fix it up and sell it"),
+    (re.compile(r'\bwholesale\b', re.IGNORECASE), "work with a network of buyers"),
+    (re.compile(r'\bMAO\b'), "what we can offer"),
+    (re.compile(r'\bacquisitions\b', re.IGNORECASE), "buying"),
+    (re.compile(r'\bunder contract\b', re.IGNORECASE), "in the process"),
+    (re.compile(r'\bclose of escrow\b', re.IGNORECASE), "closing day"),
+]
+
+_XML_TAG = re.compile(r'<[a-z_/][^>]{0,60}>', re.IGNORECASE)
+_MARKDOWN = re.compile(r'^#{1,3}\s+|[*`_]|^---+$', re.MULTILINE)
+_BRACKET = re.compile(r'\[[A-Z][A-Z_ ]{0,40}\]')
+
 _ACK_WORDS = frozenset([
-    "got it",
-    "okay",
-    "alright",
-    "right",
-    "yeah",
-    "sure",
-    "understood",
-    "okay so",
-    "alright so",
+    "got it", "okay", "alright", "right",
+    "yeah", "sure", "understood", "okay so", "alright so",
 ])
 
 _SPLIT_ON_ACK = re.compile(
-    r"(?<!\w)(got it|okay so|alright so|okay|alright|right|yeah|sure|understood)[\s,—–-]+",
+    r'(?<!\w)(got it|okay so|alright so|okay|alright|right|yeah|sure|understood)[\s,—–-]+',
     re.IGNORECASE,
 )
 
-_SPLIT_ON_EMDASH = re.compile(r"\s*[—–]\s*")
-
-_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+")
-
+_SPLIT_ON_EMDASH = re.compile(r'\s*[—–]\s*')
+_SENTENCE_BOUNDARY = re.compile(r'(?<=[.!?])\s+')
 _TRAILING_CONJUNCTION = re.compile(
-    r"\b(and|but|because|so|like|I mean|you know|well|actually|the thing is)\s*$",
+    r'\b(and|but|because|so|like|I mean|you know|well|actually|the thing is)\s*$',
     re.IGNORECASE,
 )
 
@@ -47,6 +52,16 @@ _CHUNK_LIMITS: dict[str, int] = {
 }
 
 _DEFAULT_CHUNK_LIMIT = 15
+
+
+def _transform(text: str) -> str:
+    text = _XML_TAG.sub('', text)
+    text = _MARKDOWN.sub('', text)
+    text = _BRACKET.sub('', text)
+    for pattern, replacement in _JARGON:
+        text = pattern.sub(replacement, text)
+    text = re.sub(r'\s{2,}', ' ', text)
+    return text.strip()
 
 
 def _get_chunk_limit(emotional_state: str) -> int:
@@ -133,20 +148,29 @@ class SpeechChunker(FrameProcessor):
 
         if isinstance(frame, LLMFullResponseEndFrame):
             if self._collecting and self._buffer:
-                full_text = "".join(self._buffer).strip()
+                raw = "".join(self._buffer).strip()
+                full_text = _transform(raw)
+
+                if not full_text:
+                    self._buffer = []
+                    self._collecting = False
+                    await self.push_frame(frame, direction)
+                    return
+
                 emotional_state = getattr(self._ctx, "emotional_state", "NEUTRAL")
                 word_limit = _get_chunk_limit(emotional_state)
                 chunks = _split_into_chunks(full_text, word_limit)
 
                 logger.info(
                     "speech_chunker chunks={} emotional_state={} word_limit={}",
-                    len(chunks),
-                    emotional_state,
-                    word_limit,
+                    len(chunks), emotional_state, word_limit,
                 )
 
                 for chunk in chunks:
-                    await self.push_frame(TTSTextFrame(text=chunk, aggregated_by=AggregationType.SENTENCE), direction)
+                    await self.push_frame(
+                        TTSTextFrame(text=chunk, aggregated_by=AggregationType.SENTENCE),
+                        direction,
+                    )
 
             self._buffer = []
             self._collecting = False
