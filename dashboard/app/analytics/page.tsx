@@ -66,9 +66,9 @@ export default async function AnalyticsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-900 text-white p-6">
+    <main className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Analytics</h1>
+        <h1 className="text-xl font-bold">Analytics</h1>
         <div className="flex gap-3 text-sm">
           <a href="/" className="text-blue-400 hover:underline">Ops →</a>
           <a href="/workflow" className="text-blue-400 hover:underline">Workflow →</a>
@@ -78,24 +78,24 @@ export default async function AnalyticsPage() {
 
       {/* Headline metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-        <div className="bg-gray-800 rounded-lg p-4">
+        <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
           <p className="text-xs text-gray-400 mb-1">Active Leads</p>
           <p className="text-3xl font-bold text-white">{workflow.active_leads ?? '—'}</p>
           <p className="text-xs text-gray-600 mt-1">in workflow</p>
         </div>
-        <div className="bg-gray-800 rounded-lg p-4">
+        <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
           <p className="text-xs text-gray-400 mb-1">Hot Leads</p>
           <p className={`text-3xl font-bold ${(workflow.hot_leads ?? 0) > 0 ? 'text-red-400' : 'text-gray-500'}`}>
             {workflow.hot_leads ?? '—'}
           </p>
           <p className="text-xs text-gray-600 mt-1">need contact now</p>
         </div>
-        <div className="bg-gray-800 rounded-lg p-4">
+        <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
           <p className="text-xs text-gray-400 mb-1">Calls This Week</p>
           <p className="text-3xl font-bold text-green-400">{workflow.calls_this_week ?? '—'}</p>
           <p className="text-xs text-gray-600 mt-1">last 7 days</p>
         </div>
-        <div className="bg-gray-800 rounded-lg p-4">
+        <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
           <p className="text-xs text-gray-400 mb-1">Appt Conversion</p>
           <p className={`text-3xl font-bold ${(workflow.conversion_rate_pct ?? 0) > 0 ? 'text-blue-400' : 'text-gray-500'}`}>
             {workflow.conversion_rate_pct != null ? `${workflow.conversion_rate_pct}%` : '—'}
@@ -225,12 +225,12 @@ export default async function AnalyticsPage() {
         <section className="mt-6">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Agent Performance (7 days)</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-gray-800 rounded-lg p-4">
+            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
               <p className="text-xs text-gray-400">Total Calls</p>
               <p className="text-2xl font-bold text-white">{perf.total_calls}</p>
             </div>
             {perf.avg_score != null && (
-              <div className="bg-gray-800 rounded-lg p-4">
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
                 <p className="text-xs text-gray-400">Avg QA Score</p>
                 <p className={`text-2xl font-bold ${perf.avg_score >= 8 ? 'text-green-400' : perf.avg_score >= 6 ? 'text-yellow-400' : 'text-red-400'}`}>
                   {perf.avg_score.toFixed(1)}
@@ -238,13 +238,13 @@ export default async function AnalyticsPage() {
               </div>
             )}
             {perf.appointment_rate != null && (
-              <div className="bg-gray-800 rounded-lg p-4">
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
                 <p className="text-xs text-gray-400">Appointment Rate</p>
                 <p className="text-2xl font-bold text-green-400">{Math.round(perf.appointment_rate * 100)}%</p>
               </div>
             )}
             {perf.hot_lead_rate != null && (
-              <div className="bg-gray-800 rounded-lg p-4">
+              <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
                 <p className="text-xs text-gray-400">Hot Lead Rate</p>
                 <p className="text-2xl font-bold text-red-400">{Math.round(perf.hot_lead_rate * 100)}%</p>
               </div>

@@ -30,9 +30,9 @@ export default async function LeadsPage() {
   const rows = leads ?? []
 
   return (
-    <main className="min-h-screen bg-gray-900 text-white p-6">
+    <main className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Leads</h1>
+        <h1 className="text-xl font-bold">Leads</h1>
         <span className="text-sm text-gray-400">{rows.length} shown (top 100 by distress score)</span>
       </div>
 
@@ -42,7 +42,7 @@ export default async function LeadsPage() {
         </div>
       )}
 
-      <div className="bg-gray-800 rounded-lg overflow-x-auto">
+      <div className="rounded-xl border overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-gray-400 border-b border-gray-700">

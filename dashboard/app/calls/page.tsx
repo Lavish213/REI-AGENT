@@ -28,14 +28,14 @@ export default async function CallsPage() {
   const rows = calls ?? []
 
   return (
-    <main className="min-h-screen bg-gray-900 text-white p-6">
+    <main className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Calls</h1>
+        <h1 className="text-xl font-bold">Calls</h1>
         <span className="text-sm text-gray-400">{rows.length} shown (latest 50)</span>
       </div>
 
       {error && (
-        <div className="bg-red-900/40 border border-red-700 text-red-300 rounded-lg p-4 mb-6">
+        <div className=" border border-red-700 text-red-300 rounded-lg p-4 mb-6">
           Error loading calls: {error.message}
         </div>
       )}
@@ -58,13 +58,13 @@ export default async function CallsPage() {
             COLD: 'text-blue-300', DEAD: 'text-gray-500',
           }
           const priorityBadge: Record<string, string> = {
-            high: 'bg-red-900/40 text-red-300',
+            high: ' text-red-300',
             medium: 'bg-yellow-900/40 text-yellow-300',
-            low: 'bg-gray-700 text-gray-500',
+            low: ' text-gray-500',
           }
 
           return (
-            <div key={call.id} className="bg-gray-800 rounded-lg">
+            <div key={call.id} className="rounded-xl border" style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}>
               <div className="flex items-center gap-4 px-4 py-3">
                 <span className="text-gray-400 text-sm w-44 shrink-0">{formatDate(call.created_at)}</span>
                 <span className="flex-1 truncate font-medium">{address}</span>
