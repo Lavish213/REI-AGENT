@@ -140,20 +140,17 @@ def trigger_arv_computation(property_id: str, address: str, sqft: int | None = N
 
 def trigger_arv_computation(property_id: str, address: str, sqft: int | None = None) -> None:
     try:
-        comps = pull_comps(address)
-        if not comps:
-            logger.warning("trigger_arv_computation no comps found address={}", address)
+        result = get_comps(address=address, sqft=sqft)
+        if not result or not result.get("arv_estimate"):
+            logger.warning("trigger_arv_computation no arv address={}", address)
             return
-        from backend.comps.calculator import calculate_arv
-        result = calculate_arv(comps, sqft)
-        if result.get("arv"):
-            from backend.lib.db import update_property_arv
-            update_property_arv(property_id, result)
-            logger.info(
-                "arv_computed property_id={} arv=${:.0f} confidence={}",
-                property_id,
-                result["arv"] / 100,
-                result["confidence"],
-            )
+        from backend.lib.db import update_property_arv
+        update_property_arv(
+            property_id,
+            result["arv_estimate"],
+            int(result["arv_estimate"] * 0.70),
+            result.get("confidence", "low"),
+        )
+        logger.info("arv_computed property_id={} arv=${:.0f} confidence={}", property_id, result["arv_estimate"] / 100, result.get("confidence"))
     except Exception as e:
         logger.warning("trigger_arv_computation failed property_id={} error={}", property_id, str(e))

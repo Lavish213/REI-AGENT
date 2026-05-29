@@ -177,8 +177,14 @@ def _schedule_retry_for_disposition(lead_id: str, disposition: str, attempt_coun
     if not delay_seconds:
         return
     try:
-        from backend.lib.db import schedule_lead_retry
-        schedule_lead_retry(lead_id, delay_seconds=delay_seconds, attempt_count=attempt_count + 1)
+        from backend.lib.db import create_followup
+        create_followup(
+            lead_id=lead_id,
+            priority="medium",
+            followup_type="call",
+            notes=f"Auto-retry after {disposition}. Attempt {attempt_count + 1}.",
+            created_by="sophia",
+        )
         logger.info("retry_scheduled lead_id={} disposition={} delay_hours={:.1f}", lead_id, disposition, delay_seconds / 3600)
     except Exception as e:
         logger.warning("schedule_retry failed lead_id={} error={}", lead_id, str(e))
