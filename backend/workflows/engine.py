@@ -121,10 +121,7 @@ def trigger_from_call_outcome(
                 address = prop.get("address", "unknown address")
                 motivation = intel.get("motivation_level") or "?"
                 timeline = intel.get("timeline_urgency") or "unknown"
-                send_alert_to_owner(f"🔥 HOT LEAD
-{name} — {address}
-Motivation: {motivation}/10 | Timeline: {timeline}
-Call back ASAP")
+                send_alert_to_owner(f"🔥 HOT LEAD\n{name} — {address}\nMotivation: {motivation}/10 | Timeline: {timeline}\nCall back ASAP")
             if hot_lead and hot_lead.get("owner_phone") and not hot_lead.get("drip_started_at"):
                 from backend.alerts.drip import get_sequence_name
                 sequence = get_sequence_name((hot_lead.get("properties") or {}).get("distress_type"))

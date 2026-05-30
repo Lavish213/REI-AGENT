@@ -462,10 +462,7 @@ def _ask_operator(inp, call_ctx=None):
         pass
     try:
         from backend.alerts.sms import send_sms
-        send_sms(to=owner_phone, body=f"Sophia needs input
-{context or 'Active call'}
-Q: {question}
-Reply to answer.", bypass_hours=True)
+        send_sms(to=owner_phone, body=f"Sophia needs input\n{context or 'Active call'}\nQ: {question}\nReply to answer.", bypass_hours=True)
     except Exception:
         return "Couldn't reach operator. Continuing."
     deadline = time.time() + 90
