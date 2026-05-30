@@ -287,6 +287,20 @@ async def handle_inbound_sms(
             message_sid,
         )
 
+        owner_phone = os.environ.get("OWNER_PHONE", "")
+        if owner_phone and "".join(c for c in from_number if c.isdigit())[-10:] == "".join(c for c in owner_phone if c.isdigit())[-10:]:
+            try:
+                from backend.lib.db import _get_client
+                client = _get_client()
+                pending = client.table("operator_queries").select("id").eq("status", "pending").order("created_at", desc=True).limit(1).execute()
+                if pending.data:
+                    query_id = pending.data[0]["id"]
+                    client.table("operator_queries").update({"answer": body, "status": "answered"}).eq("id", query_id).execute()
+                    logger.info("operator_reply recorded query_id={}", query_id)
+                    return PlainTextResponse(content=_empty_twiml(), media_type="text/xml")
+            except Exception as op_err:
+                logger.warning("operator_reply failed error={}", str(op_err))
+
         from backend.alerts.drip import (
             handle_inbound_reply,
         )

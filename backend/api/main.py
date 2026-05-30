@@ -46,14 +46,24 @@ def _refresh_engagement() -> None:
 
 def _run_pending_followups() -> None:
     try:
-        from backend.lib.db import get_pending_followups
+        from backend.lib.db import get_pending_followups, _get_client
         from backend.voice.outbound import call_lead
+        from datetime import datetime, timezone
         followups = get_pending_followups(limit=5)
         for f in followups:
             lead_id = f.get("lead_id")
             if lead_id:
                 result = call_lead(lead_id, bypass_cooldown=False)
                 logger.info("followup_call lead_id={} success={}", lead_id, result.get("success"))
+        now = datetime.now(timezone.utc).isoformat()
+        client = _get_client()
+        due = client.table("leads").select("id").not_.is_("callback_scheduled_at", "null").lte("callback_scheduled_at", now).neq("last_call_outcome", "answered").limit(3).execute()
+        for lead in (due.data or []):
+            lid = lead.get("id")
+            if lid:
+                call_lead(lid, bypass_cooldown=True)
+                client.table("leads").update({"callback_scheduled_at": None}).eq("id", lid).execute()
+                logger.info("scheduled_callback_dialed lead_id={}", lid)
     except Exception as e:
         logger.exception("followup_poller error={}", str(e))
 

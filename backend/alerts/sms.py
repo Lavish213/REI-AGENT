@@ -105,3 +105,24 @@ def send_offer_summary_sms(
         f"as-is, fast close. Questions? Just reply. - Sophia"
     )
     return send_sms(to=to, body=body, lead_id=lead_id)
+
+
+def send_owner_call_digest(
+    disposition: str | None,
+    call_summary: str | None,
+    next_best_action: str | None,
+    motivation_level: int | None,
+    timeline_urgency: str | None,
+    address: str | None,
+    lead_id: str = "",
+) -> bool:
+    disp = (disposition or "unknown").upper()
+    emoji = {"HOT": "🔥", "WARM": "☀️", "COLD": "❄️", "DEAD": "💀"}.get(disp, "📞")
+    lines = [
+        f"{emoji} Call done — {disp}",
+        address or "Unknown address",
+        f"Summary: {call_summary or 'none'}",
+        f"Motivation: {motivation_level or '?'}/10 | Timeline: {timeline_urgency or 'unknown'}",
+        f"Next: {next_best_action or 'follow up'}",
+    ]
+    return send_alert_to_owner("\n".join(lines))

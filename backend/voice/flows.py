@@ -1,3 +1,8 @@
+from backend.voice.states.warm_open import get_instruction as _warm_open_instr
+from backend.voice.states.discovery import get_instruction as _discovery_instr
+from backend.voice.states.close import get_instruction as _close_instr
+from backend.voice.states.end_call import get_instruction as _end_call_instr
+
 from __future__ import annotations
 
 from enum import Enum
@@ -236,6 +241,18 @@ class ConversationFlow:
         self.state_history = [CallState.OPENING]
 
     def get_state_instruction(self) -> str:
+        _RICH = {
+            CallState.OPENING: _warm_open_instr,
+            CallState.DISCOVERY: _discovery_instr,
+            CallState.APPOINTMENT_TRANSITION: _close_instr,
+            CallState.END_CALL: _end_call_instr,
+        }
+        fn = _RICH.get(self.current_state)
+        if fn is not None:
+            try:
+                return fn()
+            except Exception:
+                pass
         return STATE_INSTRUCTIONS.get(self.current_state, "")
 
     def increment_turn(self) -> None:

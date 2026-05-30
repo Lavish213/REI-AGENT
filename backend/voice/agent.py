@@ -459,6 +459,7 @@ async def run_sophia_agent(
     logger.info("voice llm model={}", voice_model)
 
     call_ctx = CallContext()
+    call_ctx._call_sid = call_sid
     if call_context.get("address"):
         call_ctx.address_known = True
     if call_context.get("situation_label"):
@@ -858,6 +859,24 @@ async def _run_transcript_intel_async(
                 ),
                 timeout=_MAX_WORKFLOW_TIMEOUT,
             )
+
+        if intel:
+            try:
+                from backend.alerts.sms import send_owner_call_digest
+                from backend.lib.db import get_lead_with_property
+                lead_data = get_lead_with_property(lead_id)
+                address = (lead_data.get("properties") or {}).get("address") if lead_data else None
+                send_owner_call_digest(
+                    disposition=disposition,
+                    call_summary=intel.get("call_summary"),
+                    next_best_action=intel.get("next_best_action"),
+                    motivation_level=intel.get("motivation_level"),
+                    timeline_urgency=intel.get("timeline_urgency"),
+                    address=address,
+                    lead_id=lead_id,
+                )
+            except Exception as digest_err:
+                logger.warning("owner_digest failed call_sid={} error={}", call_sid, str(digest_err))
 
         logger.info("transcript_intel complete call_sid={}", call_sid)
     except asyncio.TimeoutError:

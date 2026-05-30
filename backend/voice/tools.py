@@ -126,6 +126,49 @@ SOPHIA_TOOLS = [
         },
     },
     {
+        "name": "schedule_callback",
+        "description": "Schedule an auto-callback for this seller. Use when seller says call me back Tuesday or try me in an hour.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "delay_hours": {"type": "number"},
+                "day_of_week": {"type": "string"},
+                "notes": {"type": "string"},
+                "lead_id": {"type": "string"},
+            },
+            "required": ["lead_id", "notes"],
+        },
+    },
+    {
+        "name": "ask_operator",
+        "description": "Ask Angelo a question mid-call. Use for unusual pricing, legal questions, or anything outside your training. Call stays live up to 90s waiting for reply.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string"},
+                "context": {"type": "string"},
+                "lead_id": {"type": "string"},
+            },
+            "required": ["question", "lead_id"],
+        },
+    },
+    {
+        "name": "send_followup_email",
+        "description": "Send an email to the seller with offer summary. Use when seller gives their email or asks for something in writing.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Seller email address"},
+                "first_name": {"type": "string"},
+                "address": {"type": "string"},
+                "offer_low": {"type": "integer"},
+                "offer_high": {"type": "integer"},
+                "lead_id": {"type": "string"},
+            },
+            "required": ["to", "lead_id"],
+        },
+    },
+    {
         "name": "get_offer_range",
         "description": (
             "Get a live offer range for the property based on current comps. "
@@ -173,6 +216,15 @@ def execute_tool(
 
         elif tool_name == "transfer_call":
             result = _transfer_call(tool_input, call_ctx)
+
+        elif tool_name == "schedule_callback":
+            result = _schedule_callback(tool_input, call_ctx)
+
+        elif tool_name == "ask_operator":
+            result = _ask_operator(tool_input, call_ctx)
+
+        elif tool_name == "send_followup_email":
+            result = _send_followup_email(tool_input, call_ctx)
 
         elif tool_name == "get_offer_range":
             result = _get_offer_range(tool_input)
@@ -359,6 +411,109 @@ def _transfer_call(inp: dict, call_ctx=None) -> str:
             logger.warning("transfer alert sms failed error={}", str(e))
 
     return "Transferring you now — one moment."
+
+
+
+
+
+def _schedule_callback(inp, call_ctx=None):
+    from datetime import datetime, timezone, timedelta
+    lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
+    delay_hours = float(inp.get("delay_hours") or 24)
+    day_of_week = (inp.get("day_of_week") or "").strip().lower()
+    notes = inp.get("notes", "").strip()
+    if not lead_id:
+        return "Need a lead ID."
+    now = datetime.now(timezone.utc)
+    callback_at = now + timedelta(hours=delay_hours)
+    if day_of_week:
+        days = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+        target = days.get(day_of_week)
+        if target is not None:
+            ahead = (target - now.weekday()) % 7 or 7
+            callback_at = now.replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=ahead)
+    try:
+        from backend.lib.db import schedule_callback
+        schedule_callback(lead_id, callback_at.isoformat())
+        if notes:
+            from backend.lib.db import _get_client
+            _get_client().table("leads").update({"callback_notes": notes}).eq("id", lead_id).execute()
+        display = callback_at.strftime("%A at %I:%M %p")
+        logger.info("schedule_callback lead_id={} at={}", lead_id, callback_at.isoformat())
+        return f"Got it. I'll call you back {display} Pacific time."
+    except Exception as e:
+        logger.exception("schedule_callback failed error={}", str(e))
+        return "Had trouble scheduling that."
+
+
+def _ask_operator(inp, call_ctx=None):
+    import time
+    question = inp.get("question", "").strip()
+    context = inp.get("context", "").strip()
+    lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
+    owner_phone = os.environ.get("OWNER_PHONE", "")
+    if not owner_phone:
+        return "Operator unreachable. Using best judgment."
+    query_id = f"op_{int(time.time())}"
+    try:
+        from backend.lib.db import _get_client
+        _get_client().table("operator_queries").insert({"id": query_id, "lead_id": lead_id or None, "question": question, "context": context, "status": "pending"}).execute()
+    except Exception:
+        pass
+    try:
+        from backend.alerts.sms import send_sms
+        send_sms(to=owner_phone, body=f"Sophia needs input
+{context or 'Active call'}
+Q: {question}
+Reply to answer.", bypass_hours=True)
+    except Exception:
+        return "Couldn't reach operator. Continuing."
+    deadline = time.time() + 90
+    while time.time() < deadline:
+        time.sleep(3)
+        try:
+            from backend.lib.db import _get_client
+            row = _get_client().table("operator_queries").select("status,answer").eq("id", query_id).single().execute()
+            if row.data and row.data.get("status") == "answered":
+                try:
+                    _get_client().table("operator_queries").update({"status": "closed"}).eq("id", query_id).execute()
+                except Exception:
+                    pass
+                return f"Operator says: {row.data.get('answer', '')}"
+        except Exception:
+            pass
+    return "No operator response. Using best judgment."
+
+
+def _send_followup_email(inp, call_ctx=None):
+    to = inp.get("to", "").strip()
+    first_name = inp.get("first_name", "").strip() or (getattr(call_ctx, "seller_name", "") or "there").split()[0]
+    address = inp.get("address", "").strip()
+    offer_low = int(inp.get("offer_low") or 150000)
+    offer_high = int(inp.get("offer_high") or 175000)
+    lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
+    if not to:
+        try:
+            from backend.lib.db import get_lead_with_property
+            lead = get_lead_with_property(lead_id)
+            to = (lead or {}).get("owner_email", "")
+        except Exception:
+            pass
+    if not to:
+        return "What is the best email address to send that to?"
+    if lead_id and to:
+        try:
+            from backend.lib.db import _get_client
+            _get_client().table("leads").update({"owner_email": to}).eq("id", lead_id).execute()
+        except Exception:
+            pass
+    try:
+        from backend.alerts.email import send_offer_summary_email
+        sent = send_offer_summary_email(to=to, first_name=first_name, address=address, offer_low=offer_low, offer_high=offer_high, lead_id=lead_id)
+        return "Sent! Check your inbox." if sent else "Had trouble sending that email."
+    except Exception as e:
+        logger.exception("send_followup_email failed error={}", str(e))
+        return "Had trouble with that. Can I text you instead?"
 
 
 def _get_offer_range(inp: dict) -> str:

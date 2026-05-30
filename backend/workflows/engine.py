@@ -103,19 +103,65 @@ def trigger_from_call_outcome(
             "workflow_state": new_state,
         })
 
-    # Hot lead detection
+    # Hot lead detection + comms
     if intel.get("is_hot_lead") or (intel.get("motivation_level") or 0) >= 8:
         emit_event(HOT_LEAD_DETECTED, call_id, lead_id, {
             "motivation_level": intel.get("motivation_level"),
             "timeline_urgency": intel.get("timeline_urgency"),
             "followup_urgency": intel.get("followup_urgency"),
         })
+        try:
+            from backend.lib.db import get_lead_with_property, start_lead_drip
+            from backend.alerts.sms import send_alert_to_owner
+            from datetime import datetime, timezone
+            hot_lead = get_lead_with_property(lead_id)
+            if hot_lead:
+                prop = hot_lead.get("properties") or {}
+                name = hot_lead.get("owner_first_name") or hot_lead.get("owner_name") or "Seller"
+                address = prop.get("address", "unknown address")
+                motivation = intel.get("motivation_level") or "?"
+                timeline = intel.get("timeline_urgency") or "unknown"
+                send_alert_to_owner(f"🔥 HOT LEAD
+{name} — {address}
+Motivation: {motivation}/10 | Timeline: {timeline}
+Call back ASAP")
+            if hot_lead and hot_lead.get("owner_phone") and not hot_lead.get("drip_started_at"):
+                from backend.alerts.drip import get_sequence_name
+                sequence = get_sequence_name((hot_lead.get("properties") or {}).get("distress_type"))
+                start_lead_drip(lead_id, sequence, datetime.now(timezone.utc).isoformat(), initial_day=-1)
+        except Exception as hot_err:
+            logger.warning("hot_lead_comms failed lead_id={} error={}", lead_id, str(hot_err))
 
     if intel.get("appointment_interest"):
         emit_event(APPOINTMENT_DETECTED, call_id, lead_id, {
             "workflow_state": new_state,
             "appointment_interest": True,
         })
+        try:
+            from backend.lib.db import get_lead_with_property
+            from backend.alerts.email import send_walkthrough_confirmation_email
+            appt_lead = get_lead_with_property(lead_id)
+            if appt_lead and appt_lead.get("owner_email") and appt_lead.get("appointment_at"):
+                from datetime import datetime
+                prop = appt_lead.get("properties") or {}
+                appt_dt = datetime.fromisoformat(appt_lead["appointment_at"].replace("Z", "+00:00"))
+                send_walkthrough_confirmation_email(appt_lead, prop, appt_dt)
+        except Exception as appt_err:
+            logger.warning("appointment_email failed lead_id={} error={}", lead_id, str(appt_err))
+
+    if new_state == "followup_required":
+        try:
+            from backend.lib.db import get_lead_with_property, start_lead_drip, start_email_drip_for_lead
+            from datetime import datetime, timezone
+            fl = get_lead_with_property(lead_id)
+            if fl and fl.get("owner_phone") and not fl.get("drip_started_at"):
+                from backend.alerts.drip import get_sequence_name
+                sequence = get_sequence_name((fl.get("properties") or {}).get("distress_type"))
+                start_lead_drip(lead_id, sequence, datetime.now(timezone.utc).isoformat(), initial_day=-1)
+            if fl and fl.get("owner_email") and not fl.get("email_completed") and fl.get("email_day") is None:
+                start_email_drip_for_lead(lead_id, datetime.now(timezone.utc).isoformat())
+        except Exception as drip_err:
+            logger.warning("auto_drip_start failed lead_id={} error={}", lead_id, str(drip_err))
 
     logger.info(
         "workflow trigger lead_id={} state={} disposition={} new={}",

@@ -291,3 +291,19 @@ def stop_email_scheduler() -> None:
         _scheduler.shutdown(wait=False)
         _scheduler = None
         logger.info("email_scheduler stopped")
+
+
+def send_offer_summary_email(to, first_name, address, offer_low, offer_high, lead_id=""):
+    subject = f"Cash Offer Summary — {address}"
+    body = (
+        f"Hi {first_name},\n\n"
+        f"Thanks for chatting today.\n\n"
+        f"Property: {address}\n"
+        f"Cash offer range: ${offer_low:,} – ${offer_high:,}\n"
+        f"As-is, no repairs, fast close (14 days)\n"
+        f"No agent fees or commissions\n\n"
+        f"Reply or call/text to schedule a walkthrough.\n\n"
+        f"— Sophia\nSan Joaquin House Buyers\n"
+        f"{os.environ.get('SIGNALWIRE_PHONE', '')}"
+    )
+    return send_email(to=to, subject=subject, body=body)
