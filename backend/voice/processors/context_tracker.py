@@ -184,6 +184,8 @@ class CallContext:
     seller_sophistication: str = "AVERAGE"
     consecutive_silences: int = 0
     call_should_end: bool = False
+    seller_phone: str = ""
+    lead_id: str = ""
     last_sophia_words: int = 0
     tts_speed: float = 0.85
     tts_volume: float = 0.85

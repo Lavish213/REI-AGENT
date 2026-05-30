@@ -22,6 +22,7 @@ from backend.api.routes import (
     workflow,
 )
 from backend.voice.outbound_webhook import router as outbound_router
+from backend.api.routes.sms_status import router as sms_status_router
 from backend.voice.inbound_webhook import router as inbound_router
 
 
@@ -164,6 +165,7 @@ app.include_router(properties.router, prefix="/api")
 app.include_router(sms.router, prefix="/api")
 app.include_router(workflow.router, prefix="/api")
 app.include_router(outbound_router, prefix="/api")
+app.include_router(sms_status_router, prefix="/api")
 app.include_router(inbound_router, prefix="/api")
 
 

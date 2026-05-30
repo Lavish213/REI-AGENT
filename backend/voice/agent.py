@@ -466,6 +466,12 @@ async def run_sophia_agent(
     if call_context.get("initial_trust_score"):
         call_ctx.trust_score = float(call_context["initial_trust_score"])
 
+    if call_context.get("normalized_phone"):
+        call_ctx.seller_phone = call_context["normalized_phone"]
+    lead = call_context.get("lead")
+    if lead and lead.get("id"):
+        call_ctx.lead_id = lead["id"]
+
     if metrics_store is not None:
         metrics_store[call_sid] = call_ctx
 
