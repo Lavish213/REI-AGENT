@@ -154,7 +154,7 @@ async def handle_inbound_call(
 <Response>
     <Connect>
         <Stream
-            url="{ws_url}/voice/stream/{call_sid}"
+            url="{ws_url}/api/voice/stream/{call_sid}"
             track="inbound_track"
         />
     </Connect>
