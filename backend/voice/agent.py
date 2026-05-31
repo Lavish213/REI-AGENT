@@ -56,7 +56,7 @@ from backend.voice.speech_chunker import SpeechChunker
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.voice.processors.fair_housing import FairHousingFilter
 from backend.voice.processors.compliance_output_filter import ComplianceOutputFilter
-from backend.voice.processors.ai_softener import AISoftener
+from backend.voice.processors.ai_softener import AISoftenerProcessor as AISoftenerProcessor as AISoftener
 
 from backend.voice.trust_tracker import TrustTracker
 from backend.voice.turn_controller import TurnController

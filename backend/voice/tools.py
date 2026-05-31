@@ -366,6 +366,15 @@ def execute_tool(
         elif tool_name == "get_offer_range":
             result = _get_offer_range(tool_input)
 
+        elif tool_name == "send_offer_summary":
+            result = _send_offer_summary(tool_input, call_ctx)
+
+        elif tool_name == "collect_and_send_email":
+            result = _collect_and_send_email(tool_input, call_ctx)
+
+        elif tool_name == "drop_voicemail":
+            result = _drop_voicemail(tool_input, call_ctx)
+
         else:
             logger.warning("unknown tool called name={}", tool_name)
             result = "Tool not found."

@@ -1308,3 +1308,150 @@ def write_bob_feedback_event(
     except Exception as e:
         if "duplicate" not in str(e).lower() and "unique" not in str(e).lower():
             logger.warning("write_bob_feedback_event failed error={}", str(e))
+
+
+import hashlib as _hashlib
+
+
+def _idem_key(*parts) -> str:
+    return _hashlib.sha256("|".join(str(p) for p in parts).encode()).hexdigest()[:32]
+
+
+def load_intel_packet(lead_id: str) -> dict | None:
+    client = _get_client()
+    try:
+        resp = client.table("intel_packets").select("*").eq("lead_id", lead_id).limit(1).execute()
+        return resp.data[0] if resp.data else None
+    except Exception as e:
+        logger.warning("load_intel_packet failed lead_id={} error={}", lead_id, str(e))
+        return None
+
+
+def save_intel_packet(packet: dict) -> None:
+    from datetime import datetime, timezone
+    client = _get_client()
+    lead_id = packet.get("lead_id")
+    if not lead_id:
+        return
+    packet["updated_at"] = datetime.now(timezone.utc).isoformat()
+    existing = load_intel_packet(lead_id)
+    if existing:
+        packet["packet_version"] = (existing.get("packet_version") or 1) + 1
+        client.table("intel_packets").update(packet).eq("lead_id", lead_id).execute()
+    else:
+        client.table("intel_packets").insert(packet).execute()
+
+
+def write_packet_event(lead_id, call_sid, event_type, before_state=None, after_state=None, changed_fields=None, triggered_by="system"):
+    client = _get_client()
+    ikey = _idem_key(lead_id, call_sid or "", event_type, str(changed_fields))
+    try:
+        client.table("packet_events").insert({
+            "lead_id": lead_id,
+            "call_sid": call_sid,
+            "idempotency_key": ikey,
+            "event_type": event_type,
+            "before_state": before_state,
+            "after_state": after_state,
+            "changed_fields": changed_fields or [],
+            "triggered_by": triggered_by,
+        }).execute()
+    except Exception as e:
+        if "duplicate" not in str(e).lower() and "unique" not in str(e).lower():
+            logger.warning("write_packet_event failed error={}", str(e))
+
+
+def write_tool_gate_log(lead_id, call_sid, tool_name, permission_level, gate_result, gate_reason="", packet_version=0):
+    client = _get_client()
+    ikey = _idem_key(lead_id or "", call_sid or "", tool_name, gate_result, gate_reason)
+    try:
+        client.table("tool_gate_log").insert({
+            "lead_id": lead_id,
+            "call_sid": call_sid,
+            "idempotency_key": ikey,
+            "tool_name": tool_name,
+            "permission_level": permission_level,
+            "gate_result": gate_result,
+            "gate_reason": gate_reason,
+            "packet_version": packet_version,
+        }).execute()
+    except Exception as e:
+        if "duplicate" not in str(e).lower() and "unique" not in str(e).lower():
+            logger.warning("write_tool_gate_log failed error={}", str(e))
+
+
+def create_approval_request(lead_id, call_sid, approval_type, requested_action, risk_reason="", context_snapshot=None, expires_minutes=2, priority="high") -> str:
+    from datetime import datetime, timezone, timedelta
+    client = _get_client()
+    ikey = _idem_key(lead_id, call_sid or "", approval_type, requested_action)
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)).isoformat()
+    try:
+        client.table("approval_requests").insert({
+            "id": ikey,
+            "lead_id": lead_id,
+            "call_sid": call_sid,
+            "idempotency_key": ikey,
+            "approval_type": approval_type,
+            "requested_action": requested_action,
+            "risk_reason": risk_reason,
+            "context_snapshot": context_snapshot or {},
+            "expires_at": expires_at,
+            "priority": priority,
+            "expires_reason": "call_timeout",
+        }).execute()
+    except Exception as e:
+        if "duplicate" not in str(e).lower() and "unique" not in str(e).lower():
+            logger.warning("create_approval_request failed error={}", str(e))
+    return ikey
+
+
+def get_pending_approval(lead_id: str, call_sid: str) -> dict | None:
+    from datetime import datetime, timezone
+    client = _get_client()
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        resp = (
+            client.table("approval_requests")
+            .select("*")
+            .eq("lead_id", lead_id)
+            .eq("call_sid", call_sid)
+            .eq("status", "pending")
+            .gt("expires_at", now)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return resp.data[0] if resp.data else None
+    except Exception as e:
+        logger.warning("get_pending_approval failed error={}", str(e))
+        return None
+
+
+def resolve_approval_request(approval_id, approved_by, status, answer=""):
+    from datetime import datetime, timezone
+    client = _get_client()
+    try:
+        client.table("approval_requests").update({
+            "status": status,
+            "approved_by": approved_by,
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+            "context_snapshot": {"answer": answer},
+        }).eq("id", approval_id).execute()
+    except Exception as e:
+        logger.warning("resolve_approval_request failed id={} error={}", approval_id, str(e))
+
+
+def write_bob_feedback_event(lead_id, call_sid, event_type, payload):
+    client = _get_client()
+    ikey = _idem_key(lead_id, call_sid or "", event_type, str(sorted((payload or {}).items())))
+    try:
+        client.table("bob_feedback_events").insert({
+            "lead_id": lead_id,
+            "call_sid": call_sid,
+            "idempotency_key": ikey,
+            "event_type": event_type,
+            "payload": payload or {},
+        }).execute()
+    except Exception as e:
+        if "duplicate" not in str(e).lower() and "unique" not in str(e).lower():
+            logger.warning("write_bob_feedback_event failed error={}", str(e))
