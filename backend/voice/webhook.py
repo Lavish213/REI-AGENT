@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request, Response, WebSocket
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 from loguru import logger
@@ -229,12 +229,22 @@ async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
             pass
 
         logger.info("inbound_stream_started call_sid={}", resolved_sid)
+        app_state = websocket.app.state
+        if not hasattr(app_state, "call_metrics"):
+            app_state.call_metrics = {}
+        if not hasattr(app_state, "call_started_at"):
+            app_state.call_started_at = {}
+        from datetime import datetime, timezone
+        app_state.call_started_at[resolved_sid] = datetime.now(timezone.utc).isoformat()
         from backend.voice.agent import run_sophia_agent
         await run_sophia_agent(
             websocket=websocket,
             call_sid=resolved_sid,
             call_context=call_context,
+            metrics_store=app_state.call_metrics,
         )
+        app_state.call_metrics.pop(resolved_sid, None)
+        app_state.call_started_at.pop(resolved_sid, None)
     except Exception as e:
         logger.exception("inbound_stream_failed call_sid={} error={}", call_sid, str(e))
     finally:

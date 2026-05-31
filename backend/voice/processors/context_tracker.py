@@ -186,6 +186,8 @@ class CallContext:
     call_should_end: bool = False
     seller_phone: str = ""
     lead_id: str = ""
+    _call_sid: str = ""
+    orchestrator_length_cap: int | None = None
     intel_packet: dict = None
     packet_version: int = 0
     packet_state: str = "missing"

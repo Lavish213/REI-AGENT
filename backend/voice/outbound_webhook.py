@@ -209,8 +209,17 @@ async def outbound_voice_stream(
 
         logger.info("outbound_stream_started lead_id={} call_sid={}", lead_id, call_sid)
 
+        app_state = websocket.app.state
+        if not hasattr(app_state, "call_metrics"):
+            app_state.call_metrics = {}
+        if not hasattr(app_state, "call_started_at"):
+            app_state.call_started_at = {}
+        from datetime import datetime, timezone as _tz
+        app_state.call_started_at[call_sid] = datetime.now(_tz.utc).isoformat()
         from backend.voice.agent import run_sophia_agent
-        await run_sophia_agent(websocket=websocket, call_sid=call_sid, call_context=outbound_context)
+        await run_sophia_agent(websocket=websocket, call_sid=call_sid, call_context=outbound_context, metrics_store=app_state.call_metrics)
+        app_state.call_metrics.pop(call_sid, None)
+        app_state.call_started_at.pop(call_sid, None)
 
     except Exception as e:
         logger.exception("outbound_stream_failed lead_id={} error={}", lead_id, str(e))

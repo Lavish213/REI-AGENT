@@ -163,3 +163,70 @@ class AnalysisCallbackProcessor(FrameProcessor):
 
         except Exception as e:
             logger.warning("orchestrator check failed error={}", str(e))
+
+    def _accumulate_entities(self, text: str) -> None:
+        if self._ctx.extracted_entities is None:
+            self._ctx.extracted_entities = {}
+        if getattr(self._ctx, 'last_price_mentioned', None):
+            self._ctx.extracted_entities["price_floor"] = self._ctx.last_price_mentioned
+        if getattr(self._ctx, 'timeline_mentioned', None):
+            self._ctx.extracted_entities["timeline"] = self._ctx.timeline_mentioned
+        if getattr(self._ctx, 'objections_raised', None):
+            self._ctx.extracted_entities["objections"] = list(self._ctx.objections_raised)
+        self._ctx.extracted_entities["trust_score"] = getattr(self._ctx, 'trust_score', 5.0)
+        self._ctx.extracted_entities["turn_count"] = self._ctx.turn_count
+
+    def _check_kill_switch(self, text: str) -> None:
+        packet = getattr(self._ctx, 'intel_packet', None) or {}
+        compliance = packet.get("compliance_context") or {}
+        triggers = compliance.get("escalation_triggers") or []
+        text_lower = text.lower()
+        for trigger in triggers:
+            if trigger.lower() in text_lower:
+                self._ctx.kill_switch_active = True
+                self._ctx.runtime_instruction = "[Kill switch triggered. Route to safe fallback immediately. Do not discuss offers or strategy.]"
+                logger.warning("kill_switch_activated trigger={!r} lead_id={}", trigger, getattr(self._ctx, 'lead_id', ''))
+                break
+
+    async def _refresh_packet_async(self, lead_id: str) -> None:
+        try:
+            from backend.lib.db import load_intel_packet, write_packet_event
+            from backend.contracts.intel_packet import migrate_packet
+            raw = load_intel_packet(lead_id)
+            if not raw:
+                return
+            packet = migrate_packet(raw)
+            new_version = packet.get("packet_version", 1)
+            old_version = getattr(self._ctx, 'packet_version', 0)
+            if new_version == old_version:
+                return
+            if not packet.get("safe_for_live_call", True):
+                return
+            self._ctx.intel_packet = packet
+            self._ctx.packet_version = new_version
+            self._ctx.packet_state = packet.get("packet_state", "system_assembled")
+            self._ctx.action_permissions = packet.get("action_permissions", {})
+            self._ctx.conflict_active = packet.get("packet_state") == "conflicted"
+            call_sid = getattr(self._ctx, "_call_sid", "") or ""
+            write_packet_event(lead_id=lead_id, call_sid=call_sid, event_type="packet_refreshed_mid_call",
+                before_state={"version": old_version}, after_state={"version": new_version},
+                changed_fields=[], triggered_by="5_turn_refresh")
+        except Exception as e:
+            logger.warning("refresh_packet_async failed lead_id={} error={}", lead_id, str(e))
+
+    async def _write_signal_feedback(self, lead_id: str, call_sid: str | None) -> None:
+        try:
+            from backend.lib.db import write_bob_feedback_event
+            write_bob_feedback_event(
+                lead_id=lead_id, call_sid=call_sid, event_type="turn_signals",
+                payload={
+                    "trust_score": getattr(self._ctx, 'trust_score', 5.0),
+                    "emotional_state": getattr(self._ctx, 'emotional_state', 'unknown'),
+                    "deal_heat": getattr(self._ctx, 'deal_heat', 0.0),
+                    "conflict_active": getattr(self._ctx, 'conflict_active', False),
+                    "kill_switch_active": getattr(self._ctx, 'kill_switch_active', False),
+                    "turn_count": self._ctx.turn_count,
+                },
+            )
+        except Exception as e:
+            logger.warning("write_signal_feedback failed lead_id={} error={}", lead_id, str(e))

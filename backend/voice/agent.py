@@ -428,7 +428,7 @@ async def run_sophia_agent(
     from backend.observability import trace_call_start
     lf_trace = trace_call_start(call_sid, call_context)
 
-    stream_sid = await _read_stream_sid(websocket=websocket, call_sid=call_sid)
+    stream_sid = call_sid
 
     spanish_detected = bool(call_context.get("spanish_detected"))
     lead = call_context.get("lead")
@@ -886,7 +886,7 @@ async def _persist_call_result(
 async def _run_qa_async(transcript: str, lead_id: str, call_sid: str) -> None:
     try:
         await asyncio.wait_for(
-            asyncio.to_thread(grade_call, transcript, lead_id, call_sid),
+            grade_call(transcript, lead_id, call_sid),
             timeout=_MAX_QA_TIMEOUT,
         )
         logger.info("qa grading complete call_sid={}", call_sid)

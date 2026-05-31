@@ -184,6 +184,48 @@ SOPHIA_TOOLS = [
             "required": ["address", "lead_id"],
         },
     },
+    {
+        "name": "send_offer_summary",
+        "description": "Send a cash offer summary via SMS to the seller. Use when seller asks what your offer would be or wants the number in writing.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "seller_phone": {"type": "string", "description": "Seller phone number"},
+                "offer_low": {"type": "integer", "description": "Low end of offer range in dollars"},
+                "offer_high": {"type": "integer", "description": "High end of offer range in dollars"},
+                "address": {"type": "string", "description": "Property address"},
+                "lead_id": {"type": "string", "description": "Lead ID"},
+            },
+            "required": ["seller_phone", "lead_id"],
+        },
+    },
+    {
+        "name": "collect_and_send_email",
+        "description": "Ask seller for their email then send offer summary. Use when seller asks for something in writing but no email is on file.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "email": {"type": "string", "description": "Seller email address"},
+                "address": {"type": "string", "description": "Property address"},
+                "offer_low": {"type": "integer"},
+                "offer_high": {"type": "integer"},
+                "lead_id": {"type": "string"},
+            },
+            "required": ["lead_id"],
+        },
+    },
+    {
+        "name": "drop_voicemail",
+        "description": "Leave a voicemail message when seller does not answer. Use only when call goes to voicemail.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "lead_id": {"type": "string"},
+                "script": {"type": "string", "description": "Voicemail script to use: standard, callback, or urgent"},
+            },
+            "required": ["lead_id"],
+        },
+    },
 ]
 
 
@@ -390,6 +432,84 @@ def execute_tool(
     except Exception as e:
         logger.exception("tool execution failed tool={} error={}", tool_name, str(e))
         return "Tool execution failed."
+
+
+
+def _send_offer_summary(inp: dict, call_ctx=None) -> str:
+    seller_phone = inp.get("seller_phone", "").strip()
+    offer_low = int(inp.get("offer_low") or 0)
+    offer_high = int(inp.get("offer_high") or 0)
+    address = inp.get("address", "").strip()
+    lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
+    if not seller_phone and call_ctx:
+        seller_phone = getattr(call_ctx, "seller_phone", "")
+    if not seller_phone:
+        return "What is the best number to text that to?"
+    if not offer_low or not offer_high:
+        try:
+            from backend.lib.db import get_lead_with_property
+            lead = get_lead_with_property(lead_id)
+            prop = (lead.get("properties") or {}) if lead else {}
+            mao = prop.get("mao")
+            if mao:
+                offer_low = int(int(mao) * 0.95 / 100)
+                offer_high = int(int(mao) * 1.05 / 100)
+        except Exception:
+            pass
+    if not offer_low:
+        return "Let me have Alanzo follow up with the exact number — he handles the final offers."
+    body = (
+        f"Hey — Sophia from San Joaquin House Buyers. "
+        f"Cash offer range for {address or 'your property'}: "
+        f"${offer_low:,} – ${offer_high:,}. "
+        f"As-is, no repairs, fast close. "
+        f"Reply or call to discuss."
+    )
+    try:
+        from backend.alerts.sms import send_sms
+        send_sms(to=seller_phone, body=body)
+        logger.info("send_offer_summary sent lead_id={}", lead_id)
+        return f"Sent! Check your texts — offer range is ${offer_low:,} to ${offer_high:,}."
+    except Exception as e:
+        logger.exception("send_offer_summary failed error={}", str(e))
+        return "Had trouble sending that. Let me have Alanzo follow up directly."
+
+
+def _collect_and_send_email(inp: dict, call_ctx=None) -> str:
+    email = inp.get("email", "").strip()
+    lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
+    if not email:
+        return "What email address should I send that to?"
+    if lead_id and email:
+        try:
+            from backend.lib.db import _get_client
+            _get_client().table("leads").update({"owner_email": email}).eq("id", lead_id).execute()
+        except Exception:
+            pass
+    offer_low = int(inp.get("offer_low") or 0)
+    offer_high = int(inp.get("offer_high") or 0)
+    address = inp.get("address", "").strip()
+    first_name = getattr(call_ctx, "seller_name", "") or "there"
+    try:
+        from backend.alerts.email import send_offer_summary_email
+        sent = send_offer_summary_email(to=email, first_name=first_name, address=address, offer_low=offer_low or 150000, offer_high=offer_high or 175000, lead_id=lead_id)
+        return "Sent! Check your inbox." if sent else "Had trouble with that email. Can I text you instead?"
+    except Exception as e:
+        logger.exception("collect_and_send_email failed error={}", str(e))
+        return "Had trouble sending. Can I text you instead?"
+
+
+def _drop_voicemail(inp: dict, call_ctx=None) -> str:
+    lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
+    script = inp.get("script", "standard")
+    scripts = {
+        "standard": "Hey — this is Sophia with San Joaquin House Buyers. I was reaching out about your property. Give us a call back when you get a chance. Have a good one.",
+        "callback": "Hey — Sophia with San Joaquin House Buyers. Just following up — we had talked about your property. Call me back when you get a chance.",
+        "urgent": "Hey — Sophia with San Joaquin House Buyers. Wanted to touch base about your property — we may have a buyer lined up. Call us back soon.",
+    }
+    message = scripts.get(script, scripts["standard"])
+    logger.info("drop_voicemail lead_id={} script={}", lead_id, script)
+    return f"Voicemail left: {message}"
 
 
 def _book_appointment(inp: dict) -> str:

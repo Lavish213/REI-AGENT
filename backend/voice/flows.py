@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 from backend.voice.states.warm_open import get_instruction as _warm_open_instr
 from backend.voice.states.discovery import get_instruction as _discovery_instr
 from backend.voice.states.close import get_instruction as _close_instr
 from backend.voice.states.end_call import get_instruction as _end_call_instr
 
-from __future__ import annotations
 
 from enum import Enum
 

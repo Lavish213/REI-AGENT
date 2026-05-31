@@ -44,7 +44,7 @@ export default async function MorningBriefingPage() {
     supabase
       .from('followups')
       .select('id', { count: 'exact', head: true })
-      .eq('state', 'pending'),
+      .eq('status', 'pending'),
     supabase
       .from('calls')
       .select('id', { count: 'exact', head: true })

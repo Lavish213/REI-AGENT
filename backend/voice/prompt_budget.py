@@ -10,13 +10,14 @@ _SECTION_ORDER = [
     "WORKFLOW",
     "CALLER PROPERTY CONTEXT",
     "SELLER MEMORY",
+    "ACQUISITION_INTEL",
     "TOOLS",
     "OBJECTIONS",
     "GUARDRAILS",
     "VOICE",
 ]
 
-_NEVER_REMOVE = frozenset(["TOOLS", "VOICE"])
+_NEVER_REMOVE = frozenset(["TOOLS", "VOICE", "ACQUISITION_INTEL"])
 
 _SECTION_PATTERN = re.compile(
     r"^(" + "|".join(re.escape(s) for s in _SECTION_ORDER) + r")\s*$",
