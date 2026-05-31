@@ -198,6 +198,7 @@ async def handle_inbound_call(
 
 @router.websocket("/voice/stream/{call_sid}")
 async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
+    await websocket.accept()
     from backend.voice.agent import run_sophia_agent
     app = websocket.app
     call_context = {}

@@ -187,6 +187,7 @@ app.add_middleware(
 
 @app.websocket("/api/voice/stream/{call_sid}")
 async def inbound_voice_stream_main(websocket, call_sid: str):
+    await websocket.accept()
     from backend.voice.agent import run_sophia_agent
     call_context = {}
     store = getattr(app.state, "call_context_store", {})
