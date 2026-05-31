@@ -187,6 +187,139 @@ SOPHIA_TOOLS = [
 ]
 
 
+
+_RISKY_TOOLS_MAP = {
+    "book_appointment":       "book_appointment",
+    "send_offer_summary":     "send_summary",
+    "send_followup_email":    "send_summary",
+    "collect_and_send_email": "send_summary",
+    "get_offer_range":        "quote_range",
+    "drop_voicemail":         "send_summary",
+}
+
+_BLOCKED_RESPONSES = {
+    "book_appointment":       "Let me have Alanzo confirm that appointment with you directly.",
+    "send_offer_summary":     "I can walk you through what we're thinking, but let me have someone follow up in writing.",
+    "send_followup_email":    "I can walk you through what we're thinking, but let me have someone follow up in writing.",
+    "collect_and_send_email": "I can walk you through what we're thinking, but let me have someone follow up in writing.",
+    "get_offer_range":        "I want to make sure we get you a real number. Let me have Alanzo follow up with the specifics.",
+    "drop_voicemail":         "I'll have someone follow up with you.",
+}
+
+_ASK_ONLY_RESPONSES = {
+    "book_appointment":       "I can discuss timing but let me have Alanzo confirm that walkthrough with you directly.",
+    "send_offer_summary":     "Here's what we're thinking in rough terms — I'll have someone follow up in writing with specifics.",
+    "get_offer_range":        "Based on what I'm seeing in the area, we'd be somewhere in a reasonable range — but let me have Alanzo give you a real number.",
+}
+
+
+def _preflight_gate(tool_name: str, tool_input: dict, call_ctx) -> dict:
+    from backend.contracts.intel_packet import (
+        ALWAYS_ALLOWED_TOOLS, GATED_TOOLS, get_permission_level, is_permission_expired
+    )
+    from backend.lib.db import write_tool_gate_log, create_approval_request
+
+    lead_id = (tool_input.get("lead_id") or "") if tool_input else ""
+    if not lead_id and call_ctx is not None:
+        lead_id = getattr(call_ctx, "lead_id", "")
+    call_sid = getattr(call_ctx, "_call_sid", "") if call_ctx else ""
+    packet_version = getattr(call_ctx, "packet_version", 0) if call_ctx else 0
+
+    if tool_name in ALWAYS_ALLOWED_TOOLS:
+        return {"blocked": False, "level": "allowed"}
+
+    if tool_name not in GATED_TOOLS:
+        return {"blocked": False, "level": "allowed"}
+
+    fallback_mode = getattr(call_ctx, "fallback_mode", False) if call_ctx else False
+    if fallback_mode and tool_name in _RISKY_TOOLS_MAP:
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "fallback_blocked", "system_degraded", packet_version)
+        return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "System unavailable right now.")}
+
+    conflict_active = getattr(call_ctx, "conflict_active", False) if call_ctx else False
+    if conflict_active and tool_name in _RISKY_TOOLS_MAP:
+        approval_id = create_approval_request(
+            lead_id=lead_id, call_sid=call_sid,
+            approval_type="conflict_resolution", requested_action=tool_name,
+            risk_reason="intel_conflict_detected", priority="high",
+        )
+        if call_ctx:
+            call_ctx.approval_pending = approval_id
+        write_tool_gate_log(lead_id, call_sid, tool_name, "ask_operator_required", "conflict_blocked", "conflict_active", packet_version)
+        return {"blocked": True, "message": "Let me check with my team real quick — there's something I want to verify first."}
+
+    intel_packet = getattr(call_ctx, "intel_packet", None) if call_ctx else None
+    if not intel_packet:
+        return {"blocked": False, "level": "open_default"}
+
+    level = get_permission_level(intel_packet, tool_name)
+    perms = intel_packet.get("action_permissions") or {}
+    perm = perms.get(tool_name) or {}
+
+    if is_permission_expired(perm):
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "permission_expired", "expires_at reached", packet_version)
+        return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "Let me have someone follow up on that.")}
+
+    if level == "blocked":
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "permission_blocked", perm.get("reason", ""), packet_version)
+        return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "Let me have someone follow up on that.")}
+
+    if level == "ask_operator_required":
+        write_tool_gate_log(lead_id, call_sid, tool_name, "ask_operator_required", "escalated_to_operator", "", packet_version)
+        return {"blocked": True, "message": "Let me loop in my team on that — one second."}
+
+    if level == "ask_only":
+        write_tool_gate_log(lead_id, call_sid, tool_name, "ask_only", "ask_only_mode", "", packet_version)
+        return {"blocked": True, "message": _ASK_ONLY_RESPONSES.get(tool_name, "I can discuss that conceptually — let me have Alanzo follow up with specifics.")}
+
+    compliance = intel_packet.get("compliance_context") or {}
+    threshold = compliance.get("requires_human_approval_above")
+    if threshold and call_ctx:
+        price = getattr(call_ctx, "last_price_mentioned", None)
+        if price and price > threshold * 100:
+            approval_id = create_approval_request(
+                lead_id=lead_id, call_sid=call_sid,
+                approval_type="price_threshold", requested_action=tool_name,
+                risk_reason=f"price_{price//100}_above_threshold_{threshold}",
+                context_snapshot={"price_mentioned": price, "threshold": threshold},
+                priority="high",
+            )
+            if call_ctx:
+                call_ctx.approval_pending = approval_id
+            write_tool_gate_log(lead_id, call_sid, tool_name, "ask_operator_required", "threshold_exceeded", f"price_above_{threshold}", packet_version)
+            return {"blocked": True, "message": "I want to make sure we get you the right number on that. Let me loop in my team real quick."}
+
+    write_tool_gate_log(lead_id, call_sid, tool_name, level, "allowed", "", packet_version)
+    return {"blocked": False, "level": level}
+
+
+def _resolve_approval(approval_id: str, answer: str, call_ctx) -> None:
+    from backend.lib.db import resolve_approval_request, _get_client
+    approved = answer.strip().lower() in ("yes", "approved", "ok", "go ahead", "y", "approve")
+    status = "approved" if approved else "rejected"
+    resolve_approval_request(approval_id, "operator", status, answer)
+    if call_ctx is None:
+        return
+    call_ctx.approval_pending = None
+    if approved:
+        try:
+            client = _get_client()
+            req = client.table("approval_requests").select("requested_action").eq("id", approval_id).limit(1).execute()
+            if req.data:
+                action = req.data[0].get("requested_action", "")
+                perms = call_ctx.action_permissions or {}
+                perms[action] = {"level": "book_appointment", "scope": "call", "granted_by": "operator"}
+                call_ctx.action_permissions = perms
+                if call_ctx.intel_packet:
+                    call_ctx.intel_packet["action_permissions"] = perms
+        except Exception:
+            pass
+        call_ctx.runtime_instruction = f"[Operator approved. You may proceed with: {answer}]"
+        call_ctx.packet_state = "approved"
+    else:
+        call_ctx.runtime_instruction = "[Operator declined. Use safe fallback language and offer to schedule a callback.]"
+
+
 def execute_tool(
     tool_name: str,
     tool_input: dict,
@@ -196,6 +329,10 @@ def execute_tool(
     logger.info("execute_tool name={} input={}", tool_name, tool_input)
 
     try:
+        gate = _preflight_gate(tool_name, tool_input, call_ctx)
+        if gate["blocked"]:
+            return gate["message"]
+
         if tool_name == "book_appointment":
             result = _book_appointment(tool_input)
 

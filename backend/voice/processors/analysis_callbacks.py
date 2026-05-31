@@ -66,8 +66,23 @@ class AnalysisCallbackProcessor(FrameProcessor):
                 await self._check_phrase_triggers(text)
                 self._run_analysis(text)
                 self._maybe_orchestrate()
+                self._accumulate_entities(text)
+                self._check_kill_switch(text)
                 self._turn_count += 1
                 self._ctx.turn_count = self._turn_count
+                if self._turn_count % 5 == 0:
+                    call_sid = getattr(self._ctx, "_call_sid", None)
+                    lead_id = getattr(self._ctx, "lead_id", None)
+                    if call_sid:
+                        try:
+                            from backend.voice.call_state_cache import save_snapshot
+                            save_snapshot(call_sid, self._ctx)
+                        except Exception:
+                            pass
+                    if lead_id:
+                        import asyncio as _asyncio
+                        _asyncio.create_task(self._refresh_packet_async(lead_id))
+                        _asyncio.create_task(self._write_signal_feedback(lead_id, call_sid))
 
         await self.push_frame(frame, direction)
 

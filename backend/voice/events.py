@@ -81,3 +81,14 @@ def emit_intel_events(
 
     if intel.get("lead_score") is not None:
         emit_event(LEAD_SCORED, call_id, lead_id, {"lead_score": intel.get("lead_score")})
+SIGNAL_EXTRACTED = "signal_extracted"
+TRUST_UPDATED = "trust_updated"
+PRICE_MENTIONED = "price_mentioned"
+OBJECTION_RAISED = "objection_raised"
+STRATEGY_UPDATED = "strategy_updated"
+PACKET_REFRESHED = "packet_refreshed"
+CONFLICT_DETECTED = "conflict_detected"
+KILL_SWITCH_ACTIVATED = "kill_switch_activated"
+APPROVAL_REQUESTED = "approval_requested"
+APPROVAL_RESOLVED = "approval_resolved"
+BOB_FEEDBACK_SENT = "bob_feedback_sent"

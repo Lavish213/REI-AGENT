@@ -54,6 +54,10 @@ from backend.voice.seller_profile_engine import SellerProfileEngine
 from backend.voice.silence_handler import SilenceHandler
 from backend.voice.speech_chunker import SpeechChunker
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
+from backend.voice.processors.fair_housing import FairHousingFilter
+from backend.voice.processors.compliance_output_filter import ComplianceOutputFilter
+from backend.voice.processors.ai_softener import AISoftener
+
 from backend.voice.trust_tracker import TrustTracker
 from backend.voice.turn_controller import TurnController
 
@@ -140,6 +144,16 @@ def _build_opener(call_context: dict[str, Any]) -> str:
     return base
 
 
+
+def _assert_pipeline_safety(processors: list) -> None:
+    types = {type(p).__name__ for p in processors}
+    required = {"ComplianceOutputFilter", "FairHousingFilter"}
+    missing = required - types
+    if missing:
+        raise RuntimeError(f"PIPELINE_SAFETY_VIOLATION: {missing} missing — refusing to start")
+
+
+
 def _load_prompt_file(prompts_dir: str, filename: str) -> str:
     path = os.path.join(prompts_dir, filename)
     if not os.path.exists(path):
@@ -171,12 +185,24 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
     opener = _build_opener(call_context)
     property_context_str = call_context.get("property_context_str", "Caller: unknown. Address: unknown. Call type: inbound.")
 
+    from backend.contracts.intel_packet import build_prompt_intel_slice
+    intel_slice = ""
+    if call_context.get("lead") and call_context["lead"].get("id"):
+        try:
+            from backend.lib.db import load_intel_packet
+            from backend.contracts.intel_packet import migrate_packet
+            raw_packet = load_intel_packet(call_context["lead"]["id"])
+            if raw_packet:
+                intel_slice = build_prompt_intel_slice(migrate_packet(raw_packet))
+        except Exception:
+            pass
+
     full_prompt = (
         f"{base_prompt}\n\n"
         f"CALLER PROPERTY CONTEXT\n\n"
         f"{property_context_str}\n\n"
-        f"OPENER\n\n"
-        f"{opener}"
+        + (f"ACQUISITION_INTEL\n\n{intel_slice}\n\n" if intel_slice else "")
+        + f"OPENER\n\n{opener}"
     )
 
     full_prompt = apply_budget(full_prompt)
@@ -473,6 +499,30 @@ async def run_sophia_agent(
     if lead and lead.get("id"):
         call_ctx.lead_id = lead["id"]
 
+    if lead and lead.get("id"):
+        try:
+            from backend.lib.intel_assembler import assemble_intel_packet
+            packet = await asyncio.wait_for(
+                asyncio.to_thread(assemble_intel_packet, lead["id"]),
+                timeout=3.0,
+            )
+            call_ctx.intel_packet = packet
+            call_ctx.packet_version = packet.get("packet_version", 1)
+            call_ctx.packet_state = packet.get("packet_state", "system_assembled")
+            call_ctx.action_permissions = packet.get("action_permissions", {})
+            call_ctx.conflict_active = packet.get("packet_state") == "conflicted"
+            call_ctx.extracted_entities = {}
+            if call_ctx.conflict_active:
+                call_ctx.runtime_instruction = "[Intel conflict detected. Ask operator before discussing offers or strategy.]"
+            logger.info("intel_packet loaded lead_id={} state={}", lead["id"], call_ctx.packet_state)
+        except (asyncio.TimeoutError, Exception) as intel_err:
+            logger.warning("intel_packet_load_failed entering fallback mode error={}", str(intel_err))
+            call_ctx.fallback_mode = True
+            call_ctx.packet_state = "fallback"
+            from backend.contracts.intel_packet import DEFAULT_FALLBACK_PERMISSIONS
+            call_ctx.action_permissions = DEFAULT_FALLBACK_PERMISSIONS
+            call_ctx.intel_packet = {"packet_state": "fallback", "action_permissions": DEFAULT_FALLBACK_PERMISSIONS}
+
     if metrics_store is not None:
         metrics_store[call_sid] = call_ctx
 
@@ -575,6 +625,9 @@ async def run_sophia_agent(
             turn_controller,
             llm,
             speech_chunker,
+            AISoftener(),
+            FairHousingFilter(),
+            ComplianceOutputFilter(call_ctx=call_ctx),
             tts,
             TTSFrameProbe(),
             transport.output(),
@@ -582,6 +635,13 @@ async def run_sophia_agent(
             context_aggregator.assistant(),
         ]
     )
+
+    _assert_pipeline_safety([
+        speech_chunker,
+        AISoftener(),
+        FairHousingFilter(),
+        ComplianceOutputFilter(call_ctx=call_ctx),
+    ])
 
     task = PipelineTask(
         pipeline,
@@ -877,6 +937,42 @@ async def _run_transcript_intel_async(
                 )
             except Exception as digest_err:
                 logger.warning("owner_digest failed call_sid={} error={}", call_sid, str(digest_err))
+
+        if intel and lead_id:
+            try:
+                from datetime import datetime, timezone
+                from backend.lib.db import write_bob_feedback_event, load_intel_packet, save_intel_packet
+                from backend.contracts.intel_packet import migrate_packet
+                now = datetime.now(timezone.utc).isoformat()
+                existing = load_intel_packet(lead_id) or {}
+                existing = migrate_packet(existing)
+                sp = existing.get("seller_profile") or {}
+                sp["motivation_level"] = {"value": intel.get("motivation_level"), "source": "transcript_intel", "updated_at": now}
+                sp["timeline"] = {"value": intel.get("timeline_urgency"), "source": "transcript_intel", "updated_at": now}
+                sp["hot_topics"] = {"value": intel.get("hot_topics"), "source": "transcript_intel", "updated_at": now}
+                sp["call_summary"] = {"value": intel.get("call_summary"), "source": "transcript_intel", "updated_at": now}
+                sp["objections"] = {"value": intel.get("objections"), "source": "transcript_intel", "updated_at": now}
+                existing["seller_profile"] = sp
+                existing["lead_id"] = lead_id
+                save_intel_packet(existing)
+                write_bob_feedback_event(
+                    lead_id=lead_id,
+                    call_sid=call_sid,
+                    event_type="call_completed",
+                    payload={
+                        "disposition": disposition,
+                        "motivation_level": intel.get("motivation_level"),
+                        "call_summary": intel.get("call_summary"),
+                        "objections": intel.get("objections"),
+                        "price_floor": intel.get("price_floor"),
+                        "next_best_action": intel.get("next_best_action"),
+                        "timeline_urgency": intel.get("timeline_urgency"),
+                        "hot_topics": intel.get("hot_topics"),
+                    },
+                )
+                logger.info("bob_feedback_written lead_id={}", lead_id)
+            except Exception as fb_err:
+                logger.warning("bob_feedback failed call_sid={} error={}", call_sid, str(fb_err))
 
         logger.info("transcript_intel complete call_sid={}", call_sid)
     except asyncio.TimeoutError:

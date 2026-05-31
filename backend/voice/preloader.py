@@ -1,3 +1,4 @@
+import re
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -100,9 +101,7 @@ def _build_property_context_str(lead: dict) -> str:
     if address:
         parts.append(f"Property: {address}")
 
-    owner_name = lead.get("owner_first_name") or lead.get("owner_name", "")
-    if owner_name:
-        parts.append(f"Owner: {owner_name}")
+    # PII minimization: owner_name held in call_ctx.seller_name — not injected into system prompt
 
     bedrooms = property_data.get("bedrooms")
     bathrooms = property_data.get("bathrooms")
@@ -139,7 +138,11 @@ def _build_property_context_str(lead: dict) -> str:
 
     notes = (lead.get("notes") or "").strip()
     if notes:
-        parts.append(f"Notes: {' '.join(notes.split())[:250]}")
+        _PHONE_PAT = re.compile(r'\b\d{3}[\s.-]?\d{3}[\s.-]?\d{4}\b')
+        _EMAIL_PAT = re.compile(r'[\w.+-]+@[\w-]+\.[\w.]+')
+        notes_clean = _PHONE_PAT.sub("[phone]", notes)
+        notes_clean = _EMAIL_PAT.sub("[email]", notes_clean)
+        parts.append(f"Notes: {' '.join(notes_clean.split())[:100]}")
 
     return "\n".join(parts) if parts else "No property context available."
 

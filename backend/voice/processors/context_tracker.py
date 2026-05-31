@@ -186,6 +186,15 @@ class CallContext:
     call_should_end: bool = False
     seller_phone: str = ""
     lead_id: str = ""
+    intel_packet: dict = None
+    packet_version: int = 0
+    packet_state: str = "missing"
+    extracted_entities: dict = None
+    action_permissions: dict = None
+    conflict_active: bool = False
+    kill_switch_active: bool = False
+    approval_pending: str | None = None
+    fallback_mode: bool = False
     last_sophia_words: int = 0
     tts_speed: float = 0.85
     tts_volume: float = 0.85
@@ -257,7 +266,22 @@ class CallContext:
             tag += f"\nNote: {self.runtime_instruction}"
             self.runtime_instruction = None
 
-        return tag
+        sections = []
+
+        intel_packet = self.intel_packet or {}
+        if intel_packet and self.packet_state not in ("missing", "fallback"):
+            from backend.contracts.intel_packet import build_prompt_intel_slice
+            intel_slice = build_prompt_intel_slice(intel_packet)
+            if intel_slice:
+                sections.append(intel_slice)
+        if self.conflict_active:
+            sections.append("## Conflict active\nAsk operator before any offer or strategy discussion.")
+        if self.kill_switch_active:
+            sections.append("## Kill switch active\nRoute to safe fallback only. No strategy. No offers.")
+
+        sections.append("## Current turn\n" + tag)
+
+        return "\n\n".join(sections)
 
 
 def _extract_price_cents(text: str) -> int | None:
