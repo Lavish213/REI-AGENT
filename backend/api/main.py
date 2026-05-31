@@ -182,14 +182,25 @@ async def inbound_voice_stream_main(websocket, call_sid: str):
     try:
         await websocket.accept()
         logger.info("ws_accepted call_sid={}", call_sid)
+        import json as _json
+        stream_sid = call_sid
+        try:
+            stream_iter = websocket.iter_text()
+            await stream_iter.__anext__()
+            start_msg = _json.loads(await stream_iter.__anext__())
+            stream_sid = start_msg.get("start", {}).get("streamSid") or start_msg.get("streamSid") or call_sid
+            logger.info("ws_stream_sid={} call_sid={}", stream_sid, call_sid)
+        except Exception as sid_err:
+            logger.warning("ws_stream_sid_fallback error={}", str(sid_err))
         from backend.voice.agent import run_sophia_agent
         call_context = {}
-        store = getattr(app.state, "call_context_store", {})
+        store = getattr(app.state, "call_contexts", {})
         if call_sid in store:
             call_context = store.pop(call_sid)
+        call_context["stream_sid"] = stream_sid
         await run_sophia_agent(
             websocket=websocket,
-            call_sid=call_sid,
+            call_sid=stream_sid,
             call_context=call_context,
             metrics_store=getattr(app.state, "metrics_store", None),
         )
