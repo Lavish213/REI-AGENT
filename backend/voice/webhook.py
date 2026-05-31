@@ -196,6 +196,114 @@ async def handle_inbound_call(
 
 
 
+
+
+@router.websocket("/voice/stream/{call_sid}")
+async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
+    await websocket.accept()
+    outbound_context = {}
+    try:
+        app_state = websocket.app.state
+        store = getattr(app_state, "call_contexts", {})
+        if call_sid in store:
+            outbound_context = store.pop(call_sid)
+    except Exception:
+        pass
+    from backend.voice.agent import run_sophia_agent
+    await run_sophia_agent(
+        websocket=websocket,
+        call_sid=call_sid,
+        call_context=outbound_context,
+    )
+
+
+
+@router.websocket("/voice/stream/{call_sid}")
+async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
+    await websocket.accept()
+    try:
+        import json as _json
+        resolved_sid = call_sid
+        for _ in range(5):
+            raw = await asyncio.wait_for(websocket.receive_text(), timeout=3.0)
+            msg = _json.loads(raw)
+            if msg.get("event") == "start":
+                real_sid = (
+                    msg.get("start", {}).get("callSid")
+                    or msg.get("callSid")
+                    or ""
+                )
+                if real_sid:
+                    resolved_sid = real_sid
+                break
+
+        call_context = {}
+        try:
+            store = getattr(websocket.app.state, "call_contexts", {})
+            if resolved_sid in store:
+                call_context = store.pop(resolved_sid)
+        except Exception:
+            pass
+
+        logger.info("inbound_stream_started call_sid={}", resolved_sid)
+        from backend.voice.agent import run_sophia_agent
+        await run_sophia_agent(
+            websocket=websocket,
+            call_sid=resolved_sid,
+            call_context=call_context,
+        )
+    except Exception as e:
+        logger.exception("inbound_stream_failed call_sid={} error={}", call_sid, str(e))
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+
+@router.websocket("/voice/stream/{call_sid}")
+async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
+    await websocket.accept()
+    try:
+        import json as _json
+        resolved_sid = call_sid
+        for _ in range(5):
+            raw = await asyncio.wait_for(websocket.receive_text(), timeout=3.0)
+            msg = _json.loads(raw)
+            if msg.get("event") == "start":
+                real_sid = (
+                    msg.get("start", {}).get("callSid")
+                    or msg.get("callSid")
+                    or ""
+                )
+                if real_sid:
+                    resolved_sid = real_sid
+                break
+
+        call_context = {}
+        try:
+            store = getattr(websocket.app.state, "call_contexts", {})
+            if resolved_sid in store:
+                call_context = store.pop(resolved_sid)
+        except Exception:
+            pass
+
+        logger.info("inbound_stream_started call_sid={}", resolved_sid)
+        from backend.voice.agent import run_sophia_agent
+        await run_sophia_agent(
+            websocket=websocket,
+            call_sid=resolved_sid,
+            call_context=call_context,
+        )
+    except Exception as e:
+        logger.exception("inbound_stream_failed call_sid={} error={}", call_sid, str(e))
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
 @router.post("/voice/status")
 async def handle_call_status(
     request: Request,
