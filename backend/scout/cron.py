@@ -77,6 +77,24 @@ def run_scout() -> None:
                 lead_id = insert_lead(prop["id"])
                 leads_created += 1
 
+                csv_phone = prop.pop("_owner_phone", None)
+                csv_phone_2 = prop.pop("_owner_phone_2", None)
+                csv_email = prop.pop("_owner_email", None)
+                if csv_phone or csv_email:
+                    try:
+                        from backend.lib.db import _get_client
+                        from datetime import datetime, timezone
+                        lead_upd = {"updated_at": datetime.now(timezone.utc).isoformat()}
+                        if csv_phone:
+                            lead_upd["owner_phone"] = csv_phone
+                            lead_upd["callable"] = True
+                        if csv_email:
+                            lead_upd["owner_email"] = csv_email
+                        _get_client().table("leads").update(lead_upd).eq("id", lead_id).execute()
+                        logger.info("csv_phone_stored lead_id={}", lead_id)
+                    except Exception as ph_err:
+                        logger.warning("csv_phone_store failed error={}", str(ph_err))
+
                 if ALERT_PHONE:
                     message = format_lead_alert(prop)
                     send_sms(to=ALERT_PHONE, body=message)

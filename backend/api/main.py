@@ -26,6 +26,15 @@ from backend.api.routes.sms_status import router as sms_status_router
 from backend.voice.inbound_webhook import router as inbound_router
 
 
+def _run_sophia_loop() -> None:
+    try:
+        from backend.alerts.sophia_loop import run_sophia_loop
+        results = run_sophia_loop()
+        logger.info("sophia_loop completed results={}", results)
+    except Exception as e:
+        logger.exception("sophia_loop_error error={}", str(e))
+
+
 def _run_outbound_campaign() -> None:
     try:
         from scripts.run_outbound import run_campaign
@@ -125,9 +134,19 @@ async def lifespan(app: FastAPI):
         max_instances=1,
     )
 
+    outbound_scheduler.add_job(
+        _run_sophia_loop,
+        "cron",
+        hour="10,14,18",
+        minute="0",
+        id="sophia_loop",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     outbound_scheduler.start()
 
-    logger.info("scheduler_started outbound=9am,1pm engagement=6am followups=every30min")
+    logger.info("scheduler_started sophia_loop=10am,2pm,6pm outbound=9am,1pm engagement=6am followups=every30min")
 
     yield
 

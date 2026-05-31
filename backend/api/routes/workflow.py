@@ -6,6 +6,49 @@ from typing import Optional
 router = APIRouter()
 
 
+@router.post("/workflow/sophia-loop")
+async def trigger_sophia_loop():
+    from starlette.concurrency import run_in_threadpool
+    from backend.alerts.sophia_loop import run_sophia_loop
+    results = await run_in_threadpool(run_sophia_loop)
+    return {"success": True, "results": results}
+
+
+@router.post("/workflow/campaign/sms")
+async def trigger_sms_campaign(
+    stage: str = "all",
+    disposition: str = "all",
+    limit: int = 20,
+    message: str = "",
+):
+    from starlette.concurrency import run_in_threadpool
+    from backend.lib.db import _get_client
+    from backend.alerts.sms import send_sms
+    from backend.alerts.sophia_loop import _generate_personalized_sms
+
+    def _run():
+        client = _get_client()
+        q = client.table("leads").select("*, properties(*)").eq("opted_out", False).eq("dnc_blocked", False).not_.is_("owner_phone", "null")
+        if stage != "all":
+            q = q.eq("stage", stage)
+        if disposition != "all":
+            q = q.eq("disposition", disposition.upper())
+        leads = (q.limit(limit).execute()).data or []
+        sent = 0
+        for lead in leads:
+            phone = lead.get("owner_phone")
+            if not phone:
+                continue
+            prop = lead.get("properties") or {}
+            body = message if message else _generate_personalized_sms(lead, prop)
+            if send_sms(to=phone, body=body, lead_id=lead["id"]):
+                sent += 1
+        return {"sent": sent, "total": len(leads)}
+
+    results = await run_in_threadpool(_run)
+    return {"success": True, **results}
+
+
 class StateTransitionRequest(BaseModel):
     state: str
     notes: Optional[str] = None

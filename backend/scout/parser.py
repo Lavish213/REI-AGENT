@@ -13,6 +13,9 @@ FIELD_MAP = {
     "zip": ["zip", "zipcode", "zip_code", "property_zip", "postal_code"],
     "county": ["county", "county_name"],
     "owner_name": ["owner_name", "owner", "owner_1", "mailing_owner"],
+    "owner_phone": ["phone_1", "phone", "mobile", "cell_phone", "owner_phone", "contact_phone", "phone_number", "primary_phone", "homeowner_phone"],
+    "owner_phone_2": ["phone_2", "mobile_2", "alt_phone", "alternate_phone", "secondary_phone"],
+    "owner_email": ["email", "owner_email", "contact_email", "email_address", "homeowner_email"],
     "beds": ["beds", "bedrooms", "bed_count", "no_bedrooms"],
     "baths": ["baths", "bathrooms", "bath_count", "no_bathrooms"],
     "sqft": ["sqft", "square_feet", "living_sqft", "building_sqft", "gross_sqft"],
@@ -146,9 +149,16 @@ def parse_csv(file_path: str) -> list[dict[str, Any]]:
             distress_raw = _find_value(normalized_row, FIELD_MAP["distress_type"])
             equity_raw = _find_value(normalized_row, FIELD_MAP["equity_pct"])
 
+            owner_phone_raw = _find_value(normalized_row, FIELD_MAP["owner_phone"])
+            owner_phone_2_raw = _find_value(normalized_row, FIELD_MAP["owner_phone_2"])
+            owner_email_raw = _find_value(normalized_row, FIELD_MAP["owner_email"])
+
             prop = {
                 "apn": apn,
                 "address": address_raw,
+                "_owner_phone": owner_phone_raw,
+                "_owner_phone_2": owner_phone_2_raw,
+                "_owner_email": owner_email_raw,
                 "city": _find_value(normalized_row, FIELD_MAP["city"]),
                 "state": _find_value(normalized_row, FIELD_MAP["state"]) or "CA",
                 "zip": _find_value(normalized_row, FIELD_MAP["zip"]),

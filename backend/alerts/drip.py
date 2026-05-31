@@ -132,13 +132,33 @@ def _personalize_sms(template: str, lead: dict, prop: dict) -> str:
             "and end with a soft call to action. Never use exclamation marks. "
             "Never sound like a mass text. Return ONLY the message text, nothing else."
         )
+        hot_topics = lead.get("hot_topics") or ""
+        motivation = lead.get("motivation_level")
+        price_floor = lead.get("price_floor")
+        next_action = lead.get("next_best_action") or ""
+
+        context_parts = [f"Situation: {distress_type}"]
+        if motivation:
+            context_parts.append(f"Motivation: {motivation}/10")
+        if years_owned:
+            context_parts.append(f"Owned {years_owned} years")
+        if call_summary:
+            context_parts.append(f"Last call: {call_summary[:100]}")
+        if hot_topics:
+            context_parts.append(f"Key concerns: {hot_topics[:80]}")
+        if price_floor:
+            context_parts.append(f"Price mentioned: ${int(price_floor):,}")
+        if next_action:
+            context_parts.append(f"Next step: {next_action[:80]}")
+
         user = (
             f"Write a personalized SMS to {first_name or 'the homeowner'} "
-            f"about their property{(' in ' + city) if city else ''}. "
-            f"Situation: {distress_type}. "
-            f"{('They have owned it for ' + str(years_owned) + ' years. ') if years_owned else ''}"
-            f"{('Prior contact summary: ' + call_summary[:100] + '. ') if call_summary else ''}"
-            f"Original template for context: {template[:80]}"
+            f"about their property{(' in ' + city) if city else ''}.
+"
+            + "
+".join(context_parts)
+            + f"
+Template for context: {template[:60]}"
         )
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -218,7 +238,13 @@ def _process_lead(lead: dict) -> None:
     day, template = next_step
     prop = lead.get("properties") or {}
     is_first_message = current_day < 0
-    if is_first_message:
+    has_intel = bool(
+        lead.get("motivation_level") or
+        lead.get("call_summary") or
+        lead.get("hot_topics") or
+        lead.get("next_best_action")
+    )
+    if is_first_message or has_intel:
         body = _personalize_sms(template, lead, prop)
     else:
         body = _render(template, lead, prop)
