@@ -153,12 +153,10 @@ def _personalize_sms(template: str, lead: dict, prop: dict) -> str:
 
         user = (
             f"Write a personalized SMS to {first_name or 'the homeowner'} "
-            f"about their property{(' in ' + city) if city else ''}.
-"
-            + "
-".join(context_parts)
-            + f"
-Template for context: {template[:60]}"
+            f"about their property{(' in ' + city) if city else ''}."
+            + "\n"
+            + "\n".join(context_parts)
+            + f"\nTemplate for context: {template[:60]}"
         )
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
