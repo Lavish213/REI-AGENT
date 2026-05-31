@@ -179,18 +179,22 @@ app = FastAPI(
 
 @app.websocket("/api/voice/stream/{call_sid}")
 async def inbound_voice_stream_main(websocket, call_sid: str):
-    await websocket.accept()
-    from backend.voice.agent import run_sophia_agent
-    call_context = {}
-    store = getattr(app.state, "call_context_store", {})
-    if call_sid in store:
-        call_context = store.pop(call_sid)
-    await run_sophia_agent(
-        websocket=websocket,
-        call_sid=call_sid,
-        call_context=call_context,
-        metrics_store=getattr(app.state, "metrics_store", None),
-    )
+    try:
+        await websocket.accept()
+        logger.info("ws_accepted call_sid={}", call_sid)
+        from backend.voice.agent import run_sophia_agent
+        call_context = {}
+        store = getattr(app.state, "call_context_store", {})
+        if call_sid in store:
+            call_context = store.pop(call_sid)
+        await run_sophia_agent(
+            websocket=websocket,
+            call_sid=call_sid,
+            call_context=call_context,
+            metrics_store=getattr(app.state, "metrics_store", None),
+        )
+    except Exception as ws_err:
+        logger.exception("ws_handler_error call_sid={} error={}", call_sid, str(ws_err))
 
 app.add_middleware(
     CORSMiddleware,
