@@ -184,6 +184,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.websocket("/api/voice/stream/{call_sid}")
+async def inbound_voice_stream(websocket, call_sid: str):
+    from backend.voice.agent import run_voice_agent
+    call_context = {}
+    store = getattr(app.state, "call_context_store", {})
+    if call_sid in store:
+        call_context = store.pop(call_sid)
+    await run_voice_agent(
+        websocket=websocket,
+        call_sid=call_sid,
+        call_context=call_context,
+        metrics_store=getattr(app.state, "metrics_store", None),
+    )
+
 app.include_router(analytics.router, prefix="/api")
 app.include_router(calls.router, prefix="/api")
 app.include_router(evals.router, prefix="/api")
