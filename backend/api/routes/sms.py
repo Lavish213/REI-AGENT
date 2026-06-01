@@ -34,7 +34,7 @@ async def trigger_drip(lead_id: str):
 
     response = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("id", lead_id)
         .limit(1)
         .execute()

@@ -57,6 +57,12 @@ from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.voice.processors.fair_housing import FairHousingFilter
 from backend.voice.processors.compliance_output_filter import ComplianceOutputFilter
 from backend.voice.processors.ai_softener import AISoftenerProcessor as AISoftener
+from backend.voice.processors.ai_identity import AIIdentityProcessor
+from backend.voice.processors.input_guard import InputGuardProcessor
+from backend.voice.processors.breath_injector import BreathInjectorProcessor
+from backend.voice.processors.humanized_latency import HumanizedLatencyProcessor
+from backend.voice.processors.phone_eq import PhoneEQProcessor
+from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 
 from backend.voice.trust_tracker import TrustTracker
 from backend.voice.turn_controller import TurnController
@@ -112,7 +118,7 @@ def _build_opener(call_context: dict[str, Any]) -> str:
     situation_opener = _SITUATION_OPENERS.get(situation, "")
 
     if not is_outbound:
-        base = "San Joaquin House Buyers — hey, this is Sophia. Just so you know, this call may be recorded."
+        base = "San Joaquin House Buyers — hey, this is Sophia."
         if situation_opener:
             return f"{base} {situation_opener}"
         return base
@@ -147,7 +153,7 @@ def _build_opener(call_context: dict[str, Any]) -> str:
 
 def _assert_pipeline_safety(processors: list) -> None:
     types = {type(p).__name__ for p in processors}
-    required = {"ComplianceOutputFilter", "FairHousingFilter"}
+    required = {"ComplianceOutputFilter", "FairHousingFilter", "SentenceStreamProcessor"}
     missing = required - types
     if missing:
         raise RuntimeError(f"PIPELINE_SAFETY_VIOLATION: {missing} missing — refusing to start")
@@ -445,9 +451,6 @@ async def run_sophia_agent(
     else:
         system_prompt = _load_system_prompt(call_context, spanish=spanish_detected)
 
-    from backend.voice.prompt_budget import apply_budget
-    system_prompt = apply_budget(system_prompt)
-
     logging_ws = _LoggingWebSocket(websocket)
 
     transport = FastAPIWebsocketTransport(
@@ -581,6 +584,14 @@ async def run_sophia_agent(
     )
     turn_controller = TurnController(call_ctx)
     speech_chunker = SpeechChunker(call_ctx)
+    sentence_streamer = SentenceStreamProcessor()
+    ai_identity = AIIdentityProcessor(call_ctx=call_ctx)
+    input_guard = InputGuardProcessor(call_ctx=call_ctx)
+    breath_injector = BreathInjectorProcessor()
+    humanized_latency = HumanizedLatencyProcessor(
+        energy_getter=lambda: getattr(call_ctx, "seller_energy", "calm")
+    )
+    phone_eq = PhoneEQProcessor()
 
     silence_handler = SilenceHandler(call_ctx, task=None)
     bot_speaking_monitor = BotSpeakingMonitor(silence_handler)
@@ -606,6 +617,8 @@ async def run_sophia_agent(
             transport.input(),
             stt_mute,
             stt,
+            input_guard,
+            ai_identity,
             backchannel_processor,
             interruption_ack,
             emotional_engine,
@@ -621,11 +634,14 @@ async def run_sophia_agent(
             context_aggregator.user(),
             turn_controller,
             llm,
-            speech_chunker,
+            sentence_streamer,
             AISoftener(),
             FairHousingFilter(),
             ComplianceOutputFilter(call_ctx=call_ctx),
+            humanized_latency,
+            breath_injector,
             tts,
+            phone_eq,
             TTSFrameProbe(),
             transport.output(),
             bot_speaking_monitor,
@@ -634,7 +650,7 @@ async def run_sophia_agent(
     )
 
     _assert_pipeline_safety([
-        speech_chunker,
+        sentence_streamer,
         AISoftener(),
         FairHousingFilter(),
         ComplianceOutputFilter(call_ctx=call_ctx),

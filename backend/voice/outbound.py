@@ -91,7 +91,11 @@ def _build_signalwire_auth() -> tuple[str, str]:
 
 def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
     project_id = os.environ["SIGNALWIRE_PROJECT_ID"]
-    from_phone = os.environ["SIGNALWIRE_PHONE"]
+    try:
+        from backend.alerts.phone_pool import pick_number_for_lead
+        from_phone = pick_number_for_lead(lead_id)
+    except Exception:
+        from_phone = os.environ["SIGNALWIRE_PHONE"]
     railway_url = _get_public_base_url()
     callback_url = f"{railway_url}/api/voice/outbound-webhook/{lead_id}"
     status_url = f"{railway_url}/api/voice/outbound-status/{lead_id}"

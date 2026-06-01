@@ -120,7 +120,7 @@ def refresh_engagement_for_lead(lead_id: str) -> dict | None:
         client = _get_client()
         resp = (
             client.table("leads")
-            .select("*, properties(*)")
+            .select("*, properties!properties_lead_id_fkey(*)")
             .eq("id", lead_id)
             .limit(1)
             .execute()
@@ -154,7 +154,7 @@ def refresh_all_engagement() -> int:
         client = _get_client()
         leads = (
             client.table("leads")
-            .select("*, properties(*)")
+            .select("*, properties!properties_lead_id_fkey(*)")
             .eq("opted_out", False)
             .execute()
         )

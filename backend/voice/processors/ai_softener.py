@@ -80,6 +80,14 @@ _LEAKAGE_PATTERNS = [
     re.compile(r"owner.{0,5}s name and address", re.I),
     re.compile(r"\bOUTBOUND\b"),
     re.compile(r"\bINBOUND\b"),
+    re.compile(r"\bmax(imum)?\s+(offer|we\s+can\s+pay)\b", re.I),
+    re.compile(r"\bour\s+max\s+is\b", re.I),
+    re.compile(r"\bafter[- ]repair[- ]value\b", re.I),
+    re.compile(r"\bARV\s+is\b", re.I),
+    re.compile(r"\bdistress\s+score\b", re.I),
+    re.compile(r"\b(claude|anthropic|openai|chatgpt|gpt-\d|gemini)\b", re.I),
+    re.compile(r"\blead\s+score\b", re.I),
+    re.compile(r"\bcomposite\s+score\b", re.I),
 ]
 
 _LEAKAGE_SAFE = "Hey, this is Sophia with San Joaquin House Buyers. Did I catch you at an okay time?"

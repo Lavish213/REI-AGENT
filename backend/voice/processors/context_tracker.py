@@ -222,7 +222,7 @@ class CallContext:
 
     def build_context_prefix(self) -> str:
         _OBJ_MAP = {
-            "GET_ADDRESS": "ask which property they own, naturally",
+            "GET_ADDRESS": "find out which property without being direct about it",
             "GET_MOTIVATION": "find out what is going on with the property",
             "GET_TIMELINE": "surface how soon they need to move",
             "GET_CONDITION": "find out what shape the property is in",
@@ -267,7 +267,7 @@ class CallContext:
             tag += f"\nLast objection raised: {self.objections_raised[-1]}"
 
         if self.runtime_instruction:
-            tag += f"\nNote: {self.runtime_instruction}"
+            tag += f"\nContext: {self.runtime_instruction}"
             self.runtime_instruction = None
 
         sections = []
@@ -279,11 +279,11 @@ class CallContext:
             if intel_slice:
                 sections.append(intel_slice)
         if self.conflict_active:
-            sections.append("## Conflict active\nAsk operator before any offer or strategy discussion.")
+            sections.append("CONFLICT: Ask operator before any offer or strategy discussion.")
         if self.kill_switch_active:
-            sections.append("## Kill switch active\nRoute to safe fallback only. No strategy. No offers.")
+            sections.append("KILL SWITCH: Route to safe fallback only. No strategy. No offers.")
 
-        sections.append("## Current turn\n" + tag)
+        sections.append("CURRENT TURN\n" + tag)
 
         return "\n\n".join(sections)
 
@@ -391,10 +391,7 @@ class ContextTrackerProcessor(FrameProcessor):
             return
 
         memory_ctx = getattr(self._ctx, "memory_context_str", "")
-        memory_ctx = getattr(self._ctx, "memory_context_str", "")
         prefix = self._ctx.build_context_prefix()
-        if memory_ctx and "SELLER MEMORY" not in prefix:
-            prefix = memory_ctx + "\n\n" + prefix if prefix else memory_ctx
         if memory_ctx and "SELLER MEMORY" not in prefix:
             prefix = memory_ctx + "\n\n" + prefix if prefix else memory_ctx
 

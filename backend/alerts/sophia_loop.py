@@ -139,7 +139,7 @@ def run_sophia_loop() -> dict:
 
     resp = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("opted_out", False)
         .eq("dnc_blocked", False)
         .neq("stage", "dead")

@@ -20,7 +20,7 @@ async def list_leads(
     from backend.lib.db import _get_client
     client = _get_client()
 
-    query = client.table("leads").select("*, properties(*)")
+    query = client.table("leads").select("*, properties!properties_lead_id_fkey(*)")
 
     if stage:
         query = query.eq("stage", stage)
@@ -89,7 +89,7 @@ async def get_lead(lead_id: str):
     client = _get_client()
     response = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("id", lead_id)
         .limit(1)
         .execute()
@@ -139,7 +139,7 @@ async def activate_lead(
 
     lead_resp = (
         client.table("leads")
-        .select("id, properties(*)")
+        .select("id, properties!properties_lead_id_fkey(*)")
         .eq("id", lead_id)
         .limit(1)
         .execute()
@@ -186,7 +186,7 @@ async def enrich_lead_endpoint(lead_id: str):
     client = _get_client()
     lead_resp = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("id", lead_id)
         .limit(1)
         .execute()

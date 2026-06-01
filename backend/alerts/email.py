@@ -192,7 +192,7 @@ def handle_email_reply(lead_id: str, from_email: str, body: str) -> None:
     client = _get_client()
     resp = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("id", lead_id)
         .limit(1)
         .execute()

@@ -28,7 +28,7 @@ async def trigger_sms_campaign(
 
     def _run():
         client = _get_client()
-        q = client.table("leads").select("*, properties(*)").eq("opted_out", False).eq("dnc_blocked", False).not_.is_("owner_phone", "null")
+        q = client.table("leads").select("*, properties!properties_lead_id_fkey(*)").eq("opted_out", False).eq("dnc_blocked", False).not_.is_("owner_phone", "null")
         if stage != "all":
             q = q.eq("stage", stage)
         if disposition != "all":

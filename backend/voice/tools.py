@@ -731,9 +731,19 @@ def _ask_operator(inp, call_ctx=None):
         send_sms(to=owner_phone, body=f"Sophia needs input\n{context or 'Active call'}\nQ: {question}\nReply to answer.", bypass_hours=True)
     except Exception:
         return "Couldn't reach operator. Continuing."
+    import asyncio as _asyncio
     deadline = time.time() + 30
     while time.time() < deadline:
-        time.sleep(2)
+        try:
+            loop = _asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                    ex.submit(time.sleep, 2).result(timeout=3)
+            else:
+                time.sleep(2)
+        except Exception:
+            time.sleep(2)
         try:
             from backend.lib.db import _get_client
             row = _get_client().table("operator_queries").select("status,answer").eq("id", query_id).single().execute()
@@ -796,8 +806,10 @@ def _get_offer_range(inp: dict) -> str:
         confidence = prop.get("arv_confidence", "low")
 
         if arv_cents and mao_cents:
-            arv = int(arv_cents) // 100
-            mao = int(mao_cents) // 100
+            arv_raw = int(arv_cents)
+            mao_raw = int(mao_cents)
+            arv = arv_raw if arv_raw > 10000 else arv_raw * 100
+            mao = mao_raw if mao_raw > 10000 else mao_raw * 100
             low = int(mao * 0.95)
             high = int(mao * 1.05)
 

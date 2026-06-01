@@ -133,24 +133,22 @@ def _build_property_context_str(lead: dict) -> str:
         if home_parts:
             parts.append("Home: " + " / ".join(home_parts))
 
-    arv = property_data.get("estimated_arv")
-    if arv:
-        try:
-            parts.append(f"Est ARV: ${float(arv):,.0f}")
-        except Exception:
-            pass
-
-    distress_score = property_data.get("distress_score")
-    if distress_score:
-        parts.append(f"Distress score: {distress_score}")
-
-    mao = property_data.get("mao")
-    if mao:
-        try:
-            mao_dollars = int(mao) if int(mao) > 10000 else int(mao) * 100
-            parts.append(f"MAO: ${mao_dollars:,}")
-        except Exception:
-            pass
+    distress_type = (property_data.get("distress_type") or "").lower()
+    if distress_type:
+        _SITUATION_LABELS = {
+            "pre_foreclosure": "Situation: pre-foreclosure",
+            "foreclosure": "Situation: pre-foreclosure",
+            "probate": "Situation: probate",
+            "inherited": "Situation: inherited property",
+            "divorce": "Situation: divorce",
+            "tired_landlord": "Situation: tired landlord",
+            "tax_delinquent": "Situation: tax delinquent",
+            "vacant": "Situation: vacant property",
+        }
+        for key, label in _SITUATION_LABELS.items():
+            if key in distress_type:
+                parts.append(label)
+                break
 
     stage = lead.get("stage")
     if stage:

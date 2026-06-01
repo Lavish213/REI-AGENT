@@ -105,7 +105,7 @@ def get_leads_for_followup() -> list[dict]:
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
     response = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .in_("stage", ["new", "contacted"])
         .or_(f"last_contact_at.lte.{cutoff},last_contact_at.is.null")
         .order("distress_score", desc=True)
@@ -133,7 +133,7 @@ def get_property_by_phone(phone: str) -> dict | None:
     client = _get_client()
     response = (
         client.table("contacts")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("phone", phone)
         .limit(1)
         .execute()
@@ -192,7 +192,7 @@ def get_active_drip_leads() -> list[dict]:
     client = _get_client()
     response = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("opted_out", False)
         .eq("drip_paused", False)
         .eq("drip_completed", False)
@@ -264,7 +264,7 @@ def get_lead_by_owner_phone(phone: str) -> dict | None:
     client = _get_client()
     response = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("owner_phone", phone)
         .limit(1)
         .execute()
@@ -278,7 +278,7 @@ def get_leads_for_drip_start(min_score: int) -> list[dict]:
     client = _get_client()
     response = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("opted_out", False)
         .execute()
     )
@@ -295,7 +295,7 @@ def get_leads_for_outbound(min_score: int = 50) -> list[dict]:
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
     response = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("opted_out", False)
         .eq("callable", True)
         .eq("dnc_blocked", False)
@@ -319,7 +319,7 @@ def get_lead_with_property(lead_id: str) -> dict | None:
     client = _get_client()
     response = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("id", lead_id)
         .limit(1)
         .execute()
@@ -387,7 +387,7 @@ def get_pending_appointment_leads() -> list[dict]:
     client = _get_client()
     response = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("stage", "walkthrough_booked")
         .not_.is_("appointment_at", "null")
         .execute()
@@ -490,7 +490,7 @@ def get_active_email_leads() -> list[dict]:
     client = _get_client()
     response = (
         client.table("leads")
-        .select("*, properties(*)")
+        .select("*, properties!properties_lead_id_fkey(*)")
         .eq("opted_out", False)
         .eq("email_paused", False)
         .eq("email_completed", False)

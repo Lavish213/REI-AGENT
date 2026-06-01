@@ -73,9 +73,9 @@ def send_drip_sms(to: str, body: str, lead_id: str) -> bool:
 
 
 def send_alert_to_owner(body: str) -> bool:
-    phone = os.environ.get("ALERT_PHONE", "")
+    phone = os.environ.get("ALERT_PHONE", "") or os.environ.get("OWNER_PHONE", "")
     if not phone:
-        logger.warning("ALERT_PHONE not set skipping owner alert")
+        logger.warning("ALERT_PHONE and OWNER_PHONE both not set skipping owner alert")
         return False
     return send_sms(to=phone, body=body, bypass_hours=True)
 
