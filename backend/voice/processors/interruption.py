@@ -8,11 +8,11 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
 INTERRUPTION_ACKNOWLEDGMENTS = [
-    "Oh— yeah go ahead",
-    "Sorry— yeah?",
-    "Mm— yeah?",
-    "Oh— what's up?",
-    "Go ahead—",
+    "Yeah.",
+    "Mm.",
+    "Go ahead.",
+    "Sure.",
+    "Yep.",
 ]
 
 

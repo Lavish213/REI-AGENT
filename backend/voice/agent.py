@@ -692,7 +692,6 @@ async def run_sophia_agent(
         opener_text = _build_opener(call_context)
         logger.info("opener firing text={!r}", opener_text)
         context.messages.append({"role": "assistant", "content": opener_text})
-        context.messages.append({"role": "assistant", "content": opener_text})
         await task.queue_frames([TTSSpeakFrame(opener_text)])
 
     @transport.event_handler("on_client_disconnected")
