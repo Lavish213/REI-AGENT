@@ -27,6 +27,14 @@ from backend.api.routes.email_webhook import router as email_webhook_router
 from backend.voice.webhook import router as inbound_router
 
 
+def _run_daily_drip_triggers() -> None:
+    try:
+        from backend.alerts.drip import run_daily_drip_triggers
+        run_daily_drip_triggers()
+    except Exception as e:
+        logger.exception("run_daily_drip_triggers failed error={}", str(e))
+
+
 def _run_sophia_loop() -> None:
     try:
         from backend.alerts.sophia_loop import run_sophia_loop
@@ -145,9 +153,19 @@ async def lifespan(app: FastAPI):
         max_instances=1,
     )
 
+    outbound_scheduler.add_job(
+        _run_daily_drip_triggers,
+        "cron",
+        hour="8",
+        minute="30",
+        id="daily_drip_triggers",
+        replace_existing=True,
+        max_instances=1,
+    )
+
     outbound_scheduler.start()
 
-    logger.info("scheduler_started sophia_loop=10am,2pm,6pm outbound=9am,1pm engagement=6am followups=every30min")
+    logger.info("scheduler_started sophia_loop=10am,2pm,6pm outbound=9am,1pm engagement=6am followups=every30min daily_drip=8:30am")
 
     yield
 

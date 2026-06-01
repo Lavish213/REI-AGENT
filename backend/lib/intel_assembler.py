@@ -58,10 +58,19 @@ def assemble_intel_packet(lead_id: str) -> dict:
     lead = lead_resp.data[0] if lead_resp.data else {}
 
     prop_resp = client.table("properties").select(
-        "address,city,state,zip,distress_type,distress_score,"
+        "id,address,city,state,zip,distress_type,distress_score,"
         "estimated_arv,mao,arv_confidence,beds,baths,sqft,year_built,"
         "equity_pct,lien_amount,tax_delinquent_amount,auction_date"
     ).eq("lead_id", lead_id).limit(1).execute()
+    if not prop_resp.data:
+        lead_data = client.table("leads").select("property_id").eq("id", lead_id).limit(1).execute()
+        pid = (lead_data.data[0].get("property_id") if lead_data.data else None)
+        if pid:
+            prop_resp = client.table("properties").select(
+                "id,address,city,state,zip,distress_type,distress_score,"
+                "estimated_arv,mao,arv_confidence,beds,baths,sqft,year_built,"
+                "equity_pct,lien_amount,tax_delinquent_amount,auction_date"
+            ).eq("id", pid).limit(1).execute()
     prop = prop_resp.data[0] if prop_resp.data else {}
 
     motivation = lead.get("motivation_level")

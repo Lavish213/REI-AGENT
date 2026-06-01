@@ -731,9 +731,9 @@ def _ask_operator(inp, call_ctx=None):
         send_sms(to=owner_phone, body=f"Sophia needs input\n{context or 'Active call'}\nQ: {question}\nReply to answer.", bypass_hours=True)
     except Exception:
         return "Couldn't reach operator. Continuing."
-    deadline = time.time() + 90
+    deadline = time.time() + 30
     while time.time() < deadline:
-        time.sleep(3)
+        time.sleep(2)
         try:
             from backend.lib.db import _get_client
             row = _get_client().table("operator_queries").select("status,answer").eq("id", query_id).single().execute()
@@ -745,7 +745,7 @@ def _ask_operator(inp, call_ctx=None):
                 return f"Operator says: {row.data.get('answer', '')}"
         except Exception:
             pass
-    return "No operator response. Using best judgment."
+    return "No operator response in 30s. Using best judgment."
 
 
 def _send_followup_email(inp, call_ctx=None):

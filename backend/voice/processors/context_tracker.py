@@ -188,6 +188,8 @@ class CallContext:
     lead_id: str = ""
     _call_sid: str = ""
     orchestrator_length_cap: int | None = None
+    memory_context_str: str = ""
+    memory_context_str: str = ""
     intel_packet: dict = None
     packet_version: int = 0
     packet_state: str = "missing"
@@ -388,7 +390,13 @@ class ContextTrackerProcessor(FrameProcessor):
         if not messages:
             return
 
+        memory_ctx = getattr(self._ctx, "memory_context_str", "")
+        memory_ctx = getattr(self._ctx, "memory_context_str", "")
         prefix = self._ctx.build_context_prefix()
+        if memory_ctx and "SELLER MEMORY" not in prefix:
+            prefix = memory_ctx + "\n\n" + prefix if prefix else memory_ctx
+        if memory_ctx and "SELLER MEMORY" not in prefix:
+            prefix = memory_ctx + "\n\n" + prefix if prefix else memory_ctx
 
         last_user = next(
             (m for m in reversed(messages) if m.get("role") == "user"),

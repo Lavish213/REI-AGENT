@@ -28,7 +28,7 @@ _VM_RATE_ES = "95%"
 
 def _is_calling_hours() -> bool:
     now_pt = datetime.now(PACIFIC)
-    start = int(os.environ.get("CALLING_HOURS_START", 8))
+    start = int(os.environ.get("CALLING_HOURS_START", 9))
     end = int(os.environ.get("CALLING_HOURS_END", 21))
     return start <= now_pt.hour < end
 

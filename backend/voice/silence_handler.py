@@ -15,7 +15,7 @@ _RECOVERY_PHRASES: dict[str, list[str]] = {
 }
 
 _TIMEOUTS: dict[str, float] = {
-    "standard": 6.0,
+    "standard": 4.0,
     "post_emotional": 8.0,
     "post_price": 7.0,
     "post_appointment": 8.0,

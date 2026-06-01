@@ -9,9 +9,9 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
 _COMMITTING_PATTERNS = re.compile(
-    r"\b(when can you come|let's do it|what's next|I'm ready|"
-    r"sounds good|let's move forward|yes|when can we|"
-    r"what would you offer|how soon can you close)\b",
+    r"\b(when can you come|let's do it|I'm ready|"
+    r"let's move forward|when can we|how soon can you close|"
+    r"I want to move forward|let's do the walkthrough|book it|schedule it)\b",
     re.IGNORECASE,
 )
 
@@ -98,7 +98,9 @@ class MicrostateEngine(FrameProcessor):
         trust_score: float,
         word_count: int,
     ) -> str:
-        if _COMMITTING_PATTERNS.search(text):
+        turn_count = getattr(self._ctx, "turn_count", 0)
+        deal_heat = getattr(self._ctx, "deal_heat", 0.0)
+        if _COMMITTING_PATTERNS.search(text) and turn_count >= 3 and deal_heat >= 3.0:
             return "COMMITTING"
 
         if _CLOSING_PATTERNS.search(text):

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from loguru import logger
 
-CALLING_HOURS_START = int(os.environ.get("CALLING_HOURS_START", 8))
+CALLING_HOURS_START = int(os.environ.get("CALLING_HOURS_START", 9))
 CALLING_HOURS_END = int(os.environ.get("CALLING_HOURS_END", 21))
 
 

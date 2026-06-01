@@ -167,7 +167,7 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
     from backend.voice.prompt_budget import apply_budget
     prompts_dir = os.path.join(os.path.dirname(__file__), "prompts")
 
-    prompt_parts = [_load_prompt_file(prompts_dir, "sophia_core.md")]
+    prompt_parts = [_load_prompt_file(prompts_dir, "sophia_runtime.md")]
 
     if spanish:
         prompt_parts.append(_load_prompt_file(prompts_dir, "sophia_extended.md"))
@@ -285,8 +285,8 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
             voice=voice_id,
             model=model,
             generation_config=GenerationConfig(
-                speed=1.05,
-                volume=1.1,
+                speed=0.95,
+                volume=1.0,
             ),
         ),
     )
@@ -307,7 +307,7 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
             language=language,
             punctuate=True,
             interim_results=True,
-            endpointing=300,
+            endpointing=400,
             numerals=True,
             smart_format=True,
         ),
@@ -435,18 +435,15 @@ async def run_sophia_agent(
     seller_memory = None
 
     if lead and lead.get("id"):
-        from backend.voice.memory import SellerMemory
-        seller_memory = SellerMemory.load(lead["id"])
+        seller_memory = call_context.get("seller_memory")
+        if seller_memory is None:
+            from backend.voice.memory import SellerMemory
+            seller_memory = SellerMemory.load(lead["id"])
 
     if call_context.get("boss_mode"):
         system_prompt = _load_boss_prompt(call_context.get("briefing", "No briefing available."))
     else:
         system_prompt = _load_system_prompt(call_context, spanish=spanish_detected)
-
-    if seller_memory:
-        memory_ctx = seller_memory.to_prompt_context()
-        if memory_ctx:
-            system_prompt += "\n\n" + memory_ctx
 
     from backend.voice.prompt_budget import apply_budget
     system_prompt = apply_budget(system_prompt)
@@ -478,7 +475,7 @@ async def run_sophia_agent(
             model=voice_model,
             enable_prompt_caching=True,
             max_tokens=300,
-            temperature=0.3,
+            temperature=0.5,
         ),
     )
 
@@ -596,7 +593,7 @@ async def run_sophia_agent(
                 params=VADParams(
                     confidence=0.7,
                     start_secs=0.2,
-                    stop_secs=0.3,
+                    stop_secs=0.4,
                     min_volume=0.6,
                 ),
             ),
@@ -973,6 +970,16 @@ async def _run_transcript_intel_async(
                 logger.info("bob_feedback_written lead_id={}", lead_id)
             except Exception as fb_err:
                 logger.warning("bob_feedback failed call_sid={} error={}", call_sid, str(fb_err))
+
+        if intel and lead_id:
+            try:
+                from backend.voice.memory import SellerMemory
+                memory = SellerMemory.load(lead_id)
+                memory.update_from_intel(intel)
+                await asyncio.to_thread(memory.save)
+                logger.info("seller_memory updated from intel lead_id={}", lead_id)
+            except Exception as mem_err:
+                logger.warning("seller_memory update_from_intel failed lead_id={} error={}", lead_id, str(mem_err))
 
         logger.info("transcript_intel complete call_sid={}", call_sid)
     except asyncio.TimeoutError:

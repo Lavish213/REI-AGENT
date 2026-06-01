@@ -59,6 +59,18 @@ def _normalize_phone(phone: str) -> str:
 def _detect_situation(lead: dict) -> str:
     source = (lead.get("source") or "").lower()
     tags = lead.get("tags") or []
+    property_data = lead.get("properties") or {}
+    distress_type = (property_data.get("distress_type") or "").lower()
+    if "pre_foreclosure" in distress_type or "foreclosure" in distress_type:
+        return "preforeclosure"
+    if "probate" in distress_type:
+        return "probate"
+    if "inherited" in distress_type:
+        return "inherited_property"
+    if "divorce" in distress_type:
+        return "divorce"
+    if "tired_landlord" in distress_type or "landlord" in distress_type:
+        return "tired_landlord"
 
     if isinstance(tags, str):
         tags = [tags]
@@ -103,8 +115,8 @@ def _build_property_context_str(lead: dict) -> str:
 
     # PII minimization: owner_name held in call_ctx.seller_name — not injected into system prompt
 
-    bedrooms = property_data.get("bedrooms")
-    bathrooms = property_data.get("bathrooms")
+    bedrooms = property_data.get("beds") or property_data.get("bedrooms")
+    bathrooms = property_data.get("baths") or property_data.get("bathrooms")
     sqft = property_data.get("sqft")
     year_built = property_data.get("year_built")
 
@@ -132,6 +144,14 @@ def _build_property_context_str(lead: dict) -> str:
     if distress_score:
         parts.append(f"Distress score: {distress_score}")
 
+    mao = property_data.get("mao")
+    if mao:
+        try:
+            mao_dollars = int(mao) if int(mao) > 10000 else int(mao) * 100
+            parts.append(f"MAO: ${mao_dollars:,}")
+        except Exception:
+            pass
+
     stage = lead.get("stage")
     if stage:
         parts.append(f"Stage: {stage}")
@@ -152,6 +172,14 @@ def preload_call_context(caller_phone: str) -> dict:
 
     try:
         lead = get_lead_by_owner_phone(normalized_phone)
+        if not lead:
+            from backend.lib.db import _get_client as _db
+            resp = _db().table("properties").select("lead_id").contains("callable_phones", [normalized_phone]).limit(1).execute()
+            if resp.data:
+                lid = resp.data[0].get("lead_id")
+                if lid:
+                    from backend.lib.db import get_lead_with_property
+                    lead = get_lead_with_property(lid)
     except Exception as e:
         logger.error(
             "preload_call_context db_error phone={} error={}",
