@@ -7,7 +7,7 @@ from typing import Literal
 
 from loguru import logger
 from pipecat.frames.frames import Frame
-from pipecat.frames.frames import TranscriptionFrame
+from pipecat.frames.frames import TranscriptionFrame, UserStoppedSpeakingFrame
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.processors.frame_processor import FrameProcessor
 
@@ -189,7 +189,6 @@ class CallContext:
     _call_sid: str = ""
     orchestrator_length_cap: int | None = None
     memory_context_str: str = ""
-    memory_context_str: str = ""
     intel_packet: dict = None
     packet_version: int = 0
     packet_state: str = "missing"
@@ -326,6 +325,11 @@ class ContextTrackerProcessor(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
+        if isinstance(frame, UserStoppedSpeakingFrame):
+            self._inject_context_prefix()
+            await self.push_frame(frame, direction)
+            return
+
         if isinstance(frame, TranscriptionFrame) and frame.text:
             text = frame.text.strip()
 
@@ -337,7 +341,6 @@ class ContextTrackerProcessor(FrameProcessor):
                     self._ctx.objective = self._objective_engine.decide(self._ctx)
 
                 await self._maybe_compress_context()
-                self._inject_context_prefix()
 
                 logger.info(
                     "context_tracker turn={} energy={} situation={} "

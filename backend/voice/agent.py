@@ -31,6 +31,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
+from pipecat.services.tts_service import TextAggregationMode
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
@@ -284,15 +285,30 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
 
     logger.info("tts active provider=cartesia model={} voice_id={} sample_rate=8000", model, voice_id)
 
+    _ENERGY_TO_EMOTION = {
+        "emotional": "sympathetic",
+        "skeptical": "skeptical",
+        "rushed": "determined",
+        "motivated": "enthusiastic",
+        "hesitant": "hesitant",
+        "hostile": "calm",
+        "talkative": "enthusiastic",
+    }
+    energy = getattr(call_ctx_ref, "seller_energy", "calm") or "calm"
+    emotion = _ENERGY_TO_EMOTION.get(energy)
     return CartesiaTTSService(
         api_key=api_key,
+        cartesia_version="2026-03-01",
+        max_buffer_delay_ms=80,
         sample_rate=8000,
+        text_aggregation_mode=TextAggregationMode.TOKEN,
         settings=CartesiaTTSService.Settings(
             voice=voice_id,
             model=model,
             generation_config=GenerationConfig(
                 speed=0.95,
                 volume=1.0,
+                emotion=emotion,
             ),
         ),
     )
@@ -311,11 +327,9 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
         settings=DeepgramSTTService.Settings(
             model=model,
             language=language,
-            punctuate=True,
             interim_results=True,
             endpointing=400,
             numerals=True,
-            smart_format=True,
         ),
     )
 
@@ -604,7 +618,7 @@ async def run_sophia_agent(
                 params=VADParams(
                     confidence=0.7,
                     start_secs=0.2,
-                    stop_secs=0.4,
+                    stop_secs=0.2,
                     min_volume=0.6,
                 ),
             ),
@@ -639,7 +653,6 @@ async def run_sophia_agent(
             FairHousingFilter(),
             ComplianceOutputFilter(call_ctx=call_ctx),
             humanized_latency,
-            breath_injector,
             tts,
             phone_eq,
             TTSFrameProbe(),
@@ -673,8 +686,10 @@ async def run_sophia_agent(
         logger.info("client connected call_sid={}", call_sid)
         from backend.karpathys import emitter
         asyncio.create_task(emitter.emit_call_created(call_sid, call_context))
-        await asyncio.sleep(0.35)
-        await task.queue_frames([TTSSpeakFrame(_build_opener(call_context))])
+        await asyncio.sleep(0.5)
+        opener_text = _build_opener(call_context)
+        logger.info("opener firing text={!r}", opener_text)
+        await task.queue_frames([TTSSpeakFrame(opener_text)])
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):
