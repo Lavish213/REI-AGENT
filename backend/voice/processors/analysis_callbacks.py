@@ -69,7 +69,6 @@ class AnalysisCallbackProcessor(FrameProcessor):
                 self._accumulate_entities(text)
                 self._check_kill_switch(text)
                 self._turn_count += 1
-                self._ctx.turn_count = self._turn_count
                 if self._turn_count % 5 == 0:
                     call_sid = getattr(self._ctx, "_call_sid", None)
                     lead_id = getattr(self._ctx, "lead_id", None)

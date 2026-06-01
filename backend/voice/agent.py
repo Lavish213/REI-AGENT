@@ -118,10 +118,16 @@ def _build_opener(call_context: dict[str, Any]) -> str:
     situation_opener = _SITUATION_OPENERS.get(situation, "")
 
     if not is_outbound:
-        base = "San Joaquin House Buyers — hey, this is Sophia."
-        if situation_opener:
-            return f"{base} {situation_opener}"
-        return base
+        if name and address:
+            street = address.split(",")[0].strip()
+            return f"Hey {name}! This is Sophia with San Joaquin House Buyers — you thinking about selling your place on {street}?"
+        elif name:
+            return f"Hey {name}! This is Sophia with San Joaquin House Buyers — you thinking about selling a property?"
+        else:
+            base = "San Joaquin House Buyers — hey, this is Sophia."
+            if situation_opener:
+                return f"{base} {situation_opener}"
+            return f"{base} You thinking about selling a property?"
 
     if name and address:
         base = (

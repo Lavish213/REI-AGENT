@@ -331,7 +331,6 @@ class ContextTrackerProcessor(FrameProcessor):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, UserStartedSpeakingFrame):
-            self._injected_this_turn = False
             await self.push_frame(frame, direction)
             return
 
@@ -346,9 +345,9 @@ class ContextTrackerProcessor(FrameProcessor):
                     self._ctx.objective = self._objective_engine.decide(self._ctx)
 
                 await self._maybe_compress_context()
-                if not getattr(self, "_injected_this_turn", False):
+                if getattr(self, "_last_injected_turn", -1) != self._ctx.turn_count:
                     self._inject_context_prefix()
-                    self._injected_this_turn = True
+                    self._last_injected_turn = self._ctx.turn_count
 
                 logger.info(
                     "context_tracker turn={} energy={} situation={} "
