@@ -76,13 +76,18 @@ class ObjectiveEngine:
             logger.debug("objective=NURTURE_EXIT fatigue=CRITICAL")
             return "NURTURE_EXIT"
 
+        is_outbound = getattr(call_ctx, "is_outbound", False)
+
+        if not intent_locked or not motivation_signals:
+            if not address_known and (is_outbound or turn_count >= 3):
+                logger.debug("objective=GET_ADDRESS outbound_or_late")
+                return "GET_ADDRESS"
+            logger.debug("objective=GET_MOTIVATION")
+            return "GET_MOTIVATION"
+
         if not address_known:
             logger.debug("objective=GET_ADDRESS")
             return "GET_ADDRESS"
-
-        if not intent_locked or not motivation_signals:
-            logger.debug("objective=GET_MOTIVATION")
-            return "GET_MOTIVATION"
 
         if emotional_state in _DISTRESSED_STATES:
             logger.debug("objective=EMOTIONAL_HOLD state={}", emotional_state)

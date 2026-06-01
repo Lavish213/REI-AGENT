@@ -224,7 +224,7 @@ async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
         try:
             store = getattr(websocket.app.state, "call_contexts", {})
             waited = 0.0
-            while resolved_sid not in store and waited < 3.0:
+            while resolved_sid not in store and waited < 5.0:
                 await asyncio.sleep(0.05)
                 waited += 0.05
                 store = getattr(websocket.app.state, "call_contexts", {})
@@ -232,7 +232,7 @@ async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
                 call_context = store.pop(resolved_sid)
                 logger.info("call_context loaded waited={:.2f}s lead={}", waited, bool(call_context.get("lead")))
             else:
-                logger.warning("call_context timeout after 3s starting cold")
+                logger.warning("call_context timeout after 5s starting cold")
         except Exception:
             pass
 

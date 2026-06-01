@@ -110,6 +110,13 @@ async def lifespan(app: FastAPI):
     start_drip_scheduler()
     start_appointment_scheduler()
 
+    try:
+        from backend.lib.db import _get_client
+        _get_client().table("leads").select("id").limit(1).execute()
+        logger.info("supabase_warmup complete")
+    except Exception as _we:
+        logger.warning("supabase_warmup failed error={}", str(_we))
+
     outbound_scheduler = BackgroundScheduler(
         timezone="America/Los_Angeles"
     )

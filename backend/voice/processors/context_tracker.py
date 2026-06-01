@@ -7,7 +7,7 @@ from typing import Literal
 
 from loguru import logger
 from pipecat.frames.frames import Frame
-from pipecat.frames.frames import TranscriptionFrame, UserStoppedSpeakingFrame
+from pipecat.frames.frames import TranscriptionFrame, UserStartedSpeakingFrame
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.processors.frame_processor import FrameProcessor
 
@@ -166,6 +166,7 @@ class CallContext:
 
     objective: str = "GET_MOTIVATION"
     runtime_instruction: str | None = None
+    is_outbound: bool = False
 
     emotional_state: str = "NEUTRAL"
     emotional_intensity: float = 0.0
@@ -221,18 +222,18 @@ class CallContext:
 
     def build_context_prefix(self) -> str:
         _OBJ_MAP = {
-            "GET_ADDRESS": "find out which property without being direct about it",
-            "GET_MOTIVATION": "find out what is going on with the property",
-            "GET_TIMELINE": "surface how soon they need to move",
-            "GET_CONDITION": "find out what shape the property is in",
-            "GET_MORTGAGE": "surface loan status naturally",
+            "GET_ADDRESS": "property not yet confirmed — let them bring it up naturally",
+            "GET_MOTIVATION": "find out why they are calling or considering selling",
+            "GET_TIMELINE": "timeline not yet known",
+            "GET_CONDITION": "property condition not yet discussed",
+            "GET_MORTGAGE": "loan status unknown",
             "GET_PRICE_ANCHOR": "ask what number would work for them",
-            "BOOK_APPOINTMENT": "close to a walkthrough",
-            "HANDLE_OBJECTION": "address their concern first before moving forward",
-            "TRUST_REPAIR": "slow down, build trust, stop pushing",
-            "EMOTIONAL_HOLD": "follow their emotional thread before any business",
-            "NURTURE_EXIT": "wrap up warmly and keep the door open",
-            "LEAN_IN": "they are softening, move forward gently",
+            "BOOK_APPOINTMENT": "seller is engaged — move toward scheduling a walkthrough",
+            "HANDLE_OBJECTION": "seller has a concern — hear them out before moving forward",
+            "TRUST_REPAIR": "trust is low — listen more, push less",
+            "EMOTIONAL_HOLD": "seller is emotional — follow their lead before any business",
+            "NURTURE_EXIT": "wrap up warmly — keep the door open",
+            "LEAN_IN": "seller is warming up — move forward gently",
         }
         _MODE_MAP = {
             "FAST": "keep it brief and get to the point",
@@ -325,8 +326,8 @@ class ContextTrackerProcessor(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, UserStoppedSpeakingFrame):
-            self._inject_context_prefix()
+        if isinstance(frame, UserStartedSpeakingFrame):
+            self._injected_this_turn = False
             await self.push_frame(frame, direction)
             return
 
@@ -341,6 +342,9 @@ class ContextTrackerProcessor(FrameProcessor):
                     self._ctx.objective = self._objective_engine.decide(self._ctx)
 
                 await self._maybe_compress_context()
+                if not getattr(self, "_injected_this_turn", False):
+                    self._inject_context_prefix()
+                    self._injected_this_turn = True
 
                 logger.info(
                     "context_tracker turn={} energy={} situation={} "

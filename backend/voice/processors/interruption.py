@@ -30,7 +30,7 @@ class InterruptionAckProcessor(FrameProcessor):
         await self.push_frame(frame, direction)
 
     async def _queue_ack(self):
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.25)
         candidates = [a for a in INTERRUPTION_ACKNOWLEDGMENTS if a != self._last_ack]
         if not candidates:
             candidates = INTERRUPTION_ACKNOWLEDGMENTS
