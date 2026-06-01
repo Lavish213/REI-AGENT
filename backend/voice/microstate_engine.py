@@ -9,9 +9,10 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
 _COMMITTING_PATTERNS = re.compile(
-    r"\b(when can you come|let's do it|I'm ready|"
-    r"let's move forward|when can we|how soon can you close|"
-    r"I want to move forward|let's do the walkthrough|book it|schedule it)\b",
+    r"\b(when can you come out|let's do the walkthrough|"
+    r"book the appointment|schedule the walkthrough|"
+    r"how soon can you close on it|I want to move forward with the sale|"
+    r"I'm ready to sell|yes let's do it on the house)\b",
     re.IGNORECASE,
 )
 

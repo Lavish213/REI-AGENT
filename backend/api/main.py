@@ -89,6 +89,8 @@ def _run_pending_followups() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("REI Agent API starting")
+    from backend.voice import agent as _agent_warmup  # noqa: F401
+    from backend.voice import agent as _voice_agent_warmup  # noqa: F401
 
     if os.environ.get("GROQ_API_KEY", "").strip():
         logger.critical(

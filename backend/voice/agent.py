@@ -503,6 +503,7 @@ async def run_sophia_agent(
     if call_context.get("address"):
         call_ctx.address_known = True
     call_ctx.is_outbound = bool(call_context.get("is_outbound", False))
+    call_ctx.is_outbound = bool(call_context.get("is_outbound", False))
     if call_context.get("situation_label"):
         call_ctx.situation_label = call_context["situation_label"]
     if call_context.get("initial_trust_score"):
@@ -690,6 +691,7 @@ async def run_sophia_agent(
         await asyncio.sleep(0.5)
         opener_text = _build_opener(call_context)
         logger.info("opener firing text={!r}", opener_text)
+        context.messages.append({"role": "assistant", "content": opener_text})
         context.messages.append({"role": "assistant", "content": opener_text})
         await task.queue_frames([TTSSpeakFrame(opener_text)])
 

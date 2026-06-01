@@ -58,10 +58,13 @@ _INTENT_PHRASES = [
 ]
 
 _ADDRESS_PATTERN = re.compile(
+    r"(?:"
     r"\b\d{3,5}\s+[A-Za-z][\w\s]{2,30}"
-    r"(?:st|ave|blvd|dr|ln|rd|ct|way|pl|cir|ter|"
-    r"street|avenue|boulevard|drive|lane|road|"
-    r"court|place|circle|terrace)\b",
+    r"(?:st|ave|blvd|dr|ln|rd|ct|way|pl|cir|ter|street|avenue|boulevard|drive|lane|road|court|place|circle|terrace)\b"
+    r"|"
+    r"\b(?:on|at|off)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+"
+    r"(?:st|ave|blvd|dr|ln|rd|ct|way|pl|cir|ter|street|avenue|boulevard|drive|lane|road|court|place|circle|terrace)\b"
+    r")",
     re.IGNORECASE,
 )
 
@@ -166,6 +169,7 @@ class CallContext:
 
     objective: str = "GET_MOTIVATION"
     runtime_instruction: str | None = None
+    is_outbound: bool = False
     is_outbound: bool = False
 
     emotional_state: str = "NEUTRAL"

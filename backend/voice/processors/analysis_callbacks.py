@@ -116,20 +116,7 @@ class AnalysisCallbackProcessor(FrameProcessor):
             )
 
     def _run_analysis(self, text: str) -> None:
-        for name, engine, method in [
-            ("emotional_engine", self._emotional_engine, "_update_emotional_state"),
-            ("trust_tracker", self._trust_tracker, "_update_trust"),
-            ("resistance_tracker", self._resistance_tracker, "_update_resistance"),
-            ("momentum_tracker", self._momentum_tracker, "_update_momentum"),
-            ("fatigue_detector", self._fatigue_detector, "_update_fatigue"),
-            ("deal_heat_scorer", self._deal_heat_scorer, "_update_heat"),
-            ("seller_profile_engine", self._seller_profile_engine, "_update_profile"),
-            ("microstate_engine", self._microstate_engine, "_update_microstate"),
-        ]:
-            try:
-                getattr(engine, method)(text)
-            except Exception as e:
-                logger.warning("{} failed error={}", name, str(e))
+        pass
 
     def _maybe_orchestrate(self) -> None:
         try:
@@ -154,11 +141,14 @@ class AnalysisCallbackProcessor(FrameProcessor):
                 ctx.call_should_end = True
                 return
 
-            if heat >= 8.0 or microstate == "COMMITTING":
-                logger.info("orchestrator deal_heat ON_FIRE or COMMITTING injecting close")
+            address_known = getattr(ctx, "address_known", False)
+            intent_locked = getattr(ctx, "intent_locked", False)
+            turn_count_val = getattr(ctx, "turn_count", 0)
+            if (heat >= 8.0 or microstate == "COMMITTING") and address_known and intent_locked and turn_count_val >= 4:
+                logger.info("orchestrator close gate passed heat={:.1f}", heat)
                 ctx.runtime_instruction = (
-                    "[Seller is ready to move forward. "
-                    "Go directly to booking the walkthrough appointment now.]"
+                    "[Seller confirmed the property and is engaged. "
+                    "Move toward scheduling a walkthrough naturally.]"
                 )
 
         except Exception as e:

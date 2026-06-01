@@ -69,18 +69,6 @@ class TurnController(FrameProcessor):
             await self.push_frame(TTSSpeakFrame(_DO_NOTHING_PHRASE), FrameDirection.DOWNSTREAM)
             return True
 
-        if _VAGUE_ANSWER.match(text) and word_count <= 4:
-            self._vague_count += 1
-            if self._vague_count <= 2:
-                logger.info(
-                    "turn_controller vague_answer detected count={} objective={}",
-                    self._vague_count,
-                    objective,
-                )
-                self._ctx.runtime_instruction = _VAGUE_RUNTIME_INSTRUCTION
-            else:
-                self._vague_count = 0
-        else:
-            self._vague_count = 0
+        self._vague_count = 0
 
         return False
