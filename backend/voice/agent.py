@@ -47,7 +47,6 @@ from backend.voice.objective_engine import ObjectiveEngine
 from backend.voice.processors.analysis_callbacks import AnalysisCallbackProcessor
 from backend.voice.processors.backchannel import BackchannelProcessor
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
-from backend.voice.processors.interruption import InterruptionAckProcessor
 from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor
 from backend.voice.resistance_tracker import ResistanceTracker
 from backend.voice.runtime_orchestrator import RuntimeOrchestrator
@@ -573,7 +572,6 @@ async def run_sophia_agent(
 
     stt_mute = BotSpeakingSTTMuteProcessor()
     backchannel_processor = BackchannelProcessor(call_ctx=call_ctx)
-    interruption_ack = InterruptionAckProcessor()
     emotional_engine = EmotionalStateEngine(call_ctx)
     trust_tracker = TrustTracker(call_ctx)
     resistance_tracker = ResistanceTracker(call_ctx)
@@ -636,7 +634,6 @@ async def run_sophia_agent(
             input_guard,
             ai_identity,
             backchannel_processor,
-            interruption_ack,
             emotional_engine,
             trust_tracker,
             resistance_tracker,
