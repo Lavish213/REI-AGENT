@@ -42,8 +42,8 @@ def _get_signalwire_base() -> str:
 
 def _get_public_base_url() -> str:
     url = (
-        os.environ.get("RAILWAY_STATIC_URL")
-        or os.environ.get("PUBLIC_URL")
+        os.environ.get("PUBLIC_URL")
+        or os.environ.get("RAILWAY_STATIC_URL")
         or ""
     ).strip()
     if not url:
