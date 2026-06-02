@@ -117,9 +117,21 @@ def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
     with httpx.Client() as client:
         response = client.post(url, auth=_build_signalwire_auth(), data=payload, timeout=20)
         response.raise_for_status()
-        data = response.json()
+        import xml.etree.ElementTree as ET
+        try:
+            data = response.json()
+            call_sid = data.get("sid", "")
+            status = data.get("status", "")
+        except Exception:
+            try:
+                root = ET.fromstring(response.text)
+                call_sid = root.findtext("Sid") or ""
+                status = root.findtext("Status") or "initiated"
+            except Exception:
+                call_sid = ""
+                status = "initiated"
 
-    return {"call_sid": data.get("sid", ""), "status": data.get("status", "")}
+    return {"call_sid": call_sid, "status": status}
 
 
 _MAX_CONCURRENT_CALLS = 3
