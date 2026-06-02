@@ -13,6 +13,12 @@ from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
+try:
+    from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+    from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+    _SMART_TURN_AVAILABLE = True
+except ImportError:
+    _SMART_TURN_AVAILABLE = False
 from pipecat.frames.frames import (
     AudioRawFrame,
     BotStoppedSpeakingFrame,
@@ -627,6 +633,11 @@ async def run_sophia_agent(
                 ),
             ),
             user_turn_stop_timeout=0.4,
+            user_turn_stop_strategy=(
+                TurnAnalyzerUserTurnStopStrategy(
+                    turn_analyzer=LocalSmartTurnAnalyzerV3()
+                ) if _SMART_TURN_AVAILABLE else None
+            ),
         ),
     )
 
@@ -678,6 +689,7 @@ async def run_sophia_agent(
             enable_metrics=True,
             enable_usage_metrics=True,
             aggregation_timeout=0.3,
+            allow_interruptions=True,
         ),
     )
 
@@ -689,7 +701,7 @@ async def run_sophia_agent(
         logger.info("client connected call_sid={}", call_sid)
         from backend.karpathys import emitter
         asyncio.create_task(emitter.emit_call_created(call_sid, call_context))
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
         opener_text = _build_opener(call_context)
         logger.info("opener firing text={!r}", opener_text)
         context.messages.append({"role": "assistant", "content": opener_text})

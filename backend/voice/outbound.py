@@ -110,13 +110,15 @@ def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
         "StatusCallback": status_url,
         "StatusCallbackMethod": "POST",
         "Timeout": str(NO_ANSWER_SECONDS),
-        "MachineDetection": "DetectMessageEnd",
+        "Record": "true",
+        "RecordingStatusCallback": f"{status_url}",
+        "RecordingStatusCallbackMethod": "POST",
     }
 
     logger.info("signalwire_call_request lead_id={} to={} callback_url={}", lead_id, to_phone, callback_url)
 
     with httpx.Client() as client:
-        response = client.post(url, auth=_build_signalwire_auth(), data=payload, timeout=20)
+        response = client.post(url, auth=_build_signalwire_auth(), data=payload, timeout=20, headers={"Accept": "application/json"})
         response.raise_for_status()
         import xml.etree.ElementTree as ET
         try:
@@ -359,6 +361,7 @@ def build_outbound_answer_laml(lead_id: str) -> str:
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
+    <Pause length="1"/>
     <Connect>
         <Stream
             url="{ws_url}"

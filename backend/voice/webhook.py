@@ -35,8 +35,8 @@ def _is_boss(caller_phone: str) -> bool:
 
 def _build_ws_url() -> str:
     base_url = (
-        os.environ.get("RAILWAY_STATIC_URL")
-        or os.environ.get("PUBLIC_URL", "")
+        os.environ.get("PUBLIC_URL")
+        or os.environ.get("RAILWAY_STATIC_URL", "")
     ).strip()
 
     if not base_url:

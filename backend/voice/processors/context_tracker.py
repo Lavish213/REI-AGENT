@@ -233,7 +233,7 @@ class CallContext:
             "GET_TIMELINE": "timeline not yet known",
             "GET_CONDITION": "property condition not yet discussed",
             "GET_MORTGAGE": "loan status unknown",
-            "GET_PRICE_ANCHOR": "ask what number would work for them",
+            "GET_PRICE_ANCHOR": "price anchor not yet established",
             "BOOK_APPOINTMENT": "seller is engaged — move toward scheduling a walkthrough",
             "HANDLE_OBJECTION": "seller has a concern — hear them out before moving forward",
             "TRUST_REPAIR": "trust is low — listen more, push less",
@@ -289,7 +289,7 @@ class CallContext:
         if self.kill_switch_active:
             sections.append("KILL SWITCH: Route to safe fallback only. No strategy. No offers.")
 
-        sections.append("CURRENT TURN\n" + tag)
+        sections.append(tag + "\nRULE: max 2 sentences then stop. one question only.")
 
         return "\n\n".join(sections)
 
