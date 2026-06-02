@@ -331,7 +331,7 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
         ttfs_p99_latency=0.8,
         settings=DeepgramSTTService.Settings(
             model=model,
-            language=language,
+            language='multi' if not spanish_detected else language,
             interim_results=True,
             endpointing=400,
             numerals=True,
@@ -497,7 +497,7 @@ async def run_sophia_agent(
             model=voice_model,
             enable_prompt_caching=True,
             max_tokens=300,
-            temperature=0.5,
+            temperature=0.8,
         ),
     )
 
