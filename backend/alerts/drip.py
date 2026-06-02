@@ -21,11 +21,11 @@ PACIFIC = pytz.timezone("America/Los_Angeles")
 
 SEQUENCES: dict[str, list[tuple[int, str]]] = {
     "seller": [
-        (0, "Hey are you the owner of {address}? - Sophia"),
-        (3, "Hey {first_name} \u2014 Sophia again. We're still looking in your area. Close in 14 days, no repairs, we cover closing costs. Still open to an offer on {address}?"),
+        (0, "Hey — I'm guessing you're probably not thinking about selling {address}. Am I right? - Sophia, SJ House Buyers"),
+        (3, "Hey {first_name} \u2014 Sophia again. We're still looking in your area. Close in 14 days, no repairs, we cover closing costs. Am I right? If not just reply back."),
         (7, "Hi {first_name}, just checking in \u2014 has anything changed with {address}? No pressure at all, just want to help if timing works. - Sophia SJ House Buyers"),
         (14, "{first_name} \u2014 managing a property is a lot. If {address} has become more burden than it's worth, we make it easy. Cash, as-is, your timeline. Interested? - Sophia"),
-        (21, "Hey {first_name}! Sophia here. Properties in your area are moving fast. Wanted to see if you'd like to know what {address} could sell for cash. Takes 5 min. Worth a chat?"),
+        (21, "{first_name} — I'm guessing at this point you've probably already moved on. Am I right? If not just reply back. - Sophia"),
         (30, "{first_name} \u2014 last follow up from me on {address}. If cash offer, fast close, zero hassle sounds right \u2014 just reply YES and I'll call you today. - Sophia, San Joaquin House Buyers"),
         (45, "Hey {first_name}, Sophia from SJ House Buyers. It's been a while \u2014 still own {address}? Market changed a lot. Might be worth a quick convo."),
         (60, "{first_name} \u2014 Sophia one last time. If you ever want a fast cash offer on {address} just text me back. Hope you're doing well. \U0001f3e1"),
@@ -48,7 +48,7 @@ SEQUENCES: dict[str, list[tuple[int, str]]] = {
     ],
     "divorce_probate": [
         (0, "Hi {first_name} \u2014 my name is Sophia with San Joaquin House Buyers. I may be able to help with the property on {address}. Do you have a moment to chat?"),
-        (5, "Hey {first_name}, Sophia again. We specialize in making property sales simple during complicated times. Fast, private, no hassle. Would that be helpful right now?"),
+        (5, "Hey {first_name} — most people I talk to in complicated property situations just want to know their options. Is that kind of where you're at? Just out of curiosity. - Sophia"),
         (14, "{first_name} \u2014 just checking in. Whenever the time is right for {address} we're here. No pressure. - Sophia"),
     ],
     "vacancy": [
