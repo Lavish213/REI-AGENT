@@ -139,6 +139,10 @@ async def handle_outbound_status(
             except Exception as slot_err:
                 logger.warning("release_slot_failed lead_id={} error={}", lead_id, str(slot_err))
 
+            if call_status == "completed" and duration < 30:
+                logger.info("short_call_auto_dead lead_id={} duration={}s", lead_id, duration)
+                await run_in_threadpool(update_lead_call_outcome, lead_id, "dead", call_sid, duration)
+
             if call_status == "completed" and duration > 10:
                 call_data = {
                     "lead_id": lead_id,
@@ -298,8 +302,8 @@ def _build_outbound_context(
     distress = (prop.get("distress_type") or "unknown").replace("_", " ").title()
     arv = prop.get("estimated_arv")
     mao = prop.get("mao")
-    arv_str = f"${arv / 100:,.0f}" if arv else "unknown"
-    mao_str = f"${mao / 100:,.0f}" if mao else "unknown"
+    arv_str = f"${arv:,.0f}" if arv else "unknown"
+    mao_str = f"${mao:,.0f}" if mao else "unknown"
     city = prop.get("city", "Stockton")
 
     if landmark:

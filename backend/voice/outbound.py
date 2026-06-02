@@ -336,10 +336,9 @@ def build_voicemail_laml(lead: dict, prop: dict, language: str = "en") -> str:
         voice = _VM_VOICE_EN
         rate = _VM_RATE_EN
         say_text = (
-            f"Hey {first_name}, this is Sophia with San Joaquin House Buyers "
-            f"calling about your property on {address}. "
-            f"We'd love to make you a cash offer. No repairs, no agents, fast close. "
-            f"Give me a call or text back at {agent_phone}. Talk soon."
+            f"Hey {first_name} — Sophia here. "
+            f"I was looking at {address} and had a quick question for you. "
+            f"Call or text me back when you get a chance at {agent_phone}. Thanks."
         )
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>

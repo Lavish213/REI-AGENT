@@ -31,6 +31,23 @@ def _next_9am_pt() -> datetime:
     return target.astimezone(timezone.utc)
 
 
+def _next_10am_pt() -> datetime:
+    now_pt = datetime.now(PACIFIC)
+    target = now_pt.replace(hour=10, minute=0, second=0, microsecond=0)
+    if now_pt.hour >= 10:
+        target += timedelta(days=1)
+    return target.astimezone(timezone.utc)
+
+
+def _next_1pm_day2_pt() -> datetime:
+    now_pt = datetime.now(PACIFIC)
+    target = (
+        now_pt.replace(hour=13, minute=0, second=0, microsecond=0)
+        + timedelta(days=2)
+    )
+    return target.astimezone(timezone.utc)
+
+
 def _next_2pm_day2_pt() -> datetime:
     now_pt = datetime.now(PACIFIC)
     target = (
@@ -49,8 +66,8 @@ def _contact_made(lead: dict) -> bool:
 
 
 def _get_first_name(lead: dict, prop: dict) -> str:
-    owner = lead.get("owner_name") or (prop or {}).get("owner_name") or ""
-    parts = owner.strip().split()
+    name = lead.get("first_name") or lead.get("owner_name") or (prop or {}).get("owner_name") or ""
+    parts = name.strip().split()
     return parts[0] if parts else "there"
 
 
@@ -65,6 +82,12 @@ def _run_touch(lead_id: str, touch_number: int) -> None:
         return
 
     if lead.get("speed_to_lead_completed"):
+        return
+
+    from datetime import date as _date
+    last_called = lead.get("last_called_at") or ""
+    if last_called and last_called[:10] == _date.today().isoformat() and touch_number == 1:
+        logger.info("stl same_day_dedup skipping lead_id={}", lead_id)
         return
 
     if touch_number > 1 and _contact_made(lead):
@@ -85,8 +108,8 @@ def _run_touch(lead_id: str, touch_number: int) -> None:
             logger.info("stl touch=1 call lead_id={} success={}", lead_id, result.get("success"))
         elif phone:
             body = (
-                f"Hey — are you the owner of {address}? "
-                "This is Sophia, San Joaquin House Buyers."
+                f"Hey — I'm guessing you're probably not thinking about selling {address}. "
+                "Am I right? - Sophia, SJ House Buyers"
             )
             send_drip_sms(to=phone, body=body, lead_id=lead_id)
             logger.info("stl touch=1 sms sent lead_id={}", lead_id)
@@ -112,9 +135,9 @@ def _run_touch(lead_id: str, touch_number: int) -> None:
             result = call_lead(lead_id, bypass_cooldown=True)
             logger.info("stl touch=4 call lead_id={} success={}", lead_id, result.get("success"))
             body = (
-                f"Hey {first_name} — Sophia with San Joaquin House Buyers. "
-                f"Tried to reach you about {address}. "
-                "We buy as-is, cash, fast close. Worth a quick chat? Call or text back."
+                f"Hey {first_name} — I'm assuming you've probably already "
+                f"figured out what you're doing with {address}. "
+                "Am I right? If not just reply back. - Sophia"
             )
             send_drip_sms(to=phone, body=body, lead_id=lead_id)
             logger.info("stl touch=4 sms sent lead_id={}", lead_id)
@@ -159,8 +182,8 @@ def run_speed_to_lead(lead_id: str) -> None:
     now_utc = datetime.now(timezone.utc)
     touch2_at = now_utc + timedelta(minutes=30)
     touch3_at = now_utc + timedelta(hours=2)
-    touch4_at = _next_9am_pt()
-    touch5_at = _next_2pm_day2_pt()
+    touch4_at = _next_10am_pt()
+    touch5_at = _next_1pm_day2_pt()
     prefix = f"stl_{lead_id}"
 
     _scheduler.add_job(

@@ -109,8 +109,8 @@ def get_sequence_name(distress_type: str | None) -> str:
 
 
 def _get_first_name(lead: dict, prop: dict) -> str:
-    owner = lead.get("owner_name") or (prop or {}).get("owner_name") or ""
-    parts = owner.strip().split()
+    name = lead.get("first_name") or lead.get("owner_name") or (prop or {}).get("owner_name") or ""
+    parts = name.strip().split()
     return parts[0] if parts else "there"
 
 
