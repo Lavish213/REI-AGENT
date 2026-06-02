@@ -325,6 +325,8 @@ def get_lead_with_property(lead_id: str) -> dict | None:
         .execute()
     )
     result = response.data[0] if response.data else None
+    if result and isinstance(result.get("properties"), list):
+        result["properties"] = result["properties"][0] if result["properties"] else {}
     logger.debug("get_lead_with_property id={} found={}", lead_id, result is not None)
     return result
 
