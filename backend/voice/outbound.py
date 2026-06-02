@@ -66,12 +66,13 @@ def _safe_iso_to_datetime(value: str | None) -> datetime | None:
 
 
 def _get_first_name(lead: dict, prop: dict) -> str:
-    owner = (
-        lead.get("owner_name")
+    name = (
+        lead.get("first_name")
+        or lead.get("owner_name")
         or (prop or {}).get("owner_name")
         or ""
     ).strip()
-    parts = owner.split()
+    parts = name.split()
     return parts[0] if parts else "there"
 
 

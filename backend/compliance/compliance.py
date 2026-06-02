@@ -5,8 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from loguru import logger
 
-CALLING_HOURS_START = int(os.environ.get("CALLING_HOURS_START", 9))
-CALLING_HOURS_END = int(os.environ.get("CALLING_HOURS_END", 21))
+
 
 
 @dataclass
@@ -19,7 +18,9 @@ def _is_calling_hours() -> bool:
     import pytz
     pacific = pytz.timezone("America/Los_Angeles")
     now = datetime.now(pacific)
-    return CALLING_HOURS_START <= now.hour < CALLING_HOURS_END
+    start = int(os.environ.get("CALLING_HOURS_START", 9))
+    end = int(os.environ.get("CALLING_HOURS_END", 21))
+    return start <= now.hour < end
 
 
 def _check_dnc(phone: str) -> bool:
