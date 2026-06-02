@@ -25,6 +25,8 @@ _DELAY_BY_ENERGY: dict[str, tuple[int, int]] = {
     "rushed":     (30, 80),    # snap back fast
     "talkative":  (40, 100),
     "hesitant":   (70, 160),   # thoughtful pause
+    "distressed": (400, 600),  # hold the space
+    "grieving":   (400, 600),  # hold the space
     "motivated":  (35, 90),    # energetic reply
 }
 
