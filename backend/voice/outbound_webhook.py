@@ -143,7 +143,8 @@ async def handle_outbound_status(
                 logger.info("short_call_auto_dead lead_id={} duration={}s", lead_id, duration)
                 await run_in_threadpool(update_lead_call_outcome, lead_id, "dead", call_sid, duration)
 
-            if call_status == "completed" and duration < 30 and answered_by not in ("human", "human-residence", "human-business"):
+            answered_by_status = str(form.get("AnsweredBy", "")).strip()
+            if call_status == "completed" and duration < 30 and answered_by_status not in ("human", "human-residence", "human-business"):
                 logger.info("short_call_auto_dead lead_id={} duration={}s answered_by={}", lead_id, duration, answered_by)
                 await run_in_threadpool(update_lead_call_outcome, lead_id, "dead", call_sid, duration)
 
