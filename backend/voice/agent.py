@@ -118,37 +118,34 @@ def _build_opener(call_context: dict[str, Any]) -> str:
     situation_opener = _SITUATION_OPENERS.get(situation, "")
 
     if not is_outbound:
-        if name and address:
-            street = address.split(",")[0].strip()
-            return f"Hey {name}! This is Sophia with San Joaquin House Buyers — you thinking about selling your place on {street}?"
-        elif name:
-            return f"Hey {name}! This is Sophia with San Joaquin House Buyers — you thinking about selling a property?"
-        else:
-            base = "San Joaquin House Buyers — hey, this is Sophia."
+        if name:
+            base = f"Hey {name}! This is Sophia with San Joaquin House Buyers."
             if situation_opener:
                 return f"{base} {situation_opener}"
-            return f"{base} You thinking about selling a property?"
+            return base
+        else:
+            return "San Joaquin House Buyers — hey, this is Sophia. Can I ask who I'm speaking with?"
 
     if name and address:
         base = (
             f"Hey — is this {name}? "
             "Hey, it's Sophia. "
-            "I know this is kinda random. "
+            "I know this is kinda out of nowhere. "
             f"I was looking at your place on {address}. "
-            "You got like two minutes?"
+            "Is now a bad time?"
         )
     elif address:
         base = (
             "Hey, it's Sophia. "
-            "I know this is kinda random. "
+            "I know this is kinda out of nowhere. "
             f"I was looking at the place on {address}. "
-            "You got like two minutes?"
+            "Is now a bad time?"
         )
     else:
         base = (
             "Hey, it's Sophia with San Joaquin House Buyers. "
-            "I know this is kinda random. "
-            "You got like two minutes?"
+            "I know this is kinda out of nowhere. "
+            "Is now a bad time to talk?"
         )
 
     if situation_opener:
@@ -509,6 +506,7 @@ async def run_sophia_agent(
         call_ctx.address_known = True
     call_ctx.is_outbound = bool(call_context.get("is_outbound", False))
     call_ctx.is_outbound = bool(call_context.get("is_outbound", False))
+    call_ctx.is_outbound = bool(call_context.get("is_outbound", False))
     if call_context.get("situation_label"):
         call_ctx.situation_label = call_context["situation_label"]
     if call_context.get("initial_trust_score"):
@@ -694,6 +692,7 @@ async def run_sophia_agent(
         await asyncio.sleep(0.5)
         opener_text = _build_opener(call_context)
         logger.info("opener firing text={!r}", opener_text)
+        context.messages.append({"role": "assistant", "content": opener_text})
         await task.queue_frames([TTSSpeakFrame(opener_text)])
 
     @transport.event_handler("on_client_disconnected")

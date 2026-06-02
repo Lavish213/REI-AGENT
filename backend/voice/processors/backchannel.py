@@ -15,9 +15,9 @@ from pipecat.processors.frame_processor import FrameDirection
 from pipecat.processors.frame_processor import FrameProcessor
 
 
-_BACKCHANNELS = ["mmhm", "yeah", "right", "gotcha", "okay"]
-_EMOTIONAL_BACKCHANNELS = ["yeah", "oh man", "mmhm"]
-_SKEPTICAL_BACKCHANNELS = ["yeah", "right"]
+_BACKCHANNELS = ["mmhm", "yeah", "right", "gotcha", "okay", "oh wow", "oh man", "huh okay", "seriously", "oh interesting", "right right"]
+_EMOTIONAL_BACKCHANNELS = ["oh man", "yeah no I get that", "I hear you", "mmhm", "oh wow"]
+_SKEPTICAL_BACKCHANNELS = ["yeah", "right", "gotcha", "huh okay"]
 
 _BLOCKING_PHRASES = ["hold on", "wait", "stop", "what do you mean", "i don't understand", "are you a robot", "are you ai"]
 _EMOTIONAL_PHRASES = ["passed away", "divorce", "foreclosure", "behind on", "overwhelmed", "stress", "probate"]
@@ -28,7 +28,7 @@ _SUPPRESS_RESISTANCE_LEVELS = frozenset(["BLOCKING"])
 
 _MIN_WORDS_BEFORE_BACKCHANNEL = 8
 _MAX_BACKCHANNELS_PER_TURN = 2
-_BACKCHANNEL_PROBABILITY = 0.20
+_BACKCHANNEL_PROBABILITY = 0.38
 
 
 @dataclass(slots=True)

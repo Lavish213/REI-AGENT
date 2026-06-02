@@ -57,8 +57,8 @@ class TurnController(FrameProcessor):
         word_count = len(text.split())
 
         if _BACKCHANNEL_ONLY.match(text):
-            logger.debug("turn_controller backchannel suppressed text={!r}", text)
-            return True
+            logger.debug("turn_controller backchannel passed text={!r}", text)
+            return False
 
         if (
             emotional_state in _DISTRESSED_STATES
@@ -66,8 +66,8 @@ class TurnController(FrameProcessor):
             and word_count > 15
         ):
             logger.debug("turn_controller emotional hold emotional_state={}", emotional_state)
-            await self.push_frame(TTSSpeakFrame(_DO_NOTHING_PHRASE), FrameDirection.DOWNSTREAM)
-            return True
+            self._ctx.runtime_instruction = "[Seller is venting. Respond with warmth and empathy. Short. Do not ask discovery questions yet.]"
+            return False
 
         self._vague_count = 0
 

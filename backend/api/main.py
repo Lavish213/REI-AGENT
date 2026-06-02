@@ -90,6 +90,7 @@ def _run_pending_followups() -> None:
 async def lifespan(app: FastAPI):
     logger.info("REI Agent API starting")
     from backend.voice import agent as _agent_warmup  # noqa: F401
+    from backend.voice import agent as _agent_warmup  # noqa: F401
     from backend.voice import agent as _voice_agent_warmup  # noqa: F401
 
     if os.environ.get("GROQ_API_KEY", "").strip():
@@ -111,6 +112,13 @@ async def lifespan(app: FastAPI):
 
     start_drip_scheduler()
     start_appointment_scheduler()
+
+    try:
+        from backend.lib.db import _get_client
+        _get_client().table("leads").select("id").limit(1).execute()
+        logger.info("supabase_warmup complete")
+    except Exception as _we:
+        logger.warning("supabase_warmup failed error={}", str(_we))
 
     try:
         from backend.lib.db import _get_client

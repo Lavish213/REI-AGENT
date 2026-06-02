@@ -20,7 +20,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 # (min_ms, max_ms) per energy state — all kept under 200ms
 _DELAY_BY_ENERGY: dict[str, tuple[int, int]] = {
     "calm":       (50, 140),
-    "emotional":  (80, 180),   # pause — empathetic
+    "emotional":  (250, 400),  # breathe — empathetic
     "skeptical":  (60, 150),   # slight deliberate pause
     "rushed":     (30, 80),    # snap back fast
     "talkative":  (40, 100),

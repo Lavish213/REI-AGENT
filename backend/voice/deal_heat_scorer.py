@@ -143,8 +143,6 @@ class DealHeatScorer(FrameProcessor):
             delta += 0.5
             logger.debug("deal_heat +0.5 soft_engagement")
 
-        if not getattr(self._ctx, "has_agent", False) and not _AGENT_SIGNALS.search(text):
-            delta += 0.3
 
         if _AGENT_SIGNALS.search(text):
             delta -= 2.0

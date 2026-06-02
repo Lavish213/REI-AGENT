@@ -170,6 +170,8 @@ class CallContext:
     objective: str = "GET_MOTIVATION"
     runtime_instruction: str | None = None
     is_outbound: bool = False
+    seller_name_used_count: int = 0
+    is_outbound: bool = False
     is_outbound: bool = False
 
     emotional_state: str = "NEUTRAL"

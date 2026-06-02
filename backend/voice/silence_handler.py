@@ -7,19 +7,19 @@ from loguru import logger
 
 
 _RECOVERY_PHRASES: dict[str, list[str]] = {
-    "standard": ["You still there?", "Still with me?", "Hey — you there?"],
-    "post_emotional": ["Take your time.", "No rush.", "Still here whenever you're ready."],
-    "post_price": ["Still there?", "Did I lose you?"],
-    "post_appointment": ["Did I lose you?", "You still there?"],
+    "standard": ["Take your time.", "No rush.", "Hey — still there?"],
+    "post_emotional": ["Take your time.", "I'm right here.", "No rush at all."],
+    "post_price": ["No pressure — just let me know what you think.", "Take your time."],
+    "post_appointment": ["Take your time.", "No rush."],
     "consecutive_2": ["Hey — still there?", "Hello?"],
 }
 
 _TIMEOUTS: dict[str, float] = {
-    "standard": 4.0,
-    "post_emotional": 8.0,
-    "post_price": 7.0,
-    "post_appointment": 8.0,
-    "consecutive_2": 4.0,
+    "standard": 9.0,
+    "post_emotional": 14.0,
+    "post_price": 12.0,
+    "post_appointment": 12.0,
+    "consecutive_2": 7.0,
 }
 
 _EMOTIONAL_MULTIPLIERS: dict[str, float] = {
@@ -30,7 +30,7 @@ _EMOTIONAL_MULTIPLIERS: dict[str, float] = {
     "EXCITED": 0.8,
 }
 
-_CONSECUTIVE_SILENCE_END = 3
+_CONSECUTIVE_SILENCE_END = 2
 _DISTRESSED_STATES = frozenset(["DISTRESSED", "GRIEVING", "OVERWHELMED"])
 
 
