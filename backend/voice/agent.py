@@ -328,7 +328,7 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
         ttfs_p99_latency=0.8,
         settings=DeepgramSTTService.Settings(
             model=model,
-            language='multi' if not spanish_detected else language,
+            language='en-US',
             interim_results=True,
             endpointing=400,
             numerals=True,
