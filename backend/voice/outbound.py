@@ -120,10 +120,11 @@ def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
     with httpx.Client() as client:
         response = client.post(url, auth=_build_signalwire_auth(), data=payload, timeout=20, headers={"Accept": "application/json"})
         response.raise_for_status()
+        logger.info("signalwire_response status={} body={}", response.status_code, response.text[:200])
         import xml.etree.ElementTree as ET
         try:
             data = response.json()
-            call_sid = data.get("sid", "")
+            call_sid = data.get("sid", "") or data.get("call_sid", "")
             status = data.get("status", "")
         except Exception:
             try:

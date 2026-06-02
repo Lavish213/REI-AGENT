@@ -500,7 +500,7 @@ async def run_sophia_agent(
             model=voice_model,
             enable_prompt_caching=True,
             max_tokens=300,
-            temperature=0.8,
+            temperature=0.3,
         ),
     )
 
