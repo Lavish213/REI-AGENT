@@ -362,11 +362,10 @@ def build_outbound_answer_laml(lead_id: str) -> str:
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Pause length="1"/>
     <Connect>
         <Stream
             url="{ws_url}"
-            track="both_tracks"
+            track="inbound_track"
         />
     </Connect>
 </Response>"""
