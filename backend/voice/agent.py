@@ -950,7 +950,8 @@ async def _persist_call_result(
             from backend.alerts.sms import send_sms
             from backend.lib.db import _get_client as _gc
             _row = _gc().table("leads").select("owner_phone,owner_name").eq("id", lead["id"]).single().execute()
-            _phone = (_row.data or {}).get("owner_phone", "")
+            _raw = (_row.data or {}).get("owner_phone") or ""
+            _phone = _raw if _raw.startswith("+") else ("+1" + _raw.lstrip("1") if _raw else "")
             _rname = (_row.data or {}).get("owner_name") or ""
             _name = _rname.strip().split()[0] if _rname.strip() else ""
             if _phone and disposition == "HOT":
