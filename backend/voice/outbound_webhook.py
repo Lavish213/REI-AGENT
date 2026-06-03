@@ -185,6 +185,17 @@ async def outbound_voice_stream(
         except Exception as _intel_err:
             logger.warning("intel_preload_failed lead_id={} error={}", lead_id, str(_intel_err))
 
+        from backend.voice.preloader import _detect_situation, _get_initial_trust
+        situation_label = _detect_situation(lead) if lead else "unknown"
+        initial_trust = _get_initial_trust(lead) if lead else 5.0
+        preloaded_packet = None
+        try:
+            from backend.lib.intel_assembler import assemble_intel_packet
+            import asyncio as _ai
+            preloaded_packet = await _ai.wait_for(_ai.to_thread(assemble_intel_packet, lead_id), timeout=5.0)
+            logger.info("intel_preloaded lead_id={} state={}", lead_id, preloaded_packet.get("packet_state", "unknown"))
+        except Exception as _ie:
+            logger.warning("intel_preload_failed lead_id={} error={}", lead_id, str(_ie))
         outbound_context = {
             "boss_mode": False,
             "is_outbound": True,

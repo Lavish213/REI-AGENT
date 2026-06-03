@@ -61,6 +61,7 @@ from backend.voice.processors.ai_softener import AISoftenerProcessor as AISoften
 from backend.voice.processors.ai_identity import AIIdentityProcessor
 from backend.voice.processors.input_guard import InputGuardProcessor
 from backend.voice.processors.interruption import InterruptionAckProcessor
+from backend.voice.processors.interruption import InterruptionAckProcessor
 from backend.voice.processors.breath_injector import BreathInjectorProcessor
 from backend.voice.processors.humanized_latency import HumanizedLatencyProcessor
 from backend.voice.processors.phone_eq import PhoneEQProcessor
@@ -344,6 +345,7 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
     emotion = _ENERGY_TO_EMOTION.get(energy)
     return CartesiaTTSService(
         api_key=api_key,
+        cartesia_version="2026-03-01",
         cartesia_version="2026-03-01",
         max_buffer_delay_ms=0,
         sample_rate=8000,
@@ -647,6 +649,7 @@ async def run_sophia_agent(
     )
     turn_controller = TurnController(call_ctx)
     speech_chunker = SpeechChunker(call_ctx)
+    interruption_ack = InterruptionAckProcessor()
     sentence_streamer = SentenceStreamProcessor()
     interruption_ack = InterruptionAckProcessor()
     ai_identity = AIIdentityProcessor(call_ctx=call_ctx)

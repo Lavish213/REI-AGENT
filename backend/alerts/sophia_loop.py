@@ -154,7 +154,8 @@ def run_sophia_loop() -> dict:
         .execute()
     )
 
-    leads = resp.data or []
+    leads = [l for l in (resp.data or []) if (l.get("properties") or {}).get("callable_phones") and int(((l.get("properties") or {}).get("distress_score") or 0)) >= 50]
+    if False: leads = resp.data or []
     leads = [l for l in leads if (l.get("properties") or {}).get("callable_phones")]
     leads.sort(key=lambda l: l.get("composite_score") or 0, reverse=True)
 
@@ -184,6 +185,7 @@ def run_sophia_loop() -> dict:
                 if result.get("success"):
                     _ACTIVE_CALL_IDS.add(lead_id)
                     results["called"] += 1
+                    _ACTIVE_CALL_IDS.add(lead_id)
                     actions += 1
 
             elif channel == "sms":
@@ -199,10 +201,11 @@ def run_sophia_loop() -> dict:
                     actions += 1
 
             elif channel == "restart_drip":
-                phone = lead.get("owner_phone")
-                if not phone:
+                _raw = lead.get("owner_phone") or ""
+                if not _raw:
                     results["skipped"] += 1
                     continue
+                phone = _raw if _raw.startswith("+") else ("+1" + _raw.lstrip("1"))
                 sequence = get_sequence_name(prop.get("distress_type"))
                 start_lead_drip(lead_id, sequence, now.isoformat(), initial_day=-1)
                 results["drip_started"] += 1
