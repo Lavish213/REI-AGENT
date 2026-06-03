@@ -316,15 +316,14 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
     return CartesiaTTSService(
         api_key=api_key,
         cartesia_version="2026-03-01",
-        max_buffer_delay_ms=80,
+        max_buffer_delay_ms=0,
         sample_rate=8000,
         text_aggregation_mode=TextAggregationMode.TOKEN,
         settings=CartesiaTTSService.Settings(
             voice=voice_id,
             model=model,
             generation_config=GenerationConfig(
-                speed=0.95,
-                volume=1.0,
+                speed=1.0,
                 emotion=emotion,
             ),
         ),
@@ -345,7 +344,7 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
             model=model,
             language='en-US',
             interim_results=True,
-            endpointing=400,
+            endpointing=200,
             numerals=True,
         ),
     )
@@ -488,7 +487,6 @@ async def run_sophia_agent(
         websocket=logging_ws,
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
-            audio_in_sample_rate=16000,
             audio_out_enabled=True,
             audio_out_sample_rate=8000,
             add_wav_header=False,
@@ -670,7 +668,6 @@ async def run_sophia_agent(
             ComplianceOutputFilter(call_ctx=call_ctx),
             humanized_latency,
             tts,
-            phone_eq,
             TTSFrameProbe(),
             transport.output(),
             bot_speaking_monitor,

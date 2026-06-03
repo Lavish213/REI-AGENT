@@ -296,7 +296,7 @@ class CallContext:
         if self.kill_switch_active:
             sections.append("KILL SWITCH: Route to safe fallback only. No strategy. No offers.")
 
-        sections.append(tag + "\nRULE: max 2 sentences then stop. one question only.")
+        sections.append(tag + "\nSTYLE: short, reactive, human. 1-2 sentences. one question. react before asking.")
 
         return "\n\n".join(sections)
 
