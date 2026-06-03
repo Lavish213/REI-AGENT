@@ -9,7 +9,7 @@ cartesia
 
 signalwire
 
-pipecat-ai[cartesia,deepgram,silero,anthropic,local-smart-turn-v3]
+pipecat-ai[cartesia,deepgram,silero,anthropic]
 livekit-agents[turn-detector]
 
 loguru

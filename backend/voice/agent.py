@@ -13,12 +13,7 @@ from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-try:
-    from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-    from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
-    _SMART_TURN_AVAILABLE = True
-except ImportError:
-    _SMART_TURN_AVAILABLE = False
+
 from pipecat.frames.frames import (
     AudioRawFrame,
     BotStoppedSpeakingFrame,
@@ -631,11 +626,6 @@ async def run_sophia_agent(
                 ),
             ),
             user_turn_stop_timeout=0.4,
-            user_turn_stop_strategy=(
-                TurnAnalyzerUserTurnStopStrategy(
-                    turn_analyzer=LocalSmartTurnAnalyzerV3()
-                ) if _SMART_TURN_AVAILABLE else None
-            ),
         ),
     )
 
