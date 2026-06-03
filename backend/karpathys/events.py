@@ -14,7 +14,7 @@ def call_created(
         "direction": "outbound" if call_context.get("is_outbound") else "inbound",
         "lead_id": lead.get("id"),
         "lead_name": lead.get("owner_first_name"),
-        "phone": lead.get("phone"),
+        "phone": lead.get("owner_phone"),
         "address": call_context.get("address"),
         "situation_label": call_context.get("situation_label"),
         "boss_mode": bool(call_context.get("boss_mode")),
@@ -28,9 +28,11 @@ def call_completed(
     turn_count: int,
     transcript_length: int,
 ) -> dict[str, Any]:
+    _DISP_MAP = {"HOT": "qualified", "WARM": "warm", "COLD": "cold", "DEAD": "not_interested"}
     return {
         "call_sid": call_sid,
-        "disposition": disposition,
+        "disposition": _DISP_MAP.get((disposition or "").upper(), disposition),
+        "raw_disposition": disposition,
         "turn_count": turn_count,
         "transcript_length": transcript_length,
         "occurred_at": datetime.now(UTC).isoformat(),
@@ -74,5 +76,34 @@ def transcript_completed(
 def call_ended(call_sid: str) -> dict[str, Any]:
     return {
         "call_sid": call_sid,
+        "occurred_at": datetime.now(UTC).isoformat(),
+    }
+
+def call_failed(
+    lead_id: str | None,
+    reason: str,
+    call_sid: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "lead_id": lead_id,
+        "call_sid": call_sid,
+        "reason": reason,
+        "occurred_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def disposition_action(
+    call_sid: str,
+    lead_id: str | None,
+    disposition: str,
+    full_name: str | None = None,
+    phone: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "call_sid": call_sid,
+        "lead_id": lead_id,
+        "disposition": disposition,
+        "full_name": full_name,
+        "phone": phone,
         "occurred_at": datetime.now(UTC).isoformat(),
     }

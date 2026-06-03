@@ -597,6 +597,24 @@ def _set_disposition(inp: dict, call_ctx) -> str:
         call_ctx.disposition = disposition
 
     logger.info("set_disposition disposition={}", disposition)
+    try:
+        from backend.karpathys import emitter as _ke
+        import asyncio as _aio
+        _sid = getattr(call_ctx, "call_sid", "") or "" if call_ctx else ""
+        _lid = getattr(call_ctx, "lead_id", None) if call_ctx else None
+        _ctx_lead = getattr(call_ctx, "lead", {}) if call_ctx else {}
+        _name = (_ctx_lead.get("owner_first_name") or "") if _ctx_lead else ""
+        _phone = (_ctx_lead.get("owner_phone") or "") if _ctx_lead else ""
+        if _sid:
+            _aio.create_task(_ke.emit_disposition_action(
+                call_sid=_sid,
+                lead_id=str(_lid) if _lid else None,
+                disposition=disposition,
+                full_name=_name,
+                phone=_phone,
+            ))
+    except Exception:
+        pass
     return f"Disposition set to {disposition}."
 
 

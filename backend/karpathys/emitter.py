@@ -63,3 +63,28 @@ async def emit_transcript_completed(
         await client.post_event("transcript", payload)
     except Exception as error:
         logger.exception("emit_transcript_completed failed call_sid={} error={}", call_sid, str(error))
+
+async def emit_call_failed(
+    lead_id: str | None,
+    reason: str,
+    call_sid: str | None = None,
+) -> None:
+    try:
+        payload = events.call_failed(lead_id, reason, call_sid)
+        await client.post_event("failed", payload)
+    except Exception as error:
+        logger.exception("emit_call_failed failed lead_id={} error={}", lead_id, str(error))
+
+
+async def emit_disposition_action(
+    call_sid: str,
+    lead_id: str | None,
+    disposition: str,
+    full_name: str | None = None,
+    phone: str | None = None,
+) -> None:
+    try:
+        payload = events.disposition_action(call_sid, lead_id, disposition, full_name, phone)
+        await client.post_event("sophia/disposition-action", payload)
+    except Exception as error:
+        logger.exception("emit_disposition_action failed call_sid={} error={}", call_sid, str(error))

@@ -242,6 +242,12 @@ def call_lead(
 
         if not result.allowed:
             logger.warning("outbound_compliance_blocked lead_id={} reason={}", lead_id, result.reason)
+            try:
+                from backend.karpathys import emitter as _ke
+                import asyncio as _aio
+                _aio.get_event_loop().run_until_complete(_ke.emit_call_failed(lead_id, result.reason))
+            except Exception:
+                pass
             return {"success": False, "reason": result.reason}
 
         lead = get_lead_with_property(lead_id)
@@ -324,6 +330,12 @@ def call_lead(
         except Exception:
             pass
 
+        try:
+            from backend.karpathys import emitter as _ke
+            import asyncio as _aio
+            _aio.get_event_loop().run_until_complete(_ke.emit_call_failed(lead_id, "signalwire_error"))
+        except Exception:
+            pass
         return {"success": False, "reason": "signalwire_error", "error": str(e)}
 
 

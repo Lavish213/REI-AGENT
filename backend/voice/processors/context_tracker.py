@@ -414,6 +414,24 @@ class ContextTrackerProcessor(FrameProcessor):
                 if getattr(self, "_last_injected_turn", -1) != current_turn:
                     self._inject_context_prefix()
                     self._last_injected_turn = current_turn
+                    try:
+                        from backend.karpathys import emitter as _ke
+                        import asyncio as _aio
+                        _sid = getattr(self._ctx, "call_sid", "") or ""
+                        _trust = getattr(self._ctx, "trust_score", None)
+                        _heat = getattr(self._ctx, "deal_heat", None)
+                        _turn = getattr(self._ctx, "turn_count", 0)
+                        if _sid:
+                            _aio.create_task(_ke.emit_turn_completed(
+                                call_sid=_sid,
+                                speaker="user",
+                                text=text,
+                                trust_score=_trust,
+                                deal_heat=_heat,
+                                turn_index=_turn,
+                            ))
+                    except Exception:
+                        pass
                     energy = getattr(self._ctx, "seller_energy", "calm") or "calm"
                     tts_svc = getattr(self, "_tts_service_ref", None)
                     if tts_svc and hasattr(tts_svc, "_settings") and energy != getattr(self, "_last_energy", "calm"):
