@@ -131,33 +131,32 @@ def _build_opener(call_context: dict[str, Any]) -> str:
     variant = random.choice(["A", "B", "C", "D"])
     if address and variant == "A":
         base = (
-            "My name is Sophia — I'll be upfront, I buy houses and I was just hoping "
-            "to ask you one quick thing before you go. Would that be all right? "
-            f"I know this is probably a long shot but I was looking at your place on {address} — "
+            f"Hey — Sophia calling from San Joaquin House Buyers. "
+            f"I was reaching out about your place on {address} — "
             "I'm guessing you're probably never going to sell that place. Am I right?"
         )
     elif address and variant == "B":
         base = (
-            "Sophia here. Quick question about your place on "
-            f"{address} — I'm guessing you're pretty happy there "
-            "and not thinking about selling. Am I right?"
+            f"Hey — Sophia calling. "
+            f"Quick question about your place on {address} — "
+            "you still the owner over there?"
         )
     elif address and variant == "C":
         base = (
-            "It's Sophia — I know this is kinda out of nowhere. "
+            f"Hey — it's Sophia. "
             f"I was looking at some properties in the area and yours on {address} stood out. "
-            "Is now a bad time?"
+            "You got a sec?"
         )
     elif address:
         base = (
-            "Sophia with San Joaquin House Buyers. "
-            f"Your place on {address} caught my eye — "
-            "looks like it might have been sitting a while. Is that right?"
+            f"Hey — Sophia, San Joaquin House Buyers. "
+            f"Your place on {address} caught my attention — "
+            "thinking about selling at all?"
         )
     else:
         base = (
-            "My name is Sophia — I buy houses directly and I was hoping "
-            "to ask you one quick question. Would that be all right?"
+            "Hey — Sophia calling from San Joaquin House Buyers. "
+            "Am I reaching the property owner?"
         )
 
     if situation_opener:
@@ -188,7 +187,7 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
     from backend.voice.prompt_budget import apply_budget
     prompts_dir = os.path.join(os.path.dirname(__file__), "prompts")
 
-    prompt_parts = [_load_prompt_file(prompts_dir, "sophia_runtime.md")]
+    prompt_parts = [_load_prompt_file(prompts_dir, "sophia_runtime.md"), _load_prompt_file(prompts_dir, "sophia_scripts.md")]
 
     if spanish:
         prompt_parts.append(_load_prompt_file(prompts_dir, "sophia_extended.md"))
@@ -704,11 +703,14 @@ async def run_sophia_agent(
         logger.info("client connected call_sid={}", call_sid)
         from backend.karpathys import emitter
         asyncio.create_task(emitter.emit_call_created(call_sid, call_context))
-        await asyncio.sleep(0.1)
-        opener_text = _build_opener(call_context)
-        logger.info("opener firing text={!r}", opener_text)
-        context.messages.append({"role": "assistant", "content": opener_text})
-        await task.queue_frames([TTSSpeakFrame(opener_text)])
+        if not call_context.get("is_outbound"):
+            await asyncio.sleep(0.1)
+            opener_text = _build_opener(call_context)
+            logger.info("opener firing inbound text={!r}", opener_text)
+            context.messages.append({"role": "assistant", "content": opener_text})
+            await task.queue_frames([TTSSpeakFrame(opener_text)])
+        else:
+            logger.info("outbound_connected waiting for seller hello call_sid={}", call_sid)
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):
