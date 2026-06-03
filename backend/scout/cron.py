@@ -153,3 +153,20 @@ def start_scheduler() -> None:
 
 if __name__ == "__main__":
     start_scheduler()
+
+
+def run_scout_cycle() -> None:
+    logger.info("scout_cycle starting")
+    try:
+        run_rss_scraper()
+    except Exception as e:
+        logger.warning("scout rss_scraper failed error={}", str(e))
+    try:
+        run_expired_scraper()
+    except Exception as e:
+        logger.warning("scout expired_scraper failed error={}", str(e))
+    try:
+        run_eviction_scraper()
+    except Exception as e:
+        logger.warning("scout eviction_scraper failed error={}", str(e))
+    logger.info("scout_cycle complete")

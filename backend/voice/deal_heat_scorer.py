@@ -128,8 +128,8 @@ class DealHeatScorer(FrameProcessor):
             logger.debug("deal_heat +1.0 vacancy")
 
         if _FREE_CLEAR_SIGNALS.search(text):
-            delta += 1.5
-            logger.debug("deal_heat +1.5 free_and_clear")
+            delta += 2.0
+            logger.debug("deal_heat +2.0 free_and_clear")
 
         if _PRICE_INQUIRY.search(text):
             delta += 2.5
@@ -144,9 +144,10 @@ class DealHeatScorer(FrameProcessor):
             logger.debug("deal_heat +0.5 soft_engagement")
 
 
-        if _AGENT_SIGNALS.search(text):
+        if _AGENT_SIGNALS.search(text) and not getattr(self, "_agent_penalized", False):
             delta -= 2.0
-            logger.debug("deal_heat -2.0 agent_detected")
+            self._agent_penalized = True
+            logger.debug("deal_heat -2.0 agent_detected (one-time penalty)")
 
         if _HARD_NO_SIGNALS.search(text):
             delta -= 3.0

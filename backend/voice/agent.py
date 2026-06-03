@@ -289,6 +289,10 @@ def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_t
             logger.exception("tool execution failed tool={} error={}", tool_name, str(error))
             result = {"success": False, "error": str(error)}
         await params.result_callback(result)
+        if call_ctx is not None and getattr(call_ctx, "call_should_end", False):
+            logger.info("tool_handler call_should_end=True — cancelling task tool={}", tool_name)
+            await asyncio.sleep(1.5)
+            await task.cancel()
     return handler
 
 

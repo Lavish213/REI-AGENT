@@ -35,6 +35,15 @@ def _run_daily_drip_triggers() -> None:
         logger.exception("run_daily_drip_triggers failed error={}", str(e))
 
 
+def _run_scout() -> None:
+    try:
+        from backend.scout.cron import run_scout_cycle
+        run_scout_cycle()
+        logger.info("scout_run completed")
+    except Exception as e:
+        logger.exception("scout_run failed error={}", str(e))
+
+
 def _run_sophia_loop() -> None:
     try:
         from backend.alerts.sophia_loop import run_sophia_loop
@@ -176,6 +185,16 @@ async def lifespan(app: FastAPI):
         hour="8",
         minute="30",
         id="daily_drip_triggers",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    outbound_scheduler.add_job(
+        _run_scout,
+        "cron",
+        hour="7,12,17",
+        minute="0",
+        id="scout_run",
         replace_existing=True,
         max_instances=1,
     )

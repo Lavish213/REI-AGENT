@@ -48,6 +48,13 @@ class ObjectiveEngine:
         has_agent = getattr(call_ctx, "has_agent", False)
         mortgage_status = getattr(call_ctx, "mortgage_status", "unknown")
         objections_raised = getattr(call_ctx, "objections_raised", [])
+        momentum_score = getattr(call_ctx, "momentum_score", 5.0)
+        momentum_direction = getattr(call_ctx, "momentum_direction", "STABLE")
+
+        fallback_mode = getattr(call_ctx, "fallback_mode", False)
+        if fallback_mode:
+            logger.debug("objective=GET_MOTIVATION fallback_mode=True")
+            return "GET_MOTIVATION"
 
         if trust < _TRUST_REPAIR_THRESHOLD:
             logger.debug("objective=TRUST_REPAIR trust={:.1f}", trust)
@@ -100,7 +107,7 @@ class ObjectiveEngine:
             logger.debug("objective=EMOTIONAL_HOLD state={}", emotional_state)
             return "EMOTIONAL_HOLD"
 
-        if has_agent:
+        if has_agent and not resistance_softening:
             logger.debug("objective=HANDLE_OBJECTION has_agent=True")
             return "HANDLE_OBJECTION"
 
@@ -120,12 +127,16 @@ class ObjectiveEngine:
             logger.debug("objective=GET_PRICE_ANCHOR")
             return "GET_PRICE_ANCHOR"
 
-        if deal_heat >= _DEAL_HEAT_APPOINTMENT_THRESHOLD:
-            logger.debug("objective=BOOK_APPOINTMENT heat={:.1f}", deal_heat)
+        if deal_heat >= _DEAL_HEAT_APPOINTMENT_THRESHOLD and momentum_direction != "FALLING":
+            logger.debug("objective=BOOK_APPOINTMENT heat={:.1f} momentum={}", deal_heat, momentum_direction)
             return "BOOK_APPOINTMENT"
 
         if timeline_mentioned and motivation_signals and property_issues:
-            logger.debug("objective=BOOK_APPOINTMENT all_signals_known")
+            pre_close_done = getattr(call_ctx, "pre_close_done", False)
+            if not pre_close_done:
+                logger.debug("objective=PRE_CLOSE all_signals_known")
+                return "PRE_CLOSE"
+            logger.debug("objective=BOOK_APPOINTMENT all_signals_known pre_close_done")
             return "BOOK_APPOINTMENT"
 
         logger.debug("objective=GET_MOTIVATION default")

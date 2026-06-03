@@ -667,10 +667,23 @@ def _transfer_call(inp: dict, call_ctx=None) -> str:
 
     if owner_phone:
         try:
+            ctx_name = getattr(call_ctx, "seller_name", None) if call_ctx else None
+            ctx_energy = getattr(call_ctx, "seller_energy", "unknown") if call_ctx else "unknown"
+            ctx_motivation = getattr(call_ctx, "motivation_signals", []) if call_ctx else []
+            ctx_objections = getattr(call_ctx, "objections_raised", []) if call_ctx else []
+            ctx_heat = getattr(call_ctx, "deal_heat_level", "unknown") if call_ctx else "unknown"
+            ctx_price = getattr(call_ctx, "last_price_mentioned", None) if call_ctx else None
+            ctx_turns = getattr(call_ctx, "turn_count", 0) if call_ctx else 0
+            price_str = f"${ctx_price/100:,.0f}" if ctx_price else "not mentioned"
             alert = (
-                f"Sophia is transferring a call — seller asked for a real person.\n"
+                f"TRANSFER — seller asked for real person.\n"
                 f"Reason: {reason}\n"
-                f"Lead ID: {lead_id}"
+                f"Lead: {lead_id}\n"
+                f"Name: {ctx_name or 'unknown'}\n"
+                f"Energy: {ctx_energy} | Heat: {ctx_heat} | Turns: {ctx_turns}\n"
+                f"Motivation: {', '.join(ctx_motivation) or 'not yet known'}\n"
+                f"Objections: {', '.join(ctx_objections) or 'none'}\n"
+                f"Price mentioned: {price_str}"
             )
             send_sms(to=owner_phone, body=alert)
         except Exception as e:

@@ -127,6 +127,10 @@ def _generate_personalized_sms(lead: dict, prop: dict) -> str:
         return f"Hey {first_name} — still thinking about your property on {address}. Any updates on your end? - Sophia SJ House Buyers"
 
 
+_ACTIVE_CALL_IDS: set = set()
+_MAX_CONCURRENT_OUTBOUND = 3
+
+
 def run_sophia_loop() -> dict:
     from backend.lib.db import _get_client, start_lead_drip, start_email_drip_for_lead
     from backend.alerts.sms import send_sms
@@ -166,6 +170,10 @@ def run_sophia_loop() -> dict:
             continue
 
         lead_id = lead["id"]
+
+        if len(_ACTIVE_CALL_IDS) >= _MAX_CONCURRENT_OUTBOUND:
+            logger.info("sophia_loop concurrent limit reached active={}", len(_ACTIVE_CALL_IDS))
+            break
 
         try:
             if channel == "call":

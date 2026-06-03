@@ -232,6 +232,7 @@ class CallContext:
             "GET_CONDITION": "property condition not yet discussed",
             "GET_MORTGAGE": "loan status unknown",
             "GET_PRICE_ANCHOR": "price anchor not yet established",
+            "PRE_CLOSE": "all signals collected — ask if a number that works would open the door",
             "BOOK_APPOINTMENT": "seller is engaged — move toward scheduling a walkthrough",
             "HANDLE_OBJECTION": "seller has a concern — hear them out before moving forward",
             "TRUST_REPAIR": "trust is low — listen more, push less",
@@ -259,12 +260,17 @@ class CallContext:
         goal = _OBJ_MAP.get(obj, "understand their situation")
         tone = _MODE_MAP.get(mode, "stay curious and warm")
 
+        comm_style = getattr(self, "_ctx", self).comm_style if hasattr(self, "_ctx") else getattr(self, "comm_style", "STANDARD")
+        sophistication = getattr(self, "_ctx", self).seller_sophistication if hasattr(self, "_ctx") else "AVERAGE"
+        comm_note = f"\nSeller style: {comm_style.lower()}" if comm_style != "STANDARD" else ""
+        savvy_note = f"\nSeller savvy: {sophistication.lower()}" if sophistication != "AVERAGE" else ""
         tag = (
             f"Current goal: {goal}\n"
             f"Seller tone: {tone}\n"
             f"Address collected: {addr}\n"
             f"Selling intent confirmed: {intent}\n"
             f"Appointment set: {appt}"
+            + comm_note + savvy_note
         )
 
         if self.objections_raised:
