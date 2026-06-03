@@ -56,12 +56,6 @@ class SentenceStreamProcessor(FrameProcessor):
                     self._buffer = self._buffer[boundary:]
                     await self._flush(chunk, direction)
                     continue
-                boundary = _find_comma_boundary(self._buffer)
-                if boundary != -1:
-                    chunk = self._buffer[:boundary]
-                    self._buffer = self._buffer[boundary:]
-                    await self._flush(chunk, direction)
-                    continue
                 break
             return
 

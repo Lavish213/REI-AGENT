@@ -108,7 +108,7 @@ class BackchannelProcessor(FrameProcessor):
         self._state.seller_words_this_turn = 0
 
         logger.debug("backchannel emitted phrase={}", phrase)
-        await self.push_frame(TTSTextFrame(text=phrase, aggregated_by=AggregationType.SENTENCE), direction)
+        await self.push_frame(TTSTextFrame(text=phrase + " ", aggregated_by=AggregationType.SENTENCE), direction)
 
     def _should_backchannel(self, text: str) -> bool:
         lower = text.lower()

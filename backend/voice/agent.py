@@ -72,7 +72,7 @@ _MD_STRIP_PATTERN = re.compile(r"^#{1,3}\s+|[*`]|^---+$", re.MULTILINE)
 
 _DEFAULT_LLM_MODEL = "claude-haiku-4-5-20251001"
 _DEFAULT_DEEPGRAM_MODEL = "nova-3"
-_DEFAULT_CARTESIA_MODEL = "sonic-3"
+_DEFAULT_CARTESIA_MODEL = "sonic-3.5"
 
 _MAX_QA_TIMEOUT = 30.0
 _MAX_TRANSCRIPT_INTEL_TIMEOUT = 60.0
@@ -200,6 +200,34 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
             "Code-switch only when natural. "
             "Keep responses short and conversational."
         )
+
+    is_outbound_prompt = bool(call_context.get("is_outbound"))
+    turn_hint = call_context.get("turn_count_hint", 0)
+
+    scripts_raw = _load_prompt_file(prompts_dir, "sophia_scripts.md")
+    if scripts_raw:
+        import re as _re
+        def _extract_section(text, header):
+            pattern = _re.compile(rf"## {_re.escape(header)}.*?(?=^## |\Z)", _re.DOTALL | _re.MULTILINE)
+            m = pattern.search(text)
+            return m.group(0).strip() if m else ""
+
+        if is_outbound_prompt:
+            opener_section = _extract_section(scripts_raw, "SECTION 1: COLD CALL OPENER (TTP SCRIPT)")
+            if opener_section:
+                prompt_parts.append(opener_section)
+        else:
+            inbound_section = _extract_section(scripts_raw, "SECTION 2: INBOUND CALL OPENER")
+            if inbound_section:
+                prompt_parts.append(inbound_section)
+
+        objection_section = _extract_section(scripts_raw, "SECTION 5: OBJECTION RESPONSES")
+        if objection_section:
+            prompt_parts.append(objection_section)
+
+        close_section = _extract_section(scripts_raw, "SECTION 4: CLOSING FOR THE APPOINTMENT")
+        if close_section:
+            prompt_parts.append(close_section)
 
     base_prompt = "\n\n".join(part for part in prompt_parts if part)
     opener = _build_opener(call_context)
@@ -638,11 +666,11 @@ async def run_sophia_agent(
                 params=VADParams(
                     confidence=0.7,
                     start_secs=0.2,
-                    stop_secs=0.2,
+                    stop_secs=0.5,
                     min_volume=0.6,
                 ),
             ),
-            user_turn_stop_timeout=0.4,
+            user_turn_stop_timeout=0.6,
         ),
     )
 
@@ -667,8 +695,8 @@ async def run_sophia_agent(
             context_aggregator.user(),
             turn_controller,
             llm,
-            sentence_streamer,
             AISoftener(),
+            sentence_streamer,
             FairHousingFilter(),
             ComplianceOutputFilter(call_ctx=call_ctx),
             humanized_latency,
@@ -704,7 +732,7 @@ async def run_sophia_agent(
         params=PipelineParams(
             enable_metrics=True,
             enable_usage_metrics=True,
-            aggregation_timeout=0.3,
+            aggregation_timeout=0.5,
             allow_interruptions=True,
         ),
     )

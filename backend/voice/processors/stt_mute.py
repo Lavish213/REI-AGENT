@@ -12,7 +12,9 @@ class BotSpeakingSTTMuteProcessor(FrameProcessor):
             logger.debug("stt_mute: muted")
 
         elif isinstance(frame, BotStoppedSpeakingFrame):
+            import asyncio as _asyncio
+            await _asyncio.sleep(0.2)
             await self.push_frame(STTMuteFrame(mute=False), FrameDirection.UPSTREAM)
-            logger.debug("stt_mute: unmuted")
+            logger.debug("stt_mute: unmuted after 200ms PSTN delay")
 
         await self.push_frame(frame, direction)

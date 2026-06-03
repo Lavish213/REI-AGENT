@@ -396,6 +396,11 @@ class ContextTrackerProcessor(FrameProcessor):
                 if getattr(self, "_last_injected_turn", -1) != current_turn:
                     self._inject_context_prefix()
                     self._last_injected_turn = current_turn
+                    energy = getattr(self._ctx, "seller_energy", "calm") or "calm"
+                    tts_svc = getattr(self, "_tts_service_ref", None)
+                    if tts_svc and hasattr(tts_svc, "_settings") and energy != getattr(self, "_last_energy", "calm"):
+                        self._last_energy = energy
+                        logger.debug("context_tracker emotion_hint energy={}", energy)
 
                 logger.info(
                     "context_tracker turn={} energy={} situation={} "

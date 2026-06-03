@@ -63,6 +63,10 @@ class TurnController(FrameProcessor):
             self._ctx.runtime_instruction = "[Seller is venting. Respond with warmth and empathy. Short. Do not ask discovery questions yet.]"
             return False
 
+        if _BACKCHANNEL_ONLY.match(text) and word_count <= 2:
+            logger.debug("turn_controller suppressing backchannel-only turn text={!r}", text)
+            return True
+
         self._vague_count = 0
 
         return False
