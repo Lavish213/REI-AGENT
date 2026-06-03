@@ -231,6 +231,21 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
         if close_section:
             prompt_parts.append(close_section)
 
+    scripts_raw = _load_prompt_file(prompts_dir, "sophia_scripts.md")
+    if scripts_raw and call_context.get("is_outbound"):
+        import re as _re
+        def _section(text, header):
+            m = _re.search(rf"## {_re.escape(header)}.*?(?=^## |\Z)", text, _re.DOTALL | _re.MULTILINE)
+            return m.group(0).strip() if m else ""
+        for s in [_section(scripts_raw, "SECTION 1: COLD CALL OPENER (TTP SCRIPT)"), _section(scripts_raw, "SECTION 5: OBJECTION RESPONSES"), _section(scripts_raw, "SECTION 4: CLOSING FOR THE APPOINTMENT")]:
+            if s: prompt_parts.append(s)
+    elif scripts_raw:
+        import re as _re
+        def _section(text, header):
+            m = _re.search(rf"## {_re.escape(header)}.*?(?=^## |\Z)", text, _re.DOTALL | _re.MULTILINE)
+            return m.group(0).strip() if m else ""
+        for s in [_section(scripts_raw, "SECTION 2: INBOUND CALL OPENER"), _section(scripts_raw, "SECTION 5: OBJECTION RESPONSES"), _section(scripts_raw, "SECTION 4: CLOSING FOR THE APPOINTMENT")]:
+            if s: prompt_parts.append(s)
     base_prompt = "\n\n".join(part for part in prompt_parts if part)
     opener = _build_opener(call_context)
     property_context_str = call_context.get("property_context_str", "Caller: unknown. Address: unknown. Call type: inbound.")
