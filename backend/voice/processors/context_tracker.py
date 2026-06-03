@@ -337,6 +337,10 @@ class ContextTrackerProcessor(FrameProcessor):
     def _task_ref(self):
         return getattr(self._ctx, "_task_ref", None)
 
+    @property
+    def _task_ref(self):
+        return getattr(self._ctx, "_task_ref", None)
+
     def set_objective_engine(self, engine) -> None:
         self._objective_engine = engine
 
