@@ -1092,7 +1092,7 @@ def get_workflow_analytics() -> dict:
     calls_this_week = calls_week_resp.count or 0
 
     # Offer pipeline
-    offer_resp = client.table("offers").select("offer_status, offer_amount").execute()
+    offer_resp = client.table("offers").select("status, offer_amount").execute()
     offer_by_status: dict[str, int] = {}
     offer_pipeline_value = 0
     for o in (offer_resp.data or []):

@@ -23,12 +23,6 @@ _DISTRESSED_STATES = frozenset(["DISTRESSED", "GRIEVING", "OVERWHELMED"])
 _VENTING_MICROSTATE = frozenset(["VENTING"])
 
 _DO_NOTHING_PHRASE = "Mmhm."
-_VAGUE_RUNTIME_INSTRUCTION = (
-    "[Seller answer was vague. Rephrase the same question "
-    "differently before moving to next objective. "
-    "Do not accept the vague answer and move on.]"
-)
-
 
 class TurnController(FrameProcessor):
     def __init__(self, call_ctx):
