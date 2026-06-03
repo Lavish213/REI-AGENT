@@ -532,10 +532,15 @@ async def run_sophia_agent(
     if lead and lead.get("id"):
         try:
             from backend.lib.intel_assembler import assemble_intel_packet
-            packet = await asyncio.wait_for(
-                asyncio.to_thread(assemble_intel_packet, lead["id"]),
-                timeout=3.0,
-            )
+            preloaded = call_context.get("preloaded_intel_packet")
+            if preloaded:
+                packet = preloaded
+                logger.info("intel_packet using preloaded lead_id={}", lead["id"])
+            else:
+                packet = await asyncio.wait_for(
+                    asyncio.to_thread(assemble_intel_packet, lead["id"]),
+                    timeout=5.0,
+                )
             call_ctx.intel_packet = packet
             call_ctx.packet_version = packet.get("packet_version", 1)
             call_ctx.packet_state = packet.get("packet_state", "system_assembled")

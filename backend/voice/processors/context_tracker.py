@@ -270,13 +270,30 @@ class CallContext:
         sophistication = getattr(self, "_ctx", self).seller_sophistication if hasattr(self, "_ctx") else "AVERAGE"
         comm_note = f"\nSeller style: {comm_style.lower()}" if comm_style != "STANDARD" else ""
         savvy_note = f"\nSeller savvy: {sophistication.lower()}" if sophistication != "AVERAGE" else ""
+        arv = None
+        mao = None
+        distress = None
+        try:
+            packet = getattr(self._ctx, "intel_packet", None) or {}
+            prop_profile = packet.get("property_profile") or {}
+            arv_data = prop_profile.get("arv") or {}
+            mao_data = prop_profile.get("mao") or {}
+            dist_data = prop_profile.get("distress_type") or {}
+            arv = arv_data.get("value")
+            mao = mao_data.get("value")
+            distress = dist_data.get("value")
+        except Exception:
+            pass
+        arv_note = f"\nARV: ${arv:,.0f}" if arv else ""
+        mao_note = f" | MAO: ${mao:,.0f}" if mao else ""
+        distress_note = f" | Situation: {distress}" if distress else ""
         tag = (
             f"Current goal: {goal}\n"
             f"Seller tone: {tone}\n"
             f"Address collected: {addr}\n"
             f"Selling intent confirmed: {intent}\n"
             f"Appointment set: {appt}"
-            + comm_note + savvy_note
+            + comm_note + savvy_note + arv_note + mao_note + distress_note
         )
 
         if self.objections_raised:

@@ -183,6 +183,18 @@ async def outbound_voice_stream(
         if prior_context:
             base_context_str = f"{base_context_str}\n\n{prior_context}"
 
+        preloaded_packet = None
+        try:
+            from backend.lib.intel_assembler import assemble_intel_packet
+            import asyncio as _asyncio
+            preloaded_packet = await _asyncio.wait_for(
+                _asyncio.to_thread(assemble_intel_packet, lead_id),
+                timeout=4.0,
+            )
+            logger.info("intel_preloaded lead_id={} state={}", lead_id, preloaded_packet.get("packet_state", "unknown"))
+        except Exception as _intel_err:
+            logger.warning("intel_preload_failed lead_id={} error={}", lead_id, str(_intel_err))
+
         outbound_context = {
             "boss_mode": False,
             "is_outbound": True,
@@ -192,6 +204,7 @@ async def outbound_voice_stream(
             "address": address,
             "property_context_str": base_context_str,
             "spanish_detected": False,
+            "preloaded_intel_packet": preloaded_packet,
         }
 
         call_sid = f"outbound_{lead_id}"

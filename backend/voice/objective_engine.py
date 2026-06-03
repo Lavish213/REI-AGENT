@@ -52,9 +52,9 @@ class ObjectiveEngine:
         momentum_direction = getattr(call_ctx, "momentum_direction", "STABLE")
 
         fallback_mode = getattr(call_ctx, "fallback_mode", False)
-        if fallback_mode:
-            logger.debug("objective=GET_MOTIVATION fallback_mode=True")
-            return "GET_MOTIVATION"
+        if fallback_mode and trust < _TRUST_REPAIR_THRESHOLD:
+            logger.debug("objective=TRUST_REPAIR fallback_mode+low_trust")
+            return "TRUST_REPAIR"
 
         if trust < _TRUST_REPAIR_THRESHOLD:
             logger.debug("objective=TRUST_REPAIR trust={:.1f}", trust)
