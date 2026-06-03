@@ -685,6 +685,12 @@ async def run_sophia_agent(
         ComplianceOutputFilter(call_ctx=call_ctx),
     ])
 
+    is_outbound_call = bool(call_context.get("is_outbound"))
+    if is_outbound_call:
+        call_ctx._opener_text = _build_opener(call_context)
+        call_ctx._opener_fired = False
+        call_ctx._task_ref = None
+
     task = PipelineTask(
         pipeline,
         params=PipelineParams(
@@ -696,6 +702,8 @@ async def run_sophia_agent(
     )
 
     silence_handler._task = task
+    if is_outbound_call:
+        call_ctx._task_ref = task
 
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):

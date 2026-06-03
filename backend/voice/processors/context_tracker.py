@@ -64,6 +64,9 @@ _ADDRESS_PATTERN = re.compile(
     r"|"
     r"\b(?:on|at|off)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+"
     r"(?:st|ave|blvd|dr|ln|rd|ct|way|pl|cir|ter|street|avenue|boulevard|drive|lane|road|court|place|circle|terrace)\b"
+    r"|"
+    r"\b(?:west|east|north|south)\s+\w+\s+"
+    r"(?:st|ave|blvd|dr|ln|rd|ct|way|pl|cir|ter|street|avenue|boulevard|drive|lane|road|court|place|circle|terrace)\b"
     r")",
     re.IGNORECASE,
 )
@@ -227,7 +230,7 @@ class CallContext:
     def build_context_prefix(self) -> str:
         _OBJ_MAP = {
             "GET_ADDRESS": "property not yet confirmed — let them bring it up naturally",
-            "GET_MOTIVATION": "find out why they are calling or considering selling",
+            "GET_MOTIVATION": "find out what is going on with the property — they did NOT call us, we called them",
             "GET_TIMELINE": "timeline not yet known",
             "GET_CONDITION": "property condition not yet discussed",
             "GET_MORTGAGE": "loan status unknown",
@@ -330,6 +333,10 @@ class ContextTrackerProcessor(FrameProcessor):
         self._last_context_prefix: str | None = None
         self._objective_engine = None
 
+    @property
+    def _task_ref(self):
+        return getattr(self._ctx, "_task_ref", None)
+
     def set_objective_engine(self, engine) -> None:
         self._objective_engine = engine
 
@@ -344,6 +351,16 @@ class ContextTrackerProcessor(FrameProcessor):
             text = frame.text.strip()
 
             if text:
+                is_outbound = getattr(self._ctx, "is_outbound", False)
+                if is_outbound and not getattr(self._ctx, "_opener_fired", False):
+                    self._ctx._opener_fired = True
+                    logger.info("outbound_first_word word={!r} — queuing opener", text[:20])
+                    from pipecat.frames.frames import TTSSpeakFrame as _TTSSpeakFrame
+                    opener = getattr(self._ctx, "_opener_text", None)
+                    if opener and self._task_ref:
+                        import asyncio as _asyncio
+                        _asyncio.create_task(self._task_ref.queue_frames([_TTSSpeakFrame(opener)]))
+
                 self._ctx.turn_count += 1
                 self._analyze(text)
 
