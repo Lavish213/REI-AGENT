@@ -420,6 +420,24 @@ class ContextTrackerProcessor(FrameProcessor):
                         _sid = getattr(self._ctx, "call_sid", "") or ""
                         _trust = getattr(self._ctx, "trust_score", None)
                         _heat = getattr(self._ctx, "deal_heat", None)
+                        _turn_idx = getattr(self._ctx, "turn_count", 0)
+                        if _sid:
+                            _aio.create_task(_ke.emit_turn_completed(
+                                call_sid=_sid,
+                                speaker="user",
+                                text=text,
+                                trust_score=_trust,
+                                deal_heat=_heat,
+                                turn_index=_turn_idx,
+                            ))
+                    except Exception:
+                        pass
+                    try:
+                        from backend.karpathys import emitter as _ke
+                        import asyncio as _aio
+                        _sid = getattr(self._ctx, "call_sid", "") or ""
+                        _trust = getattr(self._ctx, "trust_score", None)
+                        _heat = getattr(self._ctx, "deal_heat", None)
                         _turn = getattr(self._ctx, "turn_count", 0)
                         if _sid:
                             _aio.create_task(_ke.emit_turn_completed(

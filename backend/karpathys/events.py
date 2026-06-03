@@ -107,3 +107,33 @@ def disposition_action(
         "phone": phone,
         "occurred_at": datetime.now(UTC).isoformat(),
     }
+
+
+def call_failed(
+    lead_id: str | None,
+    reason: str,
+    call_sid: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "lead_id": lead_id,
+        "call_sid": call_sid,
+        "reason": reason,
+        "occurred_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def disposition_action(
+    call_sid: str,
+    lead_id: str | None,
+    disposition: str,
+    full_name: str | None = None,
+    phone: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "call_sid": call_sid,
+        "lead_id": lead_id,
+        "disposition": disposition,
+        "full_name": full_name,
+        "phone": phone,
+        "occurred_at": datetime.now(UTC).isoformat(),
+    }

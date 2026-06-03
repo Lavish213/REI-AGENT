@@ -336,6 +336,14 @@ def call_lead(
             _aio.get_event_loop().run_until_complete(_ke.emit_call_failed(lead_id, "signalwire_error"))
         except Exception:
             pass
+        try:
+            import asyncio as _aio
+            from backend.karpathys import emitter as _ke
+            loop = _aio.get_event_loop()
+            if loop.is_running():
+                _aio.create_task(_ke.emit_call_failed(lead_id, "signalwire_error"))
+        except Exception:
+            pass
         return {"success": False, "reason": "signalwire_error", "error": str(e)}
 
 
