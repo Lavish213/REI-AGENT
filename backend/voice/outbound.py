@@ -16,7 +16,7 @@ from backend.lib.db import (
 
 PACIFIC = pytz.timezone("America/Los_Angeles")
 
-NO_ANSWER_SECONDS = 25
+NO_ANSWER_SECONDS = 35
 MIN_DISTRESS_SCORE = 50
 CALL_COOLDOWN_HOURS = 72
 
@@ -272,7 +272,9 @@ def call_lead(
             last_called = _safe_iso_to_datetime(lead.get("last_called_at"))
             if last_called:
                 hours_since = (datetime.now(timezone.utc) - last_called).total_seconds() / 3600
-                if hours_since < CALL_COOLDOWN_HOURS:
+                disposition = (lead.get("disposition") or "").upper()
+                cooldown = 24 if disposition == "HOT" else 48 if disposition == "WARM" else CALL_COOLDOWN_HOURS
+                if hours_since < cooldown:
                     return {"success": False, "reason": "called_recently"}
 
         score = int(prop.get("distress_score", 0))

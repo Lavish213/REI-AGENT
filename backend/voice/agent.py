@@ -60,6 +60,7 @@ from backend.voice.processors.compliance_output_filter import ComplianceOutputFi
 from backend.voice.processors.ai_softener import AISoftenerProcessor as AISoftener
 from backend.voice.processors.ai_identity import AIIdentityProcessor
 from backend.voice.processors.input_guard import InputGuardProcessor
+from backend.voice.processors.interruption import InterruptionAckProcessor
 from backend.voice.processors.breath_injector import BreathInjectorProcessor
 from backend.voice.processors.humanized_latency import HumanizedLatencyProcessor
 from backend.voice.processors.phone_eq import PhoneEQProcessor
@@ -647,6 +648,7 @@ async def run_sophia_agent(
     turn_controller = TurnController(call_ctx)
     speech_chunker = SpeechChunker(call_ctx)
     sentence_streamer = SentenceStreamProcessor()
+    interruption_ack = InterruptionAckProcessor()
     ai_identity = AIIdentityProcessor(call_ctx=call_ctx)
     input_guard = InputGuardProcessor(call_ctx=call_ctx)
     breath_injector = BreathInjectorProcessor()
@@ -694,6 +696,7 @@ async def run_sophia_agent(
             analysis_callbacks,
             context_aggregator.user(),
             turn_controller,
+            interruption_ack,
             llm,
             AISoftener(),
             sentence_streamer,

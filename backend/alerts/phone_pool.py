@@ -13,14 +13,15 @@ def get_pool_numbers() -> list[str]:
     return [n.strip() for n in raw.split(",") if n.strip()]
 
 
-def pick_number_for_lead(lead_id: str) -> str:
+def pick_number_for_lead(lead_id: str, attempt: int = 0) -> str:
     group_id = os.environ.get("SIGNALWIRE_NUMBER_GROUP_ID", "")
     if group_id:
         return f"group:{group_id}"
     pool = get_pool_numbers()
     if not pool:
         return os.environ.get("SIGNALWIRE_PHONE", "")
-    index = int(hashlib.md5(lead_id.encode()).hexdigest(), 16) % len(pool)
+    seed = f"{lead_id}:{attempt}"
+    index = int(hashlib.md5(seed.encode()).hexdigest(), 16) % len(pool)
     return pool[index]
 
 

@@ -148,11 +148,14 @@ def run_sophia_loop() -> dict:
         .eq("dnc_blocked", False)
         .neq("stage", "dead")
         .neq("stage", "walkthrough_booked")
+        .not_.is_("properties.estimated_arv", "null")
+        .gte("properties.distress_score", 50)
         .limit(60)
         .execute()
     )
 
     leads = resp.data or []
+    leads = [l for l in leads if (l.get("properties") or {}).get("callable_phones")]
     leads.sort(key=lambda l: l.get("composite_score") or 0, reverse=True)
 
     actions = 0
@@ -179,14 +182,16 @@ def run_sophia_loop() -> dict:
             if channel == "call":
                 result = call_lead(lead_id, bypass_cooldown=False)
                 if result.get("success"):
+                    _ACTIVE_CALL_IDS.add(lead_id)
                     results["called"] += 1
                     actions += 1
 
             elif channel == "sms":
-                phone = lead.get("owner_phone")
-                if not phone:
+                phone_raw = lead.get("owner_phone") or ""
+                if not phone_raw:
                     results["skipped"] += 1
                     continue
+                phone = phone_raw if phone_raw.startswith("+") else ("+1" + phone_raw.lstrip("1") if phone_raw else "")
                 body = _generate_personalized_sms(lead, prop)
                 sent = send_sms(to=phone, body=body, lead_id=lead_id)
                 if sent:

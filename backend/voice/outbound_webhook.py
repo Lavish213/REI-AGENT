@@ -144,16 +144,6 @@ async def handle_outbound_status(
                 logger.info("short_call_auto_dead lead_id={} duration={}s answered_by={}", lead_id, duration, answered_by_status)
                 await run_in_threadpool(update_lead_call_outcome, lead_id, "dead", call_sid, duration)
 
-            if call_status == "completed" and duration > 10:
-                call_data = {
-                    "lead_id": lead_id,
-                    "signalwire_call_id": call_sid,
-                    "direction": "outbound",
-                    "duration_seconds": duration,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-                await run_in_threadpool(insert_call, call_data)
-
         return PlainTextResponse(content="ok")
 
     except Exception as e:
