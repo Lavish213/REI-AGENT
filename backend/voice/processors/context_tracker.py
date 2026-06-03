@@ -387,6 +387,12 @@ class ContextTrackerProcessor(FrameProcessor):
 
                 self._ctx.turn_count += 1
                 self._analyze(text)
+                import re as _re
+                _DNC = _re.compile(r"\b(stop calling|take me off|do not call|remove me|never call again)\b", _re.IGNORECASE)
+                if _DNC.search(text) and not getattr(self._ctx, "_dnc_flagged", False):
+                    self._ctx._dnc_flagged = True
+                    self._ctx.runtime_instruction = "[SELLER SAID STOP CALLING. Call set_disposition(DEAD) then end_call immediately.]"
+                    import logging; logging.getLogger("sophia").warning("dnc_signal text=%s", text[:60])
                 if getattr(self._ctx, "resistance_level", "NONE") == "BLOCKING":
                     import re as _re
                     _DNC_SIGNALS = _re.compile(r"\b(stop calling|take me off|do not call|remove me from|never call again)\b", _re.IGNORECASE)

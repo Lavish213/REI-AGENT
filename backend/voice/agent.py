@@ -346,7 +346,6 @@ async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
     return CartesiaTTSService(
         api_key=api_key,
         cartesia_version="2026-03-01",
-        cartesia_version="2026-03-01",
         max_buffer_delay_ms=0,
         sample_rate=8000,
         text_aggregation_mode=TextAggregationMode.TOKEN,

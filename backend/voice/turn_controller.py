@@ -69,4 +69,8 @@ class TurnController(FrameProcessor):
 
         self._vague_count = 0
 
+        if _BACKCHANNEL_ONLY.match(text) and len(text.split()) <= 2:
+            logger.debug("turn_controller suppressing pure backchannel text={!r}", text)
+            return True
+
         return False
