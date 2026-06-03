@@ -101,7 +101,7 @@ class MicrostateEngine(FrameProcessor):
     ) -> str:
         turn_count = getattr(self._ctx, "turn_count", 0)
         deal_heat = getattr(self._ctx, "deal_heat", 0.0)
-        if _COMMITTING_PATTERNS.search(text) and turn_count >= 3 and deal_heat >= 3.0:
+        if _COMMITTING_PATTERNS.search(text) and turn_count >= 2:
             return "COMMITTING"
 
         if _CLOSING_PATTERNS.search(text):

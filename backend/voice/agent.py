@@ -127,26 +127,37 @@ def _build_opener(call_context: dict[str, Any]) -> str:
         else:
             return "San Joaquin House Buyers — hey, this is Sophia. Can I ask who I'm speaking with?"
 
-    if name and address:
+    import random
+    variant = random.choice(["A", "B", "C", "D"])
+    if address and variant == "A":
         base = (
-            f"Hey — is this {name}? "
-            "Hey, it's Sophia. "
-            "I know this is kinda out of nowhere. "
-            f"I was looking at your place on {address}. "
+            "My name is Sophia — I'll be upfront, I buy houses and I was just hoping "
+            "to ask you one quick thing before you go. Would that be all right? "
+            f"I know this is probably a long shot but I was looking at your place on {address} — "
+            "I'm guessing you're probably never going to sell that place. Am I right?"
+        )
+    elif address and variant == "B":
+        base = (
+            "Sophia here. Quick question about your place on "
+            f"{address} — I'm guessing you're pretty happy there "
+            "and not thinking about selling. Am I right?"
+        )
+    elif address and variant == "C":
+        base = (
+            "It's Sophia — I know this is kinda out of nowhere. "
+            f"I was looking at some properties in the area and yours on {address} stood out. "
             "Is now a bad time?"
         )
     elif address:
         base = (
-            "Hey, it's Sophia. "
-            "I know this is kinda out of nowhere. "
-            f"I was looking at the place on {address}. "
-            "Is now a bad time?"
+            "Sophia with San Joaquin House Buyers. "
+            f"Your place on {address} caught my eye — "
+            "looks like it might have been sitting a while. Is that right?"
         )
     else:
         base = (
-            "Hey, it's Sophia with San Joaquin House Buyers. "
-            "I know this is kinda out of nowhere. "
-            "Is now a bad time to talk?"
+            "My name is Sophia — I buy houses directly and I was hoping "
+            "to ask you one quick question. Would that be all right?"
         )
 
     if situation_opener:
@@ -503,7 +514,7 @@ async def run_sophia_agent(
 
     call_ctx = CallContext()
     call_ctx._call_sid = call_sid
-    if call_context.get("address"):
+    if call_context.get("address") and not bool(call_context.get("is_outbound")):
         call_ctx.address_known = True
     call_ctx.is_outbound = bool(call_context.get("is_outbound", False))
     if call_context.get("situation_label"):

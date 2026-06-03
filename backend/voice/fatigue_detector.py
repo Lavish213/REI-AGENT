@@ -69,6 +69,10 @@ class FatigueDetector(FrameProcessor):
                 level = "MILD"
         elif level == "CRITICAL" and turn_count < 8:
             level = "HIGH"
+        momentum = getattr(self._ctx, "momentum_score", 5.0)
+        resistance = getattr(self._ctx, "resistance_level", "NONE")
+        if level == "CRITICAL" and momentum >= 5.0 and resistance == "NONE":
+            level = "HIGH"
 
         if level != self._prev_level:
             logger.info(

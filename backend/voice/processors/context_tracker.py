@@ -171,8 +171,6 @@ class CallContext:
     runtime_instruction: str | None = None
     is_outbound: bool = False
     seller_name_used_count: int = 0
-    is_outbound: bool = False
-    is_outbound: bool = False
 
     emotional_state: str = "NEUTRAL"
     emotional_intensity: float = 0.0
@@ -347,9 +345,10 @@ class ContextTrackerProcessor(FrameProcessor):
                     self._ctx.objective = self._objective_engine.decide(self._ctx)
 
                 await self._maybe_compress_context()
-                if getattr(self, "_last_injected_turn", -1) != self._ctx.turn_count:
+                current_turn = self._ctx.turn_count
+                if getattr(self, "_last_injected_turn", -1) != current_turn:
                     self._inject_context_prefix()
-                    self._last_injected_turn = self._ctx.turn_count
+                    self._last_injected_turn = current_turn
 
                 logger.info(
                     "context_tracker turn={} energy={} situation={} "
@@ -385,8 +384,7 @@ class ContextTrackerProcessor(FrameProcessor):
 
         try:
             from backend.voice.context import compress_context
-            compressed = await asyncio.to_thread(
-                compress_context,
+            compressed = await compress_context(
                 self._llm_context.messages,
                 self._ctx.objective,
             )

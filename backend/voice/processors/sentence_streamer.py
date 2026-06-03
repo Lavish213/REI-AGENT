@@ -6,7 +6,7 @@ from pipecat.frames.frames import AggregationType, Frame, LLMFullResponseEndFram
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
-_HARD_BOUNDARY = re.compile(r"(?<=[.?!])\s+|(?<=[.?!])$")
+_HARD_BOUNDARY = re.compile(r"(?<=[.?!])\s+(?=[A-Z])|(?<=[.?!])$")
 
 _COMMA_MIN_WORDS = 5
 

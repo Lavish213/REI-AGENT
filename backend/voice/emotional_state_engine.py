@@ -11,7 +11,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 _EMOTION_PATTERNS: list[tuple[str, re.Pattern, float]] = [
     ("GRIEVING", re.compile(
         r"\b(passed away|funeral|lost my|miss them|she died|he died|"
-        r"my mother|my father|my husband|my wife|death|deceased)\b",
+        r"death|deceased)\b",
         re.IGNORECASE,
     ), 0.9),
     ("DISTRESSED", re.compile(
@@ -22,7 +22,7 @@ _EMOTION_PATTERNS: list[tuple[str, re.Pattern, float]] = [
     ), 0.8),
     ("HOSTILE", re.compile(
         r"\b(stop calling|leave me alone|remove me|lawsuit|"
-        r"not interested|never call again|do not call)\b",
+        r"never call again|do not call|take me off your list)\b",
         re.IGNORECASE,
     ), 0.95),
     ("OVERWHELMED", re.compile(
@@ -50,6 +50,10 @@ _EMOTION_PATTERNS: list[tuple[str, re.Pattern, float]] = [
         r"I'm listening|go ahead|sure|that's fair)\b",
         re.IGNORECASE,
     ), 0.4),
+    ("GUARDED", re.compile(
+        r"^(hello|hi|hey|yeah|yes|speaking|this is|who's this|who is this|what's this about)\s*[.?]?\s*$",
+        re.IGNORECASE,
+    ), 0.5),
 ]
 
 _NEUTRAL_THRESHOLD = 0.2

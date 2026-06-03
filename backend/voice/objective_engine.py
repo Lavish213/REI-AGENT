@@ -38,6 +38,7 @@ class ObjectiveEngine:
         fatigue_level = getattr(call_ctx, "fatigue_level", "FRESH")
         microstate = getattr(call_ctx, "microstate", "NEUTRAL")
         turn_count = getattr(call_ctx, "turn_count", 0)
+        is_outbound = getattr(call_ctx, "is_outbound", False)
         address_known = getattr(call_ctx, "address_known", False)
         intent_locked = getattr(call_ctx, "intent_locked", False)
         motivation_signals = getattr(call_ctx, "motivation_signals", [])
@@ -51,6 +52,14 @@ class ObjectiveEngine:
         if trust < _TRUST_REPAIR_THRESHOLD:
             logger.debug("objective=TRUST_REPAIR trust={:.1f}", trust)
             return "TRUST_REPAIR"
+
+        if is_outbound and turn_count <= 1:
+            logger.debug("objective=OUTBOUND_OPEN turn={}", turn_count)
+            return "OUTBOUND_OPEN"
+
+        if is_outbound and turn_count <= 3 and not address_known:
+            logger.debug("objective=OWNERSHIP_CONFIRM turn={}", turn_count)
+            return "OWNERSHIP_CONFIRM"
 
         if emotional_state in _DISTRESSED_STATES and turn_count <= 3:
             logger.debug("objective=EMOTIONAL_HOLD state={}", emotional_state)
@@ -75,8 +84,6 @@ class ObjectiveEngine:
         if fatigue_level in _CRITICAL_FATIGUE and turn_count >= 4:
             logger.debug("objective=NURTURE_EXIT fatigue=CRITICAL")
             return "NURTURE_EXIT"
-
-        is_outbound = getattr(call_ctx, "is_outbound", False)
 
         if not intent_locked or not motivation_signals:
             if not address_known and (is_outbound or turn_count >= 3):
