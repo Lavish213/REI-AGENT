@@ -194,6 +194,9 @@ class CallContext:
     call_should_end: bool = False
     seller_phone: str = ""
     lead_id: str = ""
+    _opener_text: str = ""
+    _opener_fired: bool = False
+    _task_ref: object = None
     _call_sid: str = ""
     orchestrator_length_cap: int | None = None
     memory_context_str: str = ""
