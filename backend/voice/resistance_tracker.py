@@ -11,6 +11,8 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 _HARD_NO: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(not interested|stop calling|never selling|take me off)\b", re.IGNORECASE), "rejection"),
     (re.compile(r"\b(already listed|with an agent|on the mls)\b", re.IGNORECASE), "agent"),
+]
+
 _SOFT_NO: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(keeping it|not selling|my kids will inherit|never going to sell|staying put)\b", re.IGNORECASE), "absolute"),
     (re.compile(r"\b(think about it|need time|not sure yet|maybe later)\b", re.IGNORECASE), "hesitation"),
