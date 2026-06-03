@@ -926,6 +926,20 @@ async def _persist_call_result(
 
     if disposition:
         await asyncio.to_thread(update_lead_for_disposition, lead["id"], disposition)
+            try:
+                from backend.alerts.sms import send_sms
+                from backend.lib.db import _get_client as _gc
+                _row = _gc().table("leads").select("owner_phone,owner_name").eq("id", lead["id"]).single().execute()
+                _phone = (_row.data or {}).get("owner_phone", "")
+                _rname = (_row.data or {}).get("owner_name") or ""
+                _name = _rname.strip().split()[0] if _rname.strip() else ""
+                if _phone and disposition == "HOT":
+                    send_sms(to=_phone, body=f"Hey {_name} — Sophia here from San Joaquin House Buyers. Thanks for chatting! Alanzo will be in touch to set up that walkthrough.")
+                elif _phone and disposition == "WARM":
+                    send_sms(to=_phone, body=f"Hey {_name} — Sophia with San Joaquin House Buyers. Good talking. Just reply here anytime if you have questions.")
+                logger.info("auto_followup_sms lead_id={} disposition={}", lead["id"], disposition)
+            except Exception as _sms_err:
+                logger.warning("auto_followup_sms failed lead_id={} error={}", lead["id"], str(_sms_err))
 
     return call_id_db
 

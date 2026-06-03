@@ -109,7 +109,8 @@ class ObjectiveEngine:
 
         if has_agent and not resistance_softening:
             logger.debug("objective=HANDLE_OBJECTION has_agent=True")
-            return "HANDLE_OBJECTION"
+            if not resistance_softening:
+                return "HANDLE_OBJECTION"
 
         if not timeline_mentioned:
             logger.debug("objective=GET_TIMELINE")
