@@ -303,8 +303,10 @@ async def _build_tts(call_ctx_ref: CallContext) -> DeepgramTTSService:
     logger.info("tts active provider=deepgram model={}", model)
     return DeepgramTTSService(
         api_key=api_key,
+        sample_rate=8000,
         settings=DeepgramTTSService.Settings(
             model=model,
+            encoding="linear16",
         ),
     )
 
