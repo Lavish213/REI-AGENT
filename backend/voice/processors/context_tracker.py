@@ -55,6 +55,13 @@ _INTENT_PHRASES = [
     "moving away",
     "gotta sell",
     "need to get out",
+    "sell it",
+    "selling it",
+    "fix and sell",
+    "fix to sell",
+    "trying to sell it",
+    "want to get out",
+    "ready to sell",
 ]
 
 _ADDRESS_PATTERN = re.compile(
@@ -547,12 +554,16 @@ class ContextTrackerProcessor(FrameProcessor):
         if isinstance(content, str):
             content = re.sub(r"\[CTX:[^\]]*\]\s*", "", content).strip()
             content = re.sub(r"\[RUNTIME:[^\]]*\]\s*", "", content).strip()
+            content = re.sub(r"<ctx>[\s\S]*?</ctx>\s*", "", content).strip()
+            content = re.sub(r"<seller>([\s\S]*?)</seller>", r"\1", content).strip()
             last_user["content"] = f"<ctx>\n{prefix}\n</ctx>\n<seller>{content}</seller>"
         elif isinstance(content, list):
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "text":
                     block["text"] = re.sub(r"\[CTX:[^\]]*\]\s*", "", block["text"]).strip()
                     block["text"] = re.sub(r"\[RUNTIME:[^\]]*\]\s*", "", block["text"]).strip()
+                    block["text"] = re.sub(r"<ctx>[\s\S]*?</ctx>\s*", "", block["text"]).strip()
+                    block["text"] = re.sub(r"<seller>([\s\S]*?)</seller>", r"\1", block["text"]).strip()
                     block["text"] = f"<ctx>\n{prefix}\n</ctx>\n<seller>{block['text']}</seller>"
                     break
 

@@ -159,6 +159,8 @@ def _build_opener(call_context: dict[str, Any]) -> str:
             "Am I reaching the property owner?"
         )
 
+    if situation_opener and not address:
+        return situation_opener
     if situation_opener:
         return f"{situation_opener} {base}"
     return base
