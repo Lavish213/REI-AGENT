@@ -714,6 +714,7 @@ async def run_sophia_agent(
                 if opener and not getattr(call_ctx, "_opener_fired", False):
                     call_ctx._opener_fired = True
                     logger.info("outbound_opener_auto_fire call_sid={}", call_sid)
+                    context.messages.append({"role": "assistant", "content": opener})
                     await task.queue_frames([TTSSpeakFrame(opener)])
             asyncio.create_task(_fire_opener_after_connect())
             logger.info("outbound_connected opener scheduled 3s call_sid={}", call_sid)
