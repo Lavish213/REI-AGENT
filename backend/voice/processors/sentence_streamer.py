@@ -40,6 +40,8 @@ class SentenceStreamProcessor(FrameProcessor):
     async def _flush(self, text: str, direction: FrameDirection) -> None:
         text = text.strip()
         if text:
+            if not text.endswith((" ", "\n")):
+                text = text + " "
             logger.debug("sentence_streamer flush text={!r}", text)
             await self.push_frame(TTSTextFrame(text=text, aggregated_by=AggregationType.SENTENCE), direction)
 

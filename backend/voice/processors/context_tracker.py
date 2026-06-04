@@ -391,10 +391,24 @@ class ContextTrackerProcessor(FrameProcessor):
                     if opener and self._task_ref:
                         import asyncio as _asyncio
                         _asyncio.create_task(self._task_ref.queue_frames([_TTSSpeakFrame(opener)]))
+                    self._ctx.turn_count += 1
+                    self._analyze(text)
+                    if self._objective_engine is not None:
+                        self._ctx.objective = self._objective_engine.decide(self._ctx)
+                    return
                     return
 
                 self._ctx.turn_count += 1
                 self._analyze(text)
+                _obj = getattr(self._ctx, "objective", "")
+                _tc = self._ctx.turn_count
+                _is_ob = getattr(self._ctx, "is_outbound", False)
+                if _is_ob and _tc <= 5 and _obj in ("STAGE_1_QUALIFY", "OWNERSHIP_CONFIRM") and not getattr(self._ctx, "owner_confirmed", False):
+                    import re as _re2
+                    if _re2.search(r"\b(yes|yeah|yep|yup|correct|right|speaking|that's me|this is)\b", text, _re2.IGNORECASE) and not _re2.search(r"\b(never|not|no|won't|wont)\b", text, _re2.IGNORECASE):
+                        self._ctx.owner_confirmed = True
+                        self._ctx.address_known = True
+                        logger.info("owner_confirmed via affirmative turn={}", _tc)
                 _is_ob = getattr(self._ctx, "is_outbound", False)
                 _tc = self._ctx.turn_count
                 _obj = getattr(self._ctx, "objective", "")

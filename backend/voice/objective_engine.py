@@ -14,12 +14,6 @@ _LEGITIMACY_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
-_HOSTILE_PATTERNS = re.compile(
-    r"\b(stop calling|remove me|leave me alone|lawsuit|"
-    r"never selling|do not call)\b",
-    re.IGNORECASE,
-)
-
 
 class ObjectiveEngine:
     def decide(self, call_ctx) -> str:
@@ -29,7 +23,6 @@ class ObjectiveEngine:
         resistance_softening = getattr(call_ctx, "resistance_softening", False)
         fatigue_level = getattr(call_ctx, "fatigue_level", "FRESH")
         turn_count = getattr(call_ctx, "turn_count", 0)
-        is_outbound = getattr(call_ctx, "is_outbound", False)
         owner_confirmed = getattr(call_ctx, "owner_confirmed", False)
         address_known = getattr(call_ctx, "address_known", False)
         intent_locked = getattr(call_ctx, "intent_locked", False)
