@@ -709,7 +709,15 @@ async def run_sophia_agent(
             context.messages.append({"role": "assistant", "content": opener_text})
             await task.queue_frames([TTSSpeakFrame(opener_text)])
         else:
-            logger.info("outbound_connected waiting for seller hello call_sid={}", call_sid)
+            async def _fire_opener_after_connect():
+                await asyncio.sleep(3.0)
+                opener = getattr(call_ctx, "_opener_text", None)
+                if opener and not getattr(call_ctx, "_opener_fired", False):
+                    call_ctx._opener_fired = True
+                    logger.info("outbound_opener_auto_fire call_sid={}", call_sid)
+                    await task.queue_frames([TTSSpeakFrame(opener)])
+            asyncio.create_task(_fire_opener_after_connect())
+            logger.info("outbound_connected opener scheduled 3s call_sid={}", call_sid)
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):
