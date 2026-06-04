@@ -9,8 +9,12 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
 _HARD_NO: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"\b(not interested|stop calling|never selling|take me off)\b", re.IGNORECASE), "rejection"),
+    (re.compile(r"\b(stop calling|never selling|take me off)\b", re.IGNORECASE), "rejection"),
     (re.compile(r"\b(already listed|with an agent|on the mls)\b", re.IGNORECASE), "agent"),
+]
+
+_COLD_OPEN_REFLEX: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bnot interested\b", re.IGNORECASE), "reflex"),
 ]
 
 _SOFT_NO: list[tuple[re.Pattern, str]] = [
@@ -76,6 +80,33 @@ class ResistanceTracker(FrameProcessor):
     def _update_resistance(self, text: str) -> None:
         matched_this_turn = False
         softening_detected = False
+
+        for pattern, obj_type in _COLD_OPEN_REFLEX:
+            if pattern.search(text):
+                self._score = min(10.0, self._score + 1.0)
+                if obj_type not in self._objection_types:
+                    self._objection_types.append(obj_type)
+                matched_this_turn = True
+                self._turns_since_objection = 0
+                logger.info("cold_reflex detected type={} score={:.1f}", obj_type, self._score)
+
+        for pattern, obj_type in _COLD_OPEN_REFLEX:
+            if pattern.search(text):
+                self._score = min(10.0, self._score + 1.0)
+                if obj_type not in self._objection_types:
+                    self._objection_types.append(obj_type)
+                matched_this_turn = True
+                self._turns_since_objection = 0
+                logger.info("cold_reflex detected type={} score={:.1f}", obj_type, self._score)
+
+        for pattern, obj_type in _COLD_OPEN_REFLEX:
+            if pattern.search(text):
+                self._score = min(10.0, self._score + 1.0)
+                if obj_type not in self._objection_types:
+                    self._objection_types.append(obj_type)
+                matched_this_turn = True
+                self._turns_since_objection = 0
+                logger.info("cold_reflex detected type={} score={:.1f}", obj_type, self._score)
 
         for pattern, obj_type in _HARD_NO:
             if pattern.search(text):

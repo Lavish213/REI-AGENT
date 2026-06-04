@@ -189,7 +189,7 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
     from backend.voice.prompt_budget import apply_budget
     prompts_dir = os.path.join(os.path.dirname(__file__), "prompts")
 
-    prompt_parts = [_load_prompt_file(prompts_dir, "sophia_runtime.md"), _load_prompt_file(prompts_dir, "sophia_scripts.md")]
+    prompt_parts = [_load_prompt_file(prompts_dir, "sophia_runtime.md")]
 
     if spanish:
         prompt_parts.append(_load_prompt_file(prompts_dir, "sophia_extended.md"))
@@ -206,48 +206,8 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
     is_outbound_prompt = bool(call_context.get("is_outbound"))
     turn_hint = call_context.get("turn_count_hint", 0)
 
-    scripts_raw = _load_prompt_file(prompts_dir, "sophia_scripts.md")
-    if scripts_raw:
-        import re as _re
-        def _extract_section(text, header):
-            pattern = _re.compile(rf"## {_re.escape(header)}.*?(?=^## |\Z)", _re.DOTALL | _re.MULTILINE)
-            m = pattern.search(text)
-            return m.group(0).strip() if m else ""
 
-        if is_outbound_prompt:
-            opener_section = _extract_section(scripts_raw, "SECTION 1: COLD CALL OPENER (TTP SCRIPT)")
-            if opener_section:
-                prompt_parts.append(opener_section)
-        else:
-            inbound_section = _extract_section(scripts_raw, "SECTION 2: INBOUND CALL OPENER")
-            if inbound_section:
-                prompt_parts.append(inbound_section)
-
-        objection_section = _extract_section(scripts_raw, "SECTION 5: OBJECTION RESPONSES")
-        if objection_section:
-            prompt_parts.append(objection_section)
-
-        close_section = _extract_section(scripts_raw, "SECTION 4: CLOSING FOR THE APPOINTMENT")
-        if close_section:
-            prompt_parts.append(close_section)
-
-    scripts_raw = _load_prompt_file(prompts_dir, "sophia_scripts.md")
-    if scripts_raw and call_context.get("is_outbound"):
-        import re as _re
-        def _section(text, header):
-            m = _re.search(rf"## {_re.escape(header)}.*?(?=^## |\Z)", text, _re.DOTALL | _re.MULTILINE)
-            return m.group(0).strip() if m else ""
-        for s in [_section(scripts_raw, "SECTION 1: COLD CALL OPENER (TTP SCRIPT)"), _section(scripts_raw, "SECTION 5: OBJECTION RESPONSES"), _section(scripts_raw, "SECTION 4: CLOSING FOR THE APPOINTMENT")]:
-            if s: prompt_parts.append(s)
-    elif scripts_raw:
-        import re as _re
-        def _section(text, header):
-            m = _re.search(rf"## {_re.escape(header)}.*?(?=^## |\Z)", text, _re.DOTALL | _re.MULTILINE)
-            return m.group(0).strip() if m else ""
-        for s in [_section(scripts_raw, "SECTION 2: INBOUND CALL OPENER"), _section(scripts_raw, "SECTION 5: OBJECTION RESPONSES"), _section(scripts_raw, "SECTION 4: CLOSING FOR THE APPOINTMENT")]:
-            if s: prompt_parts.append(s)
     base_prompt = "\n\n".join(part for part in prompt_parts if part)
-    opener = _build_opener(call_context)
     property_context_str = call_context.get("property_context_str", "Caller: unknown. Address: unknown. Call type: inbound.")
 
     from backend.contracts.intel_packet import build_prompt_intel_slice
@@ -267,8 +227,7 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
         f"CALLER PROPERTY CONTEXT\n\n"
         f"{property_context_str}\n\n"
         + (f"ACQUISITION_INTEL\n\n{intel_slice}\n\n" if intel_slice else "")
-        + f"OPENER\n\n{opener}"
-    )
+    ).rstrip()
 
     full_prompt = apply_budget(full_prompt)
     full_prompt = _strip_markdown(full_prompt)
@@ -552,7 +511,7 @@ async def run_sophia_agent(
             model=voice_model,
             enable_prompt_caching=True,
             max_tokens=300,
-            temperature=0.3,
+            temperature=0.6,
         ),
     )
 
@@ -665,7 +624,6 @@ async def run_sophia_agent(
     speech_chunker = SpeechChunker(call_ctx)
     interruption_ack = InterruptionAckProcessor()
     sentence_streamer = SentenceStreamProcessor()
-    interruption_ack = InterruptionAckProcessor()
     ai_identity = AIIdentityProcessor(call_ctx=call_ctx)
     input_guard = InputGuardProcessor(call_ctx=call_ctx)
     breath_injector = BreathInjectorProcessor()
@@ -715,12 +673,15 @@ async def run_sophia_agent(
             turn_controller,
             interruption_ack,
             llm,
-            AISoftener(),
             sentence_streamer,
+            AISoftener(),
+            speech_chunker,
             FairHousingFilter(),
             ComplianceOutputFilter(call_ctx=call_ctx),
             humanized_latency,
             tts,
+            phone_eq,
+            breath_injector,
             TTSFrameProbe(),
             transport.output(),
             bot_speaking_monitor,
@@ -728,18 +689,15 @@ async def run_sophia_agent(
         ]
     )
 
+    ai_softener_inst = next(
+        (p for p in pipeline._processors if type(p).__name__ == 'AISoftenerProcessor'), None
+    )
     _assert_pipeline_safety([
         sentence_streamer,
-        AISoftener(),
+        ai_softener_inst or AISoftener(),
         FairHousingFilter(),
         ComplianceOutputFilter(call_ctx=call_ctx),
     ])
-
-    is_outbound_call = bool(call_context.get("is_outbound"))
-    if is_outbound_call:
-        call_ctx._opener_text = _build_opener(call_context)
-        call_ctx._opener_fired = False
-        call_ctx._task_ref = None
 
     is_outbound_call = bool(call_context.get("is_outbound"))
     if is_outbound_call:
@@ -758,8 +716,6 @@ async def run_sophia_agent(
     )
 
     silence_handler._task = task
-    if is_outbound_call:
-        call_ctx._task_ref = task
     if is_outbound_call:
         call_ctx._task_ref = task
 
@@ -999,7 +955,8 @@ async def _persist_call_result(
             from backend.lib.db import _get_client as _gc
             _row = _gc().table("leads").select("owner_phone,owner_name").eq("id", lead["id"]).single().execute()
             _raw = (_row.data or {}).get("owner_phone") or ""
-            _phone = _raw if _raw.startswith("+") else ("+1" + _raw.lstrip("1") if _raw else "")
+            _digits = "".join(c for c in _raw if c.isdigit())
+            _phone = "+" + _digits if _digits.startswith("1") and len(_digits) == 11 else ("+1" + _digits if len(_digits) == 10 else "")
             _rname = (_row.data or {}).get("owner_name") or ""
             _name = _rname.strip().split()[0] if _rname.strip() else ""
             if _phone and disposition == "HOT":
