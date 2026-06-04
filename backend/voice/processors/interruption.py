@@ -17,15 +17,18 @@ INTERRUPTION_ACKNOWLEDGMENTS = [
 
 
 class InterruptionAckProcessor(FrameProcessor):
-    def __init__(self):
+    def __init__(self, call_ctx=None):
         super().__init__()
         self._last_ack: str | None = None
+        self._ctx = call_ctx
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, InterruptionFrame):
-            asyncio.create_task(self._queue_ack())
+            opener_fired = getattr(self._ctx, "_opener_fired", True)
+            if opener_fired:
+                asyncio.create_task(self._queue_ack())
 
         await self.push_frame(frame, direction)
 

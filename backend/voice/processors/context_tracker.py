@@ -242,16 +242,13 @@ class CallContext:
             "EMOTIONAL_HOLD": "Acknowledge what they said. One short empathetic response. No questions. No sales. Let them finish.",
             "OUTBOUND_OPEN": "Wait — opener already fired. Respond naturally to whatever they just said. Do not re-introduce yourself.",
             "OWNERSHIP_CONFIRM": "Say: \"I\'m guessing you\'re probably never going to sell that place. Am I right?\"",
-            "PRE_CLOSE": "Say: \"If I could get you a number that actually worked — would you be open to having us come take a look?\"",
             "BOOK_APPOINTMENT": "Book the walkthrough. Ask morning or afternoon, then get a day.",
             "NURTURE_EXIT": "Wrap up warmly. Referral ask. End call.",
             "LEAN_IN": "Seller is warming. One soft qualifying question. Do not back off.",
             "GET_MOTIVATION": "React to what they said, then: \"What\'s going on over there exactly?\"",
             "GET_TIMELINE": "React first, then: \"I\'m guessing timeline isn\'t really a pressure for you. Am I right?\"",
-            "GET_CONDITION": "React first, then: \"Pretty updated or does it need some work?\"",
             "GET_MORTGAGE": "Say: \"I\'m guessing there\'s probably still a loan on it. Am I right?\"",
             "GET_ADDRESS": "Let them bring it up. If 3+ turns in ask: \"Which property is that exactly?\"",
-            "GET_PRICE_ANCHOR": "React first, then: \"What number were you thinking?\"",
         }
         _MODE_MAP = {
             "FAST": "keep it brief and get to the point",

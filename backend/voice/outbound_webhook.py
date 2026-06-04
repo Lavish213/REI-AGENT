@@ -173,17 +173,6 @@ async def outbound_voice_stream(
         if prior_context:
             base_context_str = f"{base_context_str}\n\n{prior_context}"
 
-        preloaded_packet = None
-        try:
-            from backend.lib.intel_assembler import assemble_intel_packet
-            import asyncio as _asyncio
-            preloaded_packet = await _asyncio.wait_for(
-                _asyncio.to_thread(assemble_intel_packet, lead_id),
-                timeout=4.0,
-            )
-            logger.info("intel_preloaded lead_id={} state={}", lead_id, preloaded_packet.get("packet_state", "unknown"))
-        except Exception as _intel_err:
-            logger.warning("intel_preload_failed lead_id={} error={}", lead_id, str(_intel_err))
 
         from backend.voice.preloader import _detect_situation, _get_initial_trust
         situation_label = _detect_situation(lead) if lead else "unknown"
@@ -196,6 +185,9 @@ async def outbound_voice_stream(
             logger.info("intel_preloaded lead_id={} state={}", lead_id, preloaded_packet.get("packet_state", "unknown"))
         except Exception as _ie:
             logger.warning("intel_preload_failed lead_id={} error={}", lead_id, str(_ie))
+        _raw_phone = (prop.get("callable_phones") or [""])[0] if prop else ""
+        _digits = "".join(c for c in _raw_phone if c.isdigit())
+        _norm_phone = "+" + _digits if _digits.startswith("1") and len(_digits) == 11 else ("+1" + _digits if len(_digits) == 10 else _raw_phone)
         outbound_context = {
             "boss_mode": False,
             "is_outbound": True,
@@ -206,6 +198,9 @@ async def outbound_voice_stream(
             "property_context_str": base_context_str,
             "spanish_detected": False,
             "preloaded_intel_packet": preloaded_packet,
+            "normalized_phone": _norm_phone,
+            "situation_label": situation_label,
+            "initial_trust_score": initial_trust,
         }
 
         call_sid = f"outbound_{lead_id}"

@@ -4,6 +4,17 @@ from datetime import datetime, timezone
 
 import pytz
 from loguru import logger
+
+
+def _e164(raw: str) -> str:
+    digits = "".join(c for c in (raw or "") if c.isdigit())
+    if (raw or "").strip().startswith("+"):
+        return raw.strip()
+    if len(digits) == 11 and digits.startswith("1"):
+        return "+" + digits
+    if len(digits) == 10:
+        return "+1" + digits
+    return (raw or "").strip()
 from signalwire.rest import Client as SignalWireClient
 
 from backend.lib.db import insert_sms

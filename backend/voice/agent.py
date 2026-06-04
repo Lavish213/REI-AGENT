@@ -599,7 +599,7 @@ async def run_sophia_agent(
     )
     turn_controller = TurnController(call_ctx)
     speech_chunker = SpeechChunker(call_ctx)
-    interruption_ack = InterruptionAckProcessor()
+    interruption_ack = InterruptionAckProcessor(call_ctx=call_ctx)
     sentence_streamer = SentenceStreamProcessor()
     ai_identity = AIIdentityProcessor(call_ctx=call_ctx)
     input_guard = InputGuardProcessor(call_ctx=call_ctx)
