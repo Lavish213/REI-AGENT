@@ -31,8 +31,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.anthropic.llm import AnthropicLLMService
-from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
-from pipecat.services.tts_service import TextAggregationMode
+from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
@@ -74,7 +73,6 @@ _MD_STRIP_PATTERN = re.compile(r"^#{1,3}\s+|[*`]|^---+$", re.MULTILINE)
 
 _DEFAULT_LLM_MODEL = "claude-haiku-4-5-20251001"
 _DEFAULT_DEEPGRAM_MODEL = "nova-3"
-_DEFAULT_CARTESIA_MODEL = "sonic-3.5"
 
 _MAX_QA_TIMEOUT = 30.0
 _MAX_TRANSCRIPT_INTEL_TIMEOUT = 60.0
@@ -299,37 +297,16 @@ def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_t
     return handler
 
 
-async def _build_tts(call_ctx_ref: CallContext) -> CartesiaTTSService:
-    api_key = _require_env("CARTESIA_API_KEY")
-    voice_id = _require_env("CARTESIA_VOICE_ID")
-    model = os.environ.get("CARTESIA_MODEL", _DEFAULT_CARTESIA_MODEL)
-
-    logger.info("tts active provider=cartesia model={} voice_id={} sample_rate=8000", model, voice_id)
-
-    _ENERGY_TO_EMOTION = {
-        "emotional": "sympathetic",
-        "skeptical": "skeptical",
-        "rushed": "determined",
-        "motivated": "enthusiastic",
-        "hesitant": "hesitant",
-        "hostile": "calm",
-        "talkative": "enthusiastic",
-    }
-    energy = getattr(call_ctx_ref, "seller_energy", "calm") or "calm"
-    emotion = _ENERGY_TO_EMOTION.get(energy)
-    return CartesiaTTSService(
+async def _build_tts(call_ctx_ref: CallContext) -> DeepgramTTSService:
+    api_key = _require_env("DEEPGRAM_API_KEY")
+    model = os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-thalia-en")
+    logger.info("tts active provider=deepgram model={} sample_rate=8000", model)
+    return DeepgramTTSService(
         api_key=api_key,
-        cartesia_version="2026-03-01",
-        max_buffer_delay_ms=0,
-        sample_rate=8000,
-        text_aggregation_mode=TextAggregationMode.TOKEN,
-        settings=CartesiaTTSService.Settings(
-            voice=voice_id,
+        settings=DeepgramTTSService.Settings(
             model=model,
-            generation_config=GenerationConfig(
-                speed=1.0,
-                emotion=emotion,
-            ),
+            sample_rate=8000,
+            encoding="linear16",
         ),
     )
 
