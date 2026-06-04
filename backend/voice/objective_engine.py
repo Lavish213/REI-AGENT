@@ -56,7 +56,9 @@ class ObjectiveEngine:
             logger.debug("objective=HANDLE_OBJECTION resistance=BLOCKING")
             return "HANDLE_OBJECTION"
 
-        qualify_gate = (owner_confirmed or address_known) and (intent_locked or bool(motivation_signals))
+        qualify_gate = (
+            (owner_confirmed or address_known) and (intent_locked or bool(motivation_signals))
+        ) or turn_count >= 4
         if not qualify_gate:
             logger.debug("objective=STAGE_1_QUALIFY owner={} intent={} turn={}", owner_confirmed, intent_locked, turn_count)
             return "STAGE_1_QUALIFY"
