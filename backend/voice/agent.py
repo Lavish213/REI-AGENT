@@ -300,13 +300,11 @@ def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_t
 async def _build_tts(call_ctx_ref: CallContext) -> DeepgramTTSService:
     api_key = _require_env("DEEPGRAM_API_KEY")
     model = os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-thalia-en")
-    logger.info("tts active provider=deepgram model={} sample_rate=8000", model)
+    logger.info("tts active provider=deepgram model={}", model)
     return DeepgramTTSService(
         api_key=api_key,
         settings=DeepgramTTSService.Settings(
             model=model,
-            sample_rate=8000,
-            encoding="linear16",
         ),
     )
 
