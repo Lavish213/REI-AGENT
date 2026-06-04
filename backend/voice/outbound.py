@@ -80,7 +80,21 @@ def _get_phone_list(prop: dict) -> list[str]:
     phones = prop.get("callable_phones")
     if not phones or not isinstance(phones, list):
         return []
-    return [str(p).strip() for p in phones if p]
+    result = []
+    for p in phones:
+        if not p:
+            continue
+        raw = str(p).strip()
+        digits = "".join(c for c in raw if c.isdigit())
+        if raw.startswith("+"):
+            result.append(raw)
+        elif len(digits) == 11 and digits.startswith("1"):
+            result.append("+" + digits)
+        elif len(digits) == 10:
+            result.append("+1" + digits)
+        else:
+            result.append(raw)
+    return result
 
 
 def _build_signalwire_auth() -> tuple[str, str]:

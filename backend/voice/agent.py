@@ -621,7 +621,7 @@ async def run_sophia_agent(
                     confidence=0.7,
                     start_secs=0.2,
                     stop_secs=0.5,
-                    min_volume=0.6,
+                    min_volume=0.3,
                 ),
             ),
             user_turn_stop_timeout=0.6,

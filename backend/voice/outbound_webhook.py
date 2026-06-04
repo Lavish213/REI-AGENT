@@ -374,3 +374,36 @@ move toward walkthrough or callback.
 If voicemail:
 leave ONE message only.
 """.strip()
+
+
+@router.post("/voice/recording-status/{lead_id}")
+async def handle_recording_status(request: Request, lead_id: str) -> Response:
+    try:
+        form = await request.form()
+        call_sid = str(form.get("CallSid", "")).strip()
+        recording_url = str(form.get("RecordingUrl", "")).strip()
+        recording_sid = str(form.get("RecordingSid", "")).strip()
+        recording_duration = int(form.get("RecordingDuration", "0") or 0)
+        status = str(form.get("RecordingStatus", "")).strip()
+
+        logger.info(
+            "recording_status lead_id={} call_sid={} status={} duration={}s url={}",
+            lead_id, call_sid, status, recording_duration, recording_url[:60] if recording_url else "",
+        )
+
+        if recording_url and status == "completed":
+            from backend.lib.db import _get_client
+            try:
+                _get_client().table("calls").update({
+                    "recording_url": recording_url,
+                    "recording_sid": recording_sid,
+                    "recording_duration_seconds": recording_duration,
+                }).eq("signalwire_call_id", call_sid).execute()
+                logger.info("recording_saved call_sid={}", call_sid)
+            except Exception as db_err:
+                logger.warning("recording_save_failed call_sid={} error={}", call_sid, str(db_err))
+
+        return Response(status_code=204)
+    except Exception as e:
+        logger.exception("recording_status_failed lead_id={} error={}", lead_id, str(e))
+        return Response(status_code=500)

@@ -1,14 +1,11 @@
 from __future__ import annotations
-
 import re
-
 from loguru import logger
 
-
 _TRUST_REPAIR_THRESHOLD = 3.0
-_DEAL_HEAT_CLOSE_THRESHOLD = 8.0
-_DEAL_HEAT_APPOINTMENT_THRESHOLD = 6.0
-
+_BLOCKING_LEVELS = frozenset(["BLOCKING"])
+_DISTRESSED_STATES = frozenset(["DISTRESSED", "GRIEVING", "OVERWHELMED"])
+_CRITICAL_FATIGUE = frozenset(["CRITICAL"])
 
 _LEGITIMACY_PATTERNS = re.compile(
     r"\b(scam|fake|not real|is this legit|prove it|who are you|"
@@ -19,13 +16,9 @@ _LEGITIMACY_PATTERNS = re.compile(
 
 _HOSTILE_PATTERNS = re.compile(
     r"\b(stop calling|remove me|leave me alone|lawsuit|"
-    r"not interested|never selling|do not call)\b",
+    r"never selling|do not call)\b",
     re.IGNORECASE,
 )
-
-_DISTRESSED_STATES = frozenset(["DISTRESSED", "GRIEVING", "OVERWHELMED"])
-_BLOCKING_LEVELS = frozenset(["BLOCKING"])
-_CRITICAL_FATIGUE = frozenset(["CRITICAL"])
 
 
 class ObjectiveEngine:
@@ -34,111 +27,66 @@ class ObjectiveEngine:
         emotional_state = getattr(call_ctx, "emotional_state", "NEUTRAL")
         resistance_level = getattr(call_ctx, "resistance_level", "NONE")
         resistance_softening = getattr(call_ctx, "resistance_softening", False)
-        deal_heat = getattr(call_ctx, "deal_heat", 0.0)
         fatigue_level = getattr(call_ctx, "fatigue_level", "FRESH")
-        microstate = getattr(call_ctx, "microstate", "NEUTRAL")
         turn_count = getattr(call_ctx, "turn_count", 0)
         is_outbound = getattr(call_ctx, "is_outbound", False)
+        owner_confirmed = getattr(call_ctx, "owner_confirmed", False)
         address_known = getattr(call_ctx, "address_known", False)
         intent_locked = getattr(call_ctx, "intent_locked", False)
         motivation_signals = getattr(call_ctx, "motivation_signals", [])
         property_issues = getattr(call_ctx, "property_issues", [])
         timeline_mentioned = getattr(call_ctx, "timeline_mentioned", None)
-        last_price_mentioned = getattr(call_ctx, "last_price_mentioned", None)
-        has_agent = getattr(call_ctx, "has_agent", False)
         mortgage_status = getattr(call_ctx, "mortgage_status", "unknown")
-        objections_raised = getattr(call_ctx, "objections_raised", [])
-        momentum_score = getattr(call_ctx, "momentum_score", 5.0)
-        momentum_direction = getattr(call_ctx, "momentum_direction", "STABLE")
+        pre_close_done = getattr(call_ctx, "pre_close_done", False)
+        appointment_set = getattr(call_ctx, "appointment_set", False)
+        disposition = getattr(call_ctx, "disposition", None)
+        deal_heat = getattr(call_ctx, "deal_heat", 0.0)
+        microstate = getattr(call_ctx, "microstate", "NEUTRAL")
 
-        fallback_mode = getattr(call_ctx, "fallback_mode", False)
-        if fallback_mode and trust < _TRUST_REPAIR_THRESHOLD:
-            logger.debug("objective=TRUST_REPAIR fallback_mode+low_trust")
-            return "TRUST_REPAIR"
+        if disposition in ("DEAD", "HOT", "WARM", "COLD"):
+            logger.debug("objective=STAGE_5_WRAP disposition={}", disposition)
+            return "STAGE_5_WRAP"
+
+        if fatigue_level in _CRITICAL_FATIGUE and turn_count >= 6:
+            logger.debug("objective=STAGE_5_WRAP fatigue_critical")
+            return "STAGE_5_WRAP"
 
         if trust < _TRUST_REPAIR_THRESHOLD:
             logger.debug("objective=TRUST_REPAIR trust={:.1f}", trust)
             return "TRUST_REPAIR"
 
-        if is_outbound and turn_count <= 1:
-            logger.debug("objective=OUTBOUND_OPEN turn={}", turn_count)
-            return "OUTBOUND_OPEN"
-
-        if is_outbound and turn_count <= 3 and not address_known:
-            logger.debug("objective=OWNERSHIP_CONFIRM turn={}", turn_count)
-            return "OWNERSHIP_CONFIRM"
-
-        if emotional_state in _DISTRESSED_STATES and turn_count <= 3:
-            logger.debug("objective=EMOTIONAL_HOLD state={}", emotional_state)
-            return "EMOTIONAL_HOLD"
-
-        if microstate == "COMMITTING":
-            logger.debug("objective=BOOK_APPOINTMENT microstate=COMMITTING")
-            return "BOOK_APPOINTMENT"
-
-        if deal_heat >= _DEAL_HEAT_CLOSE_THRESHOLD:
-            logger.debug("objective=BOOK_APPOINTMENT heat={:.1f}", deal_heat)
-            return "BOOK_APPOINTMENT"
-
-        if resistance_level in _BLOCKING_LEVELS and not resistance_softening:
-            logger.debug("objective=HANDLE_OBJECTION resistance={}", resistance_level)
-            return "HANDLE_OBJECTION"
-
-        if objections_raised and resistance_softening:
-            logger.debug("objective=LEAN_IN softening=True")
-            return "LEAN_IN"
-
-        if fatigue_level in _CRITICAL_FATIGUE and turn_count >= 4:
-            logger.debug("objective=NURTURE_EXIT fatigue=CRITICAL")
-            return "NURTURE_EXIT"
-
-        if not intent_locked or not motivation_signals:
-            if not address_known and (is_outbound or turn_count >= 3):
-                logger.debug("objective=GET_ADDRESS outbound_or_late")
-                return "GET_ADDRESS"
-            logger.debug("objective=GET_MOTIVATION")
-            return "GET_MOTIVATION"
-
-        if not address_known:
-            logger.debug("objective=GET_ADDRESS")
-            return "GET_ADDRESS"
-
         if emotional_state in _DISTRESSED_STATES:
             logger.debug("objective=EMOTIONAL_HOLD state={}", emotional_state)
             return "EMOTIONAL_HOLD"
 
-        if has_agent and not resistance_softening:
-            logger.debug("objective=HANDLE_OBJECTION has_agent=True")
-            if not resistance_softening:
-                return "HANDLE_OBJECTION"
+        if resistance_level in _BLOCKING_LEVELS and not resistance_softening:
+            logger.debug("objective=HANDLE_OBJECTION resistance=BLOCKING")
+            return "HANDLE_OBJECTION"
 
-        if not timeline_mentioned:
-            logger.debug("objective=GET_TIMELINE")
-            return "GET_TIMELINE"
+        qualify_gate = (owner_confirmed or address_known) and (intent_locked or bool(motivation_signals))
+        if not qualify_gate:
+            logger.debug("objective=STAGE_1_QUALIFY owner={} intent={} turn={}", owner_confirmed, intent_locked, turn_count)
+            return "STAGE_1_QUALIFY"
 
-        if not property_issues:
-            logger.debug("objective=GET_CONDITION")
-            return "GET_CONDITION"
+        mortgage_ok = mortgage_status != "unknown" or turn_count < 6
+        discover_gate = (
+            bool(motivation_signals)
+            and (bool(property_issues) or turn_count >= 8)
+            and bool(timeline_mentioned)
+            and mortgage_ok
+        )
+        if not discover_gate:
+            logger.debug("objective=STAGE_2_DISCOVER motivation={} condition={} timeline={} mortgage={}",
+                bool(motivation_signals), bool(property_issues), bool(timeline_mentioned), mortgage_status)
+            return "STAGE_2_DISCOVER"
 
-        if mortgage_status == "unknown" and turn_count >= 5:
-            logger.debug("objective=GET_MORTGAGE")
-            return "GET_MORTGAGE"
+        if not pre_close_done:
+            logger.debug("objective=STAGE_3_PRECLOSE")
+            return "STAGE_3_PRECLOSE"
 
-        if last_price_mentioned and not timeline_mentioned:
-            logger.debug("objective=GET_PRICE_ANCHOR")
-            return "GET_PRICE_ANCHOR"
+        if not appointment_set:
+            logger.debug("objective=STAGE_4_CLOSE heat={:.1f} microstate={}", deal_heat, microstate)
+            return "STAGE_4_CLOSE"
 
-        if deal_heat >= _DEAL_HEAT_APPOINTMENT_THRESHOLD and momentum_direction != "FALLING":
-            logger.debug("objective=BOOK_APPOINTMENT heat={:.1f} momentum={}", deal_heat, momentum_direction)
-            return "BOOK_APPOINTMENT"
-
-        if timeline_mentioned and motivation_signals and property_issues:
-            pre_close_done = getattr(call_ctx, "pre_close_done", False)
-            if not pre_close_done:
-                logger.debug("objective=PRE_CLOSE all_signals_known")
-                return "PRE_CLOSE"
-            logger.debug("objective=BOOK_APPOINTMENT all_signals_known pre_close_done")
-            return "BOOK_APPOINTMENT"
-
-        logger.debug("objective=GET_MOTIVATION default")
-        return "GET_MOTIVATION"
+        logger.debug("objective=STAGE_5_WRAP")
+        return "STAGE_5_WRAP"

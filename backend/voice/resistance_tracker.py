@@ -108,6 +108,15 @@ class ResistanceTracker(FrameProcessor):
                 self._turns_since_objection = 0
                 logger.info("cold_reflex detected type={} score={:.1f}", obj_type, self._score)
 
+        for pattern, obj_type in _COLD_REFLEX:
+            if pattern.search(text):
+                self._score = min(10.0, self._score + 1.0)
+                if obj_type not in self._objection_types:
+                    self._objection_types.append(obj_type)
+                matched_this_turn = True
+                self._turns_since_objection = 0
+                logger.info("cold_reflex detected type={} score={:.1f}", obj_type, self._score)
+
         for pattern, obj_type in _HARD_NO:
             if pattern.search(text):
                 self._score = min(10.0, self._score + _HARD_NO_SCORE)
