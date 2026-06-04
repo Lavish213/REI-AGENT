@@ -648,7 +648,6 @@ async def run_sophia_agent(
             analysis_callbacks,
             context_aggregator.user(),
             turn_controller,
-            interruption_ack,
             llm,
             sentence_streamer,
             AISoftener(),
