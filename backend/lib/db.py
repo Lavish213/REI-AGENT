@@ -471,7 +471,6 @@ def update_lead_transcript_intel(lead_id: str, intel: dict) -> None:
     data: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
     field_map = {
         "motivation_level": "motivation_level",
-        "seller_motivation": "seller_motivation",
         "price_floor": "price_floor",
         "timeline_urgency": "timeline_urgency",
         "hot_topics": "hot_topics",
@@ -701,7 +700,6 @@ def update_call_intel(call_id: str, intel: dict) -> None:
         "next_step": "next_step",
         "followup_priority": "followup_priority",
         "extraction_confidence": "extraction_confidence",
-        "seller_motivation": "seller_motivation",
         "motivation_confidence": "motivation_confidence",
         "timeline": "timeline",
         "lead_score": "lead_score",
@@ -1090,7 +1088,7 @@ def get_workflow_analytics() -> dict:
     calls_this_week = calls_week_resp.count or 0
 
     # Offer pipeline
-    offer_resp = client.table("offers").select("status, offer_amount").execute()
+    offer_resp = client.table("offers").select("status, amount").execute()
     offer_by_status: dict[str, int] = {}
     offer_pipeline_value = 0
     for o in (offer_resp.data or []):

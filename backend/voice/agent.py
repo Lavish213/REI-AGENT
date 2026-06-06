@@ -894,7 +894,7 @@ async def _persist_call_result(
     transcript: str,
     disposition: str | None,
 ) -> str | None:
-    direction = "outbound" if lead.get("is_outbound") else "inbound"
+    direction = "outbound" if call_context.get("is_outbound") else "inbound"
 
     call_data = {
         "lead_id": lead["id"],
