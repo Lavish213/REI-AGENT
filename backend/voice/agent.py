@@ -829,6 +829,7 @@ async def _handle_call_end(
                 lead=lead,
                 transcript=transcript,
                 disposition=disposition,
+                call_context=call_context,
             )
 
             asyncio.create_task(_run_qa_async(transcript, lead["id"], call_sid))
@@ -893,8 +894,9 @@ async def _persist_call_result(
     lead: dict[str, Any],
     transcript: str,
     disposition: str | None,
+    call_context: dict | None = None,
 ) -> str | None:
-    direction = "outbound" if call_context.get("is_outbound") else "inbound"
+    direction = "outbound" if (call_context or {}).get("is_outbound") else "inbound"
 
     call_data = {
         "lead_id": lead["id"],

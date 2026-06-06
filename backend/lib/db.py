@@ -952,8 +952,8 @@ def create_offer(
         "arv_used": arv_used,
         "repair_estimate": repair_estimate,
         "mao_calculated": mao_calculated,
-        "offer_amount": offer_amount if offer_amount is not None else mao_calculated,
-        "offer_status": "draft",
+        "amount": offer_amount if offer_amount is not None else mao_calculated,
+        "status": "draft",
         "notes": notes,
         "created_by": created_by,
         "created_at": now,
@@ -992,7 +992,7 @@ def get_offers_for_lead(lead_id: str) -> list[dict]:
 def update_offer_status(offer_id: str, status: str, notes: str | None = None) -> None:
     client = _get_client()
     data: dict = {
-        "offer_status": status,
+        "status": status,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     if notes is not None:
