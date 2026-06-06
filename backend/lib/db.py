@@ -1095,7 +1095,7 @@ def get_workflow_analytics() -> dict:
         s = o.get("offer_status", "draft")
         offer_by_status[s] = offer_by_status.get(s, 0) + 1
         if s in ("sent", "countered", "accepted"):
-            offer_pipeline_value += o.get("offer_amount") or 0
+            offer_pipeline_value += o.get("amount") or 0
 
     # Conversion: active → appointment
     active = sum(workflow_pipeline.get(s, 0) for s in ("active_contact", "followup_required"))
