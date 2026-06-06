@@ -67,7 +67,7 @@ class ObjectiveEngine:
         discover_gate = (
             bool(motivation_signals)
             and (bool(property_issues) or turn_count >= 8)
-            and bool(timeline_mentioned)
+            and (bool(timeline_mentioned) or turn_count >= 6)
             and mortgage_ok
         )
         if not discover_gate:

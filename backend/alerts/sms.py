@@ -51,6 +51,7 @@ def _status_callback_url() -> str | None:
 
 
 def send_sms(to: str, body: str, lead_id: str = "", bypass_hours: bool = False) -> bool:
+    to = _e164(to)
     if not bypass_hours and not _is_tcpa_hours():
         logger.warning("send_sms blocked outside TCPA hours to={}", to)
         return False

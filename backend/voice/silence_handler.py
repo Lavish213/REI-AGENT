@@ -15,7 +15,7 @@ _RECOVERY_PHRASES: dict[str, list[str]] = {
 }
 
 _TIMEOUTS: dict[str, float] = {
-    "standard": 9.0,
+    "standard": 12.0,
     "post_emotional": 14.0,
     "post_price": 12.0,
     "post_appointment": 12.0,
@@ -30,7 +30,7 @@ _EMOTIONAL_MULTIPLIERS: dict[str, float] = {
     "EXCITED": 0.8,
 }
 
-_CONSECUTIVE_SILENCE_END = 2
+_CONSECUTIVE_SILENCE_END = 3
 _DISTRESSED_STATES = frozenset(["DISTRESSED", "GRIEVING", "OVERWHELMED"])
 
 

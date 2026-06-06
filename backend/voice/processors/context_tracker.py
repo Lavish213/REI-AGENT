@@ -136,7 +136,7 @@ _FREE_CLEAR_PATTERN = re.compile(
 )
 
 _ENERGY_PATTERNS: list[tuple[SellerEnergy, re.Pattern]] = [
-    ("rushed", re.compile(r"\b(gotta go|busy|quick|in a hurry)\b", re.IGNORECASE)),
+    ("rushed", re.compile(r"\b(asap|immediately|today|tomorrow|next week|next month|30 days|60 days|90 days|few months|this week|this month|end of year|by summer|couple months|no rush|not in a hurry|whenever|flexible|soon|right away|as soon as|within)\b", re.IGNORECASE)),
     ("skeptical", re.compile(r"\b(not sure|sounds too good|is this legit|scam)\b", re.IGNORECASE)),
     ("motivated", re.compile(r"\b(i'm ready|sounds good|let's do it|definitely)\b", re.IGNORECASE)),
     ("hesitant", re.compile(r"\b(maybe|i guess|not sure if)\b", re.IGNORECASE)),
@@ -400,7 +400,6 @@ class ContextTrackerProcessor(FrameProcessor):
                     if self._objective_engine is not None:
                         self._ctx.objective = self._objective_engine.decide(self._ctx)
                     return
-                    return
 
                 self._ctx.turn_count += 1
                 self._analyze(text)
@@ -413,42 +412,6 @@ class ContextTrackerProcessor(FrameProcessor):
                         self._ctx.owner_confirmed = True
                         self._ctx.address_known = True
                         logger.info("owner_confirmed via affirmative turn={}", _tc)
-                _is_ob = getattr(self._ctx, "is_outbound", False)
-                _tc = self._ctx.turn_count
-                _obj = getattr(self._ctx, "objective", "")
-                if _is_ob and _tc <= 5 and _obj in ("STAGE_1_QUALIFY", "OWNERSHIP_CONFIRM") and not getattr(self._ctx, "owner_confirmed", False):
-                    import re as _re2
-                    if _re2.search(r"\b(yes|yeah|yep|yup|correct|right|i do|sure|uh huh|mm hmm|that's me|speaking)\b", text, _re2.IGNORECASE):
-                        self._ctx.owner_confirmed = True
-                        self._ctx.address_known = True
-                        logger.info("owner_confirmed via affirmative turn={}", _tc)
-                _is_ob = getattr(self._ctx, "is_outbound", False)
-                _tc = self._ctx.turn_count
-                _obj = getattr(self._ctx, "objective", "")
-                if _is_ob and _tc <= 5 and _obj in ("STAGE_1_QUALIFY", "OWNERSHIP_CONFIRM") and not getattr(self._ctx, "owner_confirmed", False):
-                    import re as _re2
-                    if _re2.search(r"\\b(yes|yeah|yep|yup|correct|right|i do|sure|uh huh|mm hmm|that's me|speaking)\\b", text, _re2.IGNORECASE):
-                        self._ctx.owner_confirmed = True
-                        self._ctx.address_known = True
-                        logger.info("owner_confirmed via affirmative turn={}", _tc)
-                _is_ob = getattr(self._ctx, "is_outbound", False)
-                _tc = self._ctx.turn_count
-                _obj = getattr(self._ctx, "objective", "")
-                if _is_ob and _tc <= 5 and _obj in ("STAGE_1_QUALIFY", "OWNERSHIP_CONFIRM") and not getattr(self._ctx, "owner_confirmed", False):
-                    import re as _re2
-                    if _re2.search(r"\\b(yes|yeah|yep|yup|correct|right|i do|sure|uh huh|mm hmm|that's me|speaking)\\b", text, _re2.IGNORECASE):
-                        self._ctx.owner_confirmed = True
-                        self._ctx.address_known = True
-                        logger.info("owner_confirmed via affirmative turn={}", _tc)
-                is_ob = getattr(self._ctx, "is_outbound", False)
-                tc = self._ctx.turn_count
-                obj = getattr(self._ctx, "objective", "")
-                if is_ob and tc <= 4 and obj == "OWNERSHIP_CONFIRM" and not getattr(self._ctx, "owner_confirmed", False):
-                    import re as _re2
-                    if _re2.search(r"\b(yes|yeah|yep|yup|correct|that's me|i do|sure|right|uh huh|mm hmm)\b", text, _re2.IGNORECASE):
-                        self._ctx.owner_confirmed = True
-                        self._ctx.address_known = True
-                        logger.info("owner_confirmed via affirmative turn={}", tc)
                 import re as _re
                 _DNC = _re.compile(r"\b(stop calling|take me off|do not call|remove me|never call again)\b", _re.IGNORECASE)
                 if _DNC.search(text) and not getattr(self._ctx, "_dnc_flagged", False):
@@ -531,9 +494,31 @@ class ContextTrackerProcessor(FrameProcessor):
         except Exception as error:
             logger.warning("context compression failed error={}", str(error))
 
+    def _trim_history(self) -> None:
+        messages = getattr(self._llm_context, "messages", None)
+        if not messages:
+            return
+        system = [m for m in messages if m.get("role") == "system"]
+        turns = [m for m in messages if m.get("role") != "system"]
+        if len(turns) <= 8:
+            return
+        kept = turns[-8:]
+        import re as _re_t
+        for m in kept:
+            if m.get("role") != "user":
+                continue
+            c = m.get("content", "")
+            if isinstance(c, str):
+                c = _re_t.sub(r"<ctx>[\s\S]*?</ctx>\s*", "", c).strip()
+                c = _re_t.sub(r"<seller>([\s\S]*?)</seller>", r"\1", c).strip()
+                m["content"] = c
+        self._llm_context.set_messages(system + kept)
+        logger.debug("history_trimmed kept={}", len(kept))
+
     def _inject_context_prefix(self) -> None:
         if not self._llm_context:
             return
+        self._trim_history()
         messages = getattr(self._llm_context, "messages", None)
         if not messages:
             return

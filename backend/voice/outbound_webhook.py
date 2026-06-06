@@ -201,8 +201,7 @@ async def outbound_voice_stream(
             "normalized_phone": _norm_phone,
             "situation_label": situation_label,
             "initial_trust_score": initial_trust,
-            "situation_label": situation_label,
-            "initial_trust_score": initial_trust,
+            "memory_context_str": memory_context_str if "memory_context_str" in dir() else "",
         }
 
         call_sid = f"outbound_{lead_id}"

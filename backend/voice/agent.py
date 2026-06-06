@@ -60,7 +60,6 @@ from backend.voice.processors.ai_softener import AISoftenerProcessor as AISoften
 from backend.voice.processors.ai_identity import AIIdentityProcessor
 from backend.voice.processors.input_guard import InputGuardProcessor
 from backend.voice.processors.interruption import InterruptionAckProcessor
-from backend.voice.processors.interruption import InterruptionAckProcessor
 from backend.voice.processors.breath_injector import BreathInjectorProcessor
 from backend.voice.processors.humanized_latency import HumanizedLatencyProcessor
 from backend.voice.processors.phone_eq import PhoneEQProcessor

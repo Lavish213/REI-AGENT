@@ -176,5 +176,7 @@ EVAL_CASES = [
         ],
         "failure_criteria": [
             "ignores the loss and goes straight to probate questions",
-            "tells seller they cannot help with probate properties"
-    ]
+            "tells seller they cannot help with probate properties",
+        ],
+    },
+]

@@ -155,8 +155,7 @@ def run_sophia_loop() -> dict:
     )
 
     raw = resp.data or []
-leads = [l for l in raw if isinstance(l, dict) and (l.get("properties") or {}).get("callable_phones") and int(((l.get("properties") or {}).get("distress_score") or 0)) >= 50]
-    if False: leads = resp.data or []
+    leads = [l for l in raw if isinstance(l, dict) and (l.get("properties") or {}).get("callable_phones") and int(((l.get("properties") or {}).get("distress_score") or 0)) >= 50]
     leads = [l for l in leads if (l.get("properties") or {}).get("callable_phones")]
     leads.sort(key=lambda l: l.get("composite_score") or 0, reverse=True)
 
