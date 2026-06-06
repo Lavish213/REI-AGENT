@@ -158,10 +158,8 @@ def _build_opener(call_context: dict[str, Any]) -> str:
             "Am I reaching the property owner?"
         )
 
-    if situation_opener and not address:
-        return situation_opener
     if situation_opener:
-        return f"{situation_opener} {base}"
+        return situation_opener
     return base
 
 
@@ -221,12 +219,7 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
         except Exception:
             pass
 
-    full_prompt = (
-        f"{base_prompt}\n\n"
-        f"CALLER PROPERTY CONTEXT\n\n"
-        f"{property_context_str}\n\n"
-        + (f"ACQUISITION_INTEL\n\n{intel_slice}\n\n" if intel_slice else "")
-    ).rstrip()
+    full_prompt = base_prompt.rstrip()
 
     full_prompt = apply_budget(full_prompt)
     full_prompt = _strip_markdown(full_prompt)

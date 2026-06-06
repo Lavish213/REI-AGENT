@@ -670,47 +670,42 @@ def _transfer_call(inp: dict, call_ctx=None) -> str:
     reason = inp.get("reason", "seller requested human")
     lead_id = inp.get("lead_id", "")
     owner_phone = os.environ.get("OWNER_PHONE", "")
+    from_phone = os.environ.get("SIGNALWIRE_PHONE", "")
+    raw = owner_phone or ""
+    digits = "".join(c for c in raw if c.isdigit())
+    if not raw.startswith("+"):
+        owner_phone = "+" + digits if digits.startswith("1") and len(digits) == 11 else ("+1" + digits if len(digits) == 10 else raw)
 
-    logger.info("transfer_call reason={} lead_id={}", reason, lead_id)
+    logger.info("transfer_call reason={} lead_id={} to={}", reason, lead_id, owner_phone)
 
     if call_ctx is not None:
         call_ctx.call_should_end = True
         call_ctx.disposition = "WARM"
+        call_sid = getattr(call_ctx, "call_sid", "") or getattr(call_ctx, "_call_sid", "")
+        if call_sid and owner_phone:
+            try:
+                from signalwire.rest import Client as _SW
+                _sw = _SW(
+                    os.environ["SIGNALWIRE_PROJECT_ID"],
+                    os.environ["SIGNALWIRE_TOKEN"],
+                    signalwire_space_url=os.environ["SIGNALWIRE_SPACE"],
+                )
+                laml = (
+                    '<?xml version="1.0" encoding="UTF-8"?>'
+                    f'<Response><Dial timeout="30" callerId="{from_phone}">{owner_phone}</Dial></Response>'
+                )
+                _sw.calls(call_sid).update(twiml=laml)
+                logger.info("warm_transfer_initiated call_sid={} to={}", call_sid, owner_phone)
+            except Exception as _te:
+                logger.warning("warm_transfer_failed error={}", str(_te))
 
     if lead_id:
         try:
             update_lead_stage(lead_id, "contacted")
         except Exception as e:
-            logger.warning("transfer update_stage failed error={}", str(e))
+            logger.warning("transfer_stage_update_failed lead_id={} error={}", lead_id, str(e))
 
-    if owner_phone:
-        try:
-            ctx_name = getattr(call_ctx, "seller_name", None) if call_ctx else None
-            ctx_energy = getattr(call_ctx, "seller_energy", "unknown") if call_ctx else "unknown"
-            ctx_motivation = getattr(call_ctx, "motivation_signals", []) if call_ctx else []
-            ctx_objections = getattr(call_ctx, "objections_raised", []) if call_ctx else []
-            ctx_heat = getattr(call_ctx, "deal_heat_level", "unknown") if call_ctx else "unknown"
-            ctx_price = getattr(call_ctx, "last_price_mentioned", None) if call_ctx else None
-            ctx_turns = getattr(call_ctx, "turn_count", 0) if call_ctx else 0
-            price_str = f"${ctx_price/100:,.0f}" if ctx_price else "not mentioned"
-            alert = (
-                f"TRANSFER — seller asked for real person.\n"
-                f"Reason: {reason}\n"
-                f"Lead: {lead_id}\n"
-                f"Name: {ctx_name or 'unknown'}\n"
-                f"Energy: {ctx_energy} | Heat: {ctx_heat} | Turns: {ctx_turns}\n"
-                f"Motivation: {', '.join(ctx_motivation) or 'not yet known'}\n"
-                f"Objections: {', '.join(ctx_objections) or 'none'}\n"
-                f"Price mentioned: {price_str}"
-            )
-            send_sms(to=owner_phone, body=alert)
-        except Exception as e:
-            logger.warning("transfer alert sms failed error={}", str(e))
-
-    return "Transferring you now — one moment."
-
-
-
+    return f"transferring to {owner_phone or 'owner'}"
 
 
 def _schedule_callback(inp, call_ctx=None):

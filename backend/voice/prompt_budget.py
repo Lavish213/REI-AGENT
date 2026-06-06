@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from loguru import logger
 
-DEFAULT_CHAR_BUDGET = 24000
+DEFAULT_CHAR_BUDGET = 2000
 
 _SECTION_ORDER = [
     "EXAMPLES",

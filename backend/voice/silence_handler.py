@@ -90,8 +90,7 @@ class SilenceHandler:
                 logger.info("silence_handler consecutive_limit reached count={} ending call", self._consecutive_silences)
                 from pipecat.frames.frames import TTSSpeakFrame
                 await self._task.queue_frames([TTSSpeakFrame(
-                    "Hey — even if the timing's not right, "
-                    "do you know anyone else around there thinking about selling?"
+                    "Hey — no rush at all. Still there?"
                 )])
                 await asyncio.sleep(4.0)
                 self._ctx.call_should_end = True
