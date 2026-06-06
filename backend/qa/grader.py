@@ -94,23 +94,8 @@ async def grade_call(transcript: str, lead_id: str, call_sid: str) -> dict:
             "score_offer_quality": scores.get("reacted_before_asking"),
             "score_objection_handling": scores.get("objection_handled"),
             "score_appointment_booking": scores.get("motivation_discovered"),
-            "score_tone": scores.get("tone"),
-            "score_goal_completion": scores.get("goal_completion"),
             "score_overall": scores.get("overall_score"),
-            "failures": scores.get("failures", []),
-            "prompt_suggestions": scores.get("prompt_suggestions", []),
             "summary": scores.get("call_summary", ""),
-            "opener_completed": scores.get("opener_completed"),
-            "reached_discovery": scores.get("reached_discovery"),
-            "reached_qualification": scores.get("reached_qualification"),
-            "reached_pitch": scores.get("reached_pitch"),
-            "appointment_offered": scores.get("appointment_offered"),
-            "appointment_booked": scores.get("appointment_booked"),
-            "objections_count": scores.get("objections_count"),
-            "objections_handled": scores.get("objections_handled_count"),
-            "talk_ratio_sophia": scores.get("talk_ratio_sophia"),
-            "phase_reached": scores.get("phase_reached"),
-            "sentiment_arc": scores.get("sentiment_arc"),
         }
 
         from backend.lib.db import _get_client as get_db
