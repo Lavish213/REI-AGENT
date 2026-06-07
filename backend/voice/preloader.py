@@ -250,6 +250,14 @@ def preload_boss_context() -> dict:
 
     logger.info("preload_boss_context initialized")
 
+    call_brief = {}
+    try:
+        from backend.bob.call_planner.brief_generator import generate_call_brief
+        call_brief = generate_call_brief({}, call_number=1).to_dict()
+    except Exception as _be:
+        from backend.contracts.call_brief import CallBrief
+        call_brief = CallBrief.default().to_dict()
+
     return {
         "lead": None,
         "is_outbound": False,
@@ -260,4 +268,6 @@ def preload_boss_context() -> dict:
         "normalized_phone": "",
         "situation_label": "unknown",
         "initial_trust_score": _DEFAULT_TRUST,
+        "call_brief": call_brief,
+        "call_number": 1,
     }

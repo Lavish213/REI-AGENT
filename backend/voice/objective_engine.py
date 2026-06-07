@@ -17,6 +17,9 @@ _LEGITIMACY_PATTERNS = re.compile(
 
 class ObjectiveEngine:
     def decide(self, call_ctx) -> str:
+        return self._decide_impl(call_ctx)
+
+    def _decide_impl(self, call_ctx) -> str:
         trust = getattr(call_ctx, "trust_score", 5.0)
         emotional_state = getattr(call_ctx, "emotional_state", "NEUTRAL")
         resistance_level = getattr(call_ctx, "resistance_level", "NONE")
@@ -35,6 +38,21 @@ class ObjectiveEngine:
         disposition = getattr(call_ctx, "disposition", None)
         deal_heat = getattr(call_ctx, "deal_heat", 0.0)
         microstate = getattr(call_ctx, "microstate", "NEUTRAL")
+
+        bob_phase = getattr(call_ctx, "bob_phase", "VERIFY")
+        _PHASE_ORDER = ["VERIFY", "LIGHT_DISCOVERY", "QUALIFY", "NEXT_STEP", "WRAP"]
+        _STAGE_ORDER = [
+            "STAGE_1_QUALIFY", "STAGE_2_DISCOVER",
+            "STAGE_3_PRECLOSE", "STAGE_4_CLOSE", "STAGE_5_WRAP"
+        ]
+        _BOB_TO_STAGE = {
+            "VERIFY": "STAGE_1_QUALIFY",
+            "LIGHT_DISCOVERY": "STAGE_2_DISCOVER",
+            "QUALIFY": "STAGE_2_DISCOVER",
+            "NEXT_STEP": "STAGE_3_PRECLOSE",
+            "WRAP": "STAGE_5_WRAP",
+        }
+        bob_floor_stage = _BOB_TO_STAGE.get(bob_phase, "STAGE_1_QUALIFY")
 
         if disposition in ("DEAD", "HOT", "WARM", "COLD"):
             logger.debug("objective=STAGE_5_WRAP disposition={}", disposition)

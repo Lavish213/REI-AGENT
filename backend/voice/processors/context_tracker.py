@@ -173,6 +173,13 @@ class CallContext:
     extended_loaded: bool = False
 
     has_agent: bool = False
+
+    bob_phase: str = "VERIFY"
+    bob_missing_box: str = "motivation"
+    bob_mood_hint: str = "unknown"
+    bob_avoid: list = None
+    bob_escalation_rules: list = None
+    bob_opener_hint: str | None = None
     mortgage_status: str = "unknown"
     free_and_clear: bool = False
     price_resistance: bool = False

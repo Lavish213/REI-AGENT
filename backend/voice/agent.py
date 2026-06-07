@@ -46,6 +46,7 @@ from backend.voice.momentum_tracker import MomentumTracker
 from backend.voice.objective_engine import ObjectiveEngine
 from backend.voice.processors.analysis_callbacks import AnalysisCallbackProcessor
 from backend.voice.processors.backchannel import BackchannelProcessor
+from backend.voice.call_brief_loader import load_brief_into_ctx
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
 from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor
 from backend.voice.resistance_tracker import ResistanceTracker
@@ -500,6 +501,7 @@ async def run_sophia_agent(
 
     if call_context.get("normalized_phone"):
         call_ctx.seller_phone = call_context["normalized_phone"]
+    load_brief_into_ctx(call_ctx, call_context.get("call_brief"))
     lead = call_context.get("lead")
     if lead and lead.get("id"):
         call_ctx.lead_id = lead["id"]
