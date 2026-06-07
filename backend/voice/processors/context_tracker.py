@@ -336,6 +336,16 @@ class CallContext:
 
         sections.append(tag + "\nSTYLE: short, reactive, human. 1-2 sentences. one question. react before asking.")
 
+        bob_avoid = getattr(self._ctx, "bob_avoid", None) or []
+        bob_missing_box = getattr(self._ctx, "bob_missing_box", "")
+        bob_mood = getattr(self._ctx, "bob_mood_hint", "")
+        if bob_avoid or bob_missing_box:
+            avoid_str = ", ".join(bob_avoid) if bob_avoid else "none"
+            sections.append(f"avoid: {avoid_str}")
+            if bob_missing_box and bob_missing_box != "none":
+                sections.append(f"missing: {bob_missing_box}")
+            if bob_mood and bob_mood != "unknown":
+                sections.append(f"seller mood: {bob_mood}")
         return "\n\n".join(sections)
 
 
