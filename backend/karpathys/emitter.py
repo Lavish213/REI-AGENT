@@ -88,18 +88,3 @@ async def emit_disposition_action(
         await client.post_event("sophia/disposition-action", payload)
     except Exception as error:
         logger.exception("emit_disposition_action failed call_sid={} error={}", call_sid, str(error))
-
-
-
-async def emit_disposition_action(
-    call_sid: str,
-    lead_id: str | None,
-    disposition: str,
-    full_name: str | None = None,
-    phone: str | None = None,
-) -> None:
-    try:
-        payload = events.disposition_action(call_sid, lead_id, disposition, full_name, phone)
-        await client.post_event("sophia/disposition-action", payload)
-    except Exception as error:
-        logger.exception("emit_disposition_action failed call_sid={} error={}", call_sid, str(error))
