@@ -226,6 +226,13 @@ class CallContext:
     last_sophia_words: int = 0
     tts_speed: float = 0.85
     tts_volume: float = 0.85
+    call_brief: dict = field(default_factory=dict)
+    bob_phase: str | None = None
+    bob_missing_box: str | None = None
+    bob_mood_hint: str | None = None
+    bob_avoid: list = field(default_factory=list)
+    bob_escalation_rules: list = field(default_factory=list)
+    bob_opener_hint: str | None = None
 
     def get_seller_mode(self) -> str:
         if self.emotional_state in {"DISTRESSED", "GRIEVING"}:
@@ -334,6 +341,10 @@ class CallContext:
         if self.kill_switch_active:
             sections.append("KILL SWITCH: Route to safe fallback only. No strategy. No offers.")
 
+        if self.bob_avoid:
+            tag += f"\nAvoid: {', '.join(self.bob_avoid)}"
+        if self.bob_missing_box:
+            tag += f"\nFocus on: {self.bob_missing_box}"
         sections.append(tag + "\nSTYLE: short, reactive, human. 1-2 sentences. one question. react before asking.")
 
         bob_avoid = getattr(self._ctx, "bob_avoid", None) or []

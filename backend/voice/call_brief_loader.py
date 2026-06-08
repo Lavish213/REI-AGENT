@@ -1,22 +1,33 @@
 from __future__ import annotations
 from loguru import logger
-from backend.contracts.call_brief import CallBrief
 
-def load_brief_into_ctx(call_ctx, brief_dict: dict | None) -> None:
-    if not brief_dict:
-        brief = CallBrief.default()
-        logger.debug("call_brief_loader using default brief")
-    else:
-        try:
-            brief = CallBrief.from_dict(brief_dict)
-            logger.debug("call_brief_loader loaded phase={} missing_box={}", brief.phase, brief.missing_box)
-        except Exception as e:
-            brief = CallBrief.default()
-            logger.warning("call_brief_loader parse failed error={} using default", str(e))
+_PHASE_TO_STAGE = {
+    "VERIFY":          "STAGE_1_QUALIFY",
+    "LIGHT_DISCOVERY": "STAGE_2_DISCOVER",
+    "QUALIFY":         "STAGE_3_PRECLOSE",
+    "NEXT_STEP":       "STAGE_4_CLOSE",
+    "WRAP":            "STAGE_5_WRAP",
+}
 
-    call_ctx.bob_phase = brief.phase
-    call_ctx.bob_missing_box = brief.missing_box
-    call_ctx.bob_mood_hint = brief.mood
-    call_ctx.bob_avoid = brief.avoid
-    call_ctx.bob_escalation_rules = brief.escalation
-    call_ctx.bob_opener_hint = brief.opener_hint
+
+def load_brief_into_ctx(call_ctx, brief: dict | None) -> None:
+    if not brief:
+        return
+    call_ctx.call_brief = brief
+    call_ctx.bob_phase = brief.get("phase")
+    call_ctx.bob_missing_box = brief.get("missing_box")
+    call_ctx.bob_mood_hint = brief.get("mood")
+    call_ctx.bob_avoid = brief.get("avoid") or []
+    call_ctx.bob_escalation_rules = brief.get("escalation_rules") or []
+    call_ctx.bob_opener_hint = brief.get("opener_hint")
+    if brief.get("phase"):
+        stage = _PHASE_TO_STAGE.get(brief["phase"])
+        if stage and not getattr(call_ctx, "objective", None):
+            call_ctx.objective = stage
+    logger.info(
+        "call_brief_loaded lead_id={} phase={} box={} mood={}",
+        getattr(call_ctx, "lead_id", ""),
+        brief.get("phase"),
+        brief.get("missing_box"),
+        brief.get("mood"),
+    )

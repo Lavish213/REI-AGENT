@@ -185,6 +185,9 @@ async def outbound_voice_stream(
             logger.info("intel_preloaded lead_id={} state={}", lead_id, preloaded_packet.get("packet_state", "unknown"))
         except Exception as _ie:
             logger.warning("intel_preload_failed lead_id={} error={}", lead_id, str(_ie))
+        preloaded_brief = (lead or {}).get("call_brief")
+        if not preloaded_brief and preloaded_packet:
+            preloaded_brief = preloaded_packet.get("call_brief")
         _raw_phone = (prop.get("callable_phones") or [""])[0] if prop else ""
         _digits = "".join(c for c in _raw_phone if c.isdigit())
         _norm_phone = "+" + _digits if _digits.startswith("1") and len(_digits) == 11 else ("+1" + _digits if len(_digits) == 10 else _raw_phone)
@@ -207,6 +210,7 @@ async def outbound_voice_stream(
             "property_context_str": base_context_str,
             "spanish_detected": False,
             "preloaded_intel_packet": preloaded_packet,
+            "call_brief": preloaded_brief,
             "normalized_phone": _norm_phone,
             "situation_label": situation_label,
             "initial_trust_score": initial_trust,

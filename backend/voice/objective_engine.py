@@ -20,6 +20,34 @@ class ObjectiveEngine:
         return self._decide_impl(call_ctx)
 
     def _decide_impl(self, call_ctx) -> str:
+        _PHASE_TO_STAGE = {
+            "VERIFY":          "STAGE_1_QUALIFY",
+            "LIGHT_DISCOVERY": "STAGE_2_DISCOVER",
+            "QUALIFY":         "STAGE_3_PRECLOSE",
+            "NEXT_STEP":       "STAGE_4_CLOSE",
+            "WRAP":            "STAGE_5_WRAP",
+        }
+        _STAGE_ORDER = [
+            "STAGE_1_QUALIFY",
+            "STAGE_2_DISCOVER",
+            "STAGE_3_PRECLOSE",
+            "STAGE_4_CLOSE",
+            "STAGE_5_WRAP",
+        ]
+        _SAFETY = {"TRUST_REPAIR", "EMOTIONAL_HOLD", "HANDLE_OBJECTION", "STAGE_5_WRAP"}
+        bob_phase = getattr(call_ctx, "bob_phase", None)
+        bob_floor = _PHASE_TO_STAGE.get(bob_phase) if bob_phase else None
+
+        def _apply_floor(stage: str) -> str:
+            if not bob_floor or stage in _SAFETY:
+                return stage
+            try:
+                if _STAGE_ORDER.index(stage) < _STAGE_ORDER.index(bob_floor):
+                    return bob_floor
+            except ValueError:
+                pass
+            return stage
+
         trust = getattr(call_ctx, "trust_score", 5.0)
         emotional_state = getattr(call_ctx, "emotional_state", "NEUTRAL")
         resistance_level = getattr(call_ctx, "resistance_level", "NONE")
@@ -79,7 +107,7 @@ class ObjectiveEngine:
         ) or turn_count >= 4
         if not qualify_gate:
             logger.debug("objective=STAGE_1_QUALIFY owner={} intent={} turn={}", owner_confirmed, intent_locked, turn_count)
-            return "STAGE_1_QUALIFY"
+            return _apply_floor("STAGE_1_QUALIFY")
 
         mortgage_ok = mortgage_status != "unknown" or turn_count < 6
         discover_gate = (
@@ -91,15 +119,15 @@ class ObjectiveEngine:
         if not discover_gate:
             logger.debug("objective=STAGE_2_DISCOVER motivation={} condition={} timeline={} mortgage={}",
                 bool(motivation_signals), bool(property_issues), bool(timeline_mentioned), mortgage_status)
-            return "STAGE_2_DISCOVER"
+            return _apply_floor("STAGE_2_DISCOVER")
 
         if not pre_close_done:
             logger.debug("objective=STAGE_3_PRECLOSE")
-            return "STAGE_3_PRECLOSE"
+            return _apply_floor("STAGE_3_PRECLOSE")
 
         if not appointment_set:
             logger.debug("objective=STAGE_4_CLOSE heat={:.1f} microstate={}", deal_heat, microstate)
-            return "STAGE_4_CLOSE"
+            return _apply_floor("STAGE_4_CLOSE")
 
         logger.debug("objective=STAGE_5_WRAP")
         return "STAGE_5_WRAP"

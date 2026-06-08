@@ -241,6 +241,7 @@ def preload_call_context(caller_phone: str) -> dict:
         "initial_trust_score": initial_trust_score,
         "seller_memory": seller_memory,
         "memory_context_str": memory_context_str,
+        "call_brief": (lead or {}).get("call_brief"),
     }
 
 

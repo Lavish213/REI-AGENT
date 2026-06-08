@@ -524,6 +524,9 @@ async def run_sophia_agent(
             call_ctx.action_permissions = packet.get("action_permissions", {})
             call_ctx.conflict_active = packet.get("packet_state") == "conflicted"
             call_ctx.extracted_entities = {}
+            from backend.voice.call_brief_loader import load_brief_into_ctx
+            brief = call_context.get("call_brief") or packet.get("call_brief")
+            load_brief_into_ctx(call_ctx, brief)
             if call_ctx.conflict_active:
                 call_ctx.runtime_instruction = "[Intel conflict detected. Ask operator before discussing offers or strategy.]"
             logger.info("intel_packet loaded lead_id={} state={}", lead["id"], call_ctx.packet_state)
