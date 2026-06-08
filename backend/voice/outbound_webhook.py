@@ -191,14 +191,7 @@ async def outbound_voice_stream(
         _raw_phone = (prop.get("callable_phones") or [""])[0] if prop else ""
         _digits = "".join(c for c in _raw_phone if c.isdigit())
         _norm_phone = "+" + _digits if _digits.startswith("1") and len(_digits) == 11 else ("+1" + _digits if len(_digits) == 10 else _raw_phone)
-        call_number = 1
-        try:
-            from backend.bob.call_planner.brief_generator import generate_call_brief
-            call_brief = generate_call_brief(lead, call_number=call_number).to_dict()
-        except Exception as _be:
-            from backend.contracts.call_brief import CallBrief
-            call_brief = CallBrief.default().to_dict()
-            logger.warning("call_brief_generation_failed error={}", str(_be))
+        call_number = int((lead or {}).get("call_count") or (lead or {}).get("call_number") or 1)
 
         outbound_context = {
             "boss_mode": False,
@@ -210,12 +203,11 @@ async def outbound_voice_stream(
             "property_context_str": base_context_str,
             "spanish_detected": False,
             "preloaded_intel_packet": preloaded_packet,
-            "call_brief": preloaded_brief,
             "normalized_phone": _norm_phone,
             "situation_label": situation_label,
             "initial_trust_score": initial_trust,
             "memory_context_str": memory_context_str if "memory_context_str" in dir() else "",
-            "call_brief": call_brief,
+            "call_brief": preloaded_brief or {},
             "call_number": call_number,
         }
 
