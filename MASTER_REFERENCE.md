@@ -10,13 +10,14 @@ recalled. Claims I could not verify are marked `[UNVERIFIED]`.
 
 ## 0. Read this first
 
-### The four documents
+### The five documents
 
 | Document | Answers | Status |
 |---|---|---|
 | **`MASTER_REFERENCE.md`** (this) | What is this, what exists, what is broken | Current |
 | **`REAL_ESTATE_AI_OPERATING_SYSTEM_V2.md`** | What the system *should* be | Proposed, unratified |
 | **`REBUILD_MAP.md`** | Which file goes where, in what order | Proposed, depends on the above |
+| **`AUDIT_AND_GRADE.md`** | Brutal grade, all 30 defects, regulatory research, what to do next | Current |
 | **`Sophia-Agent/PROJECT.md`** | How the V1 system works end to end | Accurate for V1 only |
 
 Plus `AGENTS.md` (hard rules) and 16 `SOPHIA_*.md` behaviour specs.
