@@ -2,6 +2,8 @@ import os
 from datetime import datetime, timezone
 
 import pytz
+
+from backend.voice import execution_context
 from loguru import logger
 
 from backend.lib.db import (
@@ -29,12 +31,9 @@ SOPHIA_TOOLS = [
             "properties": {
                 "date": {"type": "string", "description": "Date in YYYY-MM-DD format"},
                 "time": {"type": "string", "description": "Time in HH:MM 24hr format"},
-                "address": {"type": "string", "description": "Property address"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
-                "seller_phone": {"type": "string", "description": "Seller phone number"},
                 "seller_name": {"type": "string", "description": "Seller first name"},
             },
-            "required": ["date", "time", "address", "lead_id", "seller_phone"],
+            "required": ["date", "time"],
         },
     },
     {
@@ -46,11 +45,9 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "to": {"type": "string", "description": "Seller phone number"},
                 "message": {"type": "string", "description": "SMS under 160 characters"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": ["to", "message", "lead_id"],
+            "required": ["message"],
         },
     },
     {
@@ -85,12 +82,11 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "lead_id": {"type": "string", "description": "Lead ID"},
                 "priority": {"type": "string", "enum": ["high", "medium", "low"], "description": "Follow-up priority"},
                 "notes": {"type": "string", "description": "Callback notes"},
                 "callback_time": {"type": "string", "description": "Requested callback timing"},
             },
-            "required": ["lead_id", "priority", "notes"],
+            "required": ["priority", "notes"],
         },
     },
     {
@@ -104,9 +100,8 @@ SOPHIA_TOOLS = [
                     "description": "appointment_booked, not_interested, callback_scheduled, wrong_number, other",
                 },
                 "summary": {"type": "string", "description": "Short call summary"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": ["reason", "summary", "lead_id"],
+            "required": ["reason", "summary"],
         },
     },
     {
@@ -120,9 +115,8 @@ SOPHIA_TOOLS = [
             "type": "object",
             "properties": {
                 "reason": {"type": "string", "description": "Why transfer is needed"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": ["reason", "lead_id"],
+            "required": ["reason"],
         },
     },
     {
@@ -134,9 +128,8 @@ SOPHIA_TOOLS = [
                 "delay_hours": {"type": "number"},
                 "day_of_week": {"type": "string"},
                 "notes": {"type": "string"},
-                "lead_id": {"type": "string"},
             },
-            "required": ["lead_id", "notes"],
+            "required": ["notes"],
         },
     },
     {
@@ -147,9 +140,8 @@ SOPHIA_TOOLS = [
             "properties": {
                 "question": {"type": "string"},
                 "context": {"type": "string"},
-                "lead_id": {"type": "string"},
             },
-            "required": ["question", "lead_id"],
+            "required": ["question"],
         },
     },
     {
@@ -158,14 +150,11 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "to": {"type": "string", "description": "Seller email address"},
                 "first_name": {"type": "string"},
-                "address": {"type": "string"},
                 "offer_low": {"type": "integer"},
                 "offer_high": {"type": "integer"},
-                "lead_id": {"type": "string"},
             },
-            "required": ["to", "lead_id"],
+            "required": [],
         },
     },
     {
@@ -178,10 +167,8 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "address": {"type": "string", "description": "Property address"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": ["address", "lead_id"],
+            "required": [],
         },
     },
     {
@@ -190,13 +177,10 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "seller_phone": {"type": "string", "description": "Seller phone number"},
                 "offer_low": {"type": "integer", "description": "Low end of offer range in dollars"},
                 "offer_high": {"type": "integer", "description": "High end of offer range in dollars"},
-                "address": {"type": "string", "description": "Property address"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": ["seller_phone", "lead_id"],
+            "required": [],
         },
     },
     {
@@ -205,13 +189,10 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "email": {"type": "string", "description": "Seller email address"},
-                "address": {"type": "string", "description": "Property address"},
                 "offer_low": {"type": "integer"},
                 "offer_high": {"type": "integer"},
-                "lead_id": {"type": "string"},
             },
-            "required": ["lead_id"],
+            "required": [],
         },
     },
     {
@@ -220,10 +201,9 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "lead_id": {"type": "string"},
                 "script": {"type": "string", "description": "Voicemail script to use: standard, callback, or urgent"},
             },
-            "required": ["lead_id"],
+            "required": [],
         },
     },
 ]
@@ -255,23 +235,26 @@ _ASK_ONLY_RESPONSES = {
 }
 
 
-def _preflight_gate(tool_name: str, tool_input: dict, call_ctx) -> dict:
+def _preflight_gate(tool_name: str, resolved, call_ctx) -> dict:
     from backend.contracts.intel_packet import (
         ALWAYS_ALLOWED_TOOLS, GATED_TOOLS, get_permission_level, is_permission_expired
     )
     from backend.lib.db import write_tool_gate_log, create_approval_request
 
-    lead_id = (tool_input.get("lead_id") or "") if tool_input else ""
-    if not lead_id and call_ctx is not None:
-        lead_id = getattr(call_ctx, "lead_id", "")
-    call_sid = getattr(call_ctx, "_call_sid", "") if call_ctx else ""
+    lead_id = resolved.lead_id
+    call_sid = resolved.call_sid
     packet_version = getattr(call_ctx, "packet_version", 0) if call_ctx else 0
 
     if tool_name in ALWAYS_ALLOWED_TOOLS:
         return {"blocked": False, "level": "allowed"}
 
     if tool_name not in GATED_TOOLS:
-        return {"blocked": False, "level": "allowed"}
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "unknown_tool", "not_in_capability_registry", packet_version)
+        return {"blocked": True, "message": "I'm not able to do that — let me have someone follow up."}
+
+    if tool_name in execution_context.SIDE_EFFECT_TOOLS and not execution_context.outbound_enabled():
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "outbound_disabled", "OUTBOUND_ENABLED_not_true", packet_version)
+        return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "Let me have someone follow up on that.")}
 
     fallback_mode = getattr(call_ctx, "fallback_mode", False) if call_ctx else False
     if fallback_mode and tool_name in _RISKY_TOOLS_MAP:
@@ -291,8 +274,13 @@ def _preflight_gate(tool_name: str, tool_input: dict, call_ctx) -> dict:
         return {"blocked": True, "message": "Let me check with my team real quick — there's something I want to verify first."}
 
     intel_packet = getattr(call_ctx, "intel_packet", None) if call_ctx else None
-    if not intel_packet:
-        return {"blocked": False, "level": "open_default"}
+    if not isinstance(intel_packet, dict) or not intel_packet:
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "no_intel_packet", "deny_default", packet_version)
+        return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "Let me have someone follow up on that.")}
+
+    if not intel_packet.get("safe_for_live_call", False):
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "packet_not_safe_for_live_call", "deny_default", packet_version)
+        return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "Let me have someone follow up on that.")}
 
     level = get_permission_level(intel_packet, tool_name)
     perms = intel_packet.get("action_permissions") or {}
@@ -368,12 +356,26 @@ def execute_tool(
     call_ctx=None,
     lf_trace=None,
 ) -> str:
-    logger.info("execute_tool name={} input={}", tool_name, tool_input)
+    logger.info("execute_tool name={} fields={}", tool_name, execution_context.redact(tool_input))
 
     try:
-        gate = _preflight_gate(tool_name, tool_input, call_ctx)
+        try:
+            resolved = execution_context.resolve(call_ctx)
+        except execution_context.ContextResolutionError as error:
+            logger.warning("tool_denied_unresolved_context tool={} reason={}", tool_name, str(error))
+            return "Let me have someone follow up on that."
+
+        gate = _preflight_gate(tool_name, resolved, call_ctx)
         if gate["blocked"]:
             return gate["message"]
+
+        tool_input = execution_context.sanitize(tool_name, tool_input, resolved)
+
+        if tool_name in execution_context.SIDE_EFFECT_TOOLS:
+            recheck = _preflight_gate(tool_name, resolved, call_ctx)
+            if recheck["blocked"]:
+                logger.warning("tool_denied_on_recheck tool={} call_sid={}", tool_name, resolved.call_sid)
+                return recheck["message"]
 
         if tool_name == "book_appointment":
             result = _book_appointment(tool_input)
@@ -419,11 +421,11 @@ def execute_tool(
 
         else:
             logger.warning("unknown tool called name={}", tool_name)
-            result = "Tool not found."
+            result = "I'm not able to do that — let me have someone follow up."
 
         try:
             from backend.observability import trace_tool_call
-            trace_tool_call(lf_trace, tool_name, tool_input, result)
+            trace_tool_call(lf_trace, tool_name, {"fields": execution_context.redact(tool_input)}, result)
         except Exception:
             pass
 

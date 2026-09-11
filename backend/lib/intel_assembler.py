@@ -34,7 +34,7 @@ def _detect_conflicts(bob_max_offer: int | None, comp_arv: int | None, seller_pr
 def assemble_intel_packet(lead_id: str) -> dict:
     from backend.lib.db import load_intel_packet, save_intel_packet, write_packet_event, _get_client
     from backend.contracts.intel_packet import (
-        PACKET_SCHEMA_VERSION, DEFAULT_OPEN_PERMISSIONS, migrate_packet, PACKET_STATES
+        PACKET_SCHEMA_VERSION, DEFAULT_DENY_PERMISSIONS, migrate_packet, PACKET_STATES
     )
 
     now = datetime.now(timezone.utc).isoformat()
@@ -118,7 +118,7 @@ def assemble_intel_packet(lead_id: str) -> dict:
         seller_price_floor=price_floor,
     )
 
-    action_permissions = bob_packet.get("action_permissions") or DEFAULT_OPEN_PERMISSIONS.copy()
+    action_permissions = bob_packet.get("action_permissions") or DEFAULT_DENY_PERMISSIONS.copy()
 
     if conflict_flags:
         for tool in ("book_appointment", "send_offer_summary", "get_offer_range", "send_followup_email"):

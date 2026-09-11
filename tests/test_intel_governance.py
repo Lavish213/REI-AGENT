@@ -2,6 +2,18 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 
+def _resolved(lead_id="test123"):
+    from backend.voice.execution_context import ResolvedContext
+    return ResolvedContext(
+        lead_id=lead_id,
+        call_sid="CA-test",
+        tenant_id="tenant-1",
+        seller_phone="+12094771234",
+        seller_email="owner@example.com",
+        address="7313 TRISTAN CIR",
+    )
+
+
 def _make_ctx(**kwargs):
     from backend.voice.processors.context_tracker import CallContext
     ctx = CallContext()
@@ -14,15 +26,15 @@ class TestPreflightGate:
     def test_always_allowed_tools_pass(self):
         from backend.voice.tools import _preflight_gate
         ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet={})
-        for tool in ["end_call", "transfer_call", "ask_operator", "set_disposition"]:
-            result = _preflight_gate(tool, {}, ctx)
+        for tool in ["end_call", "set_disposition"]:
+            result = _preflight_gate(tool, _resolved(), ctx)
             assert not result["blocked"], f"{tool} should always be allowed"
 
     def test_fallback_mode_blocks_risky_tools(self):
         from backend.voice.tools import _preflight_gate
         from backend.contracts.intel_packet import DEFAULT_FALLBACK_PERMISSIONS
         ctx = _make_ctx(lead_id="test123", fallback_mode=True, conflict_active=False, intel_packet={"action_permissions": DEFAULT_FALLBACK_PERMISSIONS})
-        result = _preflight_gate("send_offer_summary", {"lead_id": "test123"}, ctx)
+        result = _preflight_gate("send_offer_summary", _resolved(), ctx)
         assert result["blocked"]
         assert "system" in result["message"].lower() or "follow" in result["message"].lower()
 
@@ -31,32 +43,42 @@ class TestPreflightGate:
         ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=True, intel_packet={})
         with patch("backend.lib.db.create_approval_request", return_value="appr123"), \
              patch("backend.lib.db.write_tool_gate_log"):
-            result = _preflight_gate("get_offer_range", {"lead_id": "test123"}, ctx)
+            result = _preflight_gate("get_offer_range", _resolved(), ctx)
         assert result["blocked"]
 
     def test_blocked_permission_level(self):
         from backend.voice.tools import _preflight_gate
-        packet = {"action_permissions": {"get_offer_range": {"level": "blocked", "scope": "call", "granted_by": "bob"}}}
+        packet = {"safe_for_live_call": True, "action_permissions": {"get_offer_range": {"level": "blocked", "scope": "call", "granted_by": "bob"}}}
         ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet=packet)
         with patch("backend.lib.db.write_tool_gate_log"):
-            result = _preflight_gate("get_offer_range", {"lead_id": "test123"}, ctx)
+            result = _preflight_gate("get_offer_range", _resolved(), ctx)
         assert result["blocked"]
 
     def test_ask_only_level_returns_message(self):
         from backend.voice.tools import _preflight_gate
-        packet = {"action_permissions": {"get_offer_range": {"level": "ask_only", "scope": "call", "granted_by": "system"}}}
+        packet = {"safe_for_live_call": True, "action_permissions": {"get_offer_range": {"level": "ask_only", "scope": "call", "granted_by": "system"}}}
         ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet=packet)
         with patch("backend.lib.db.write_tool_gate_log"):
-            result = _preflight_gate("get_offer_range", {"lead_id": "test123"}, ctx)
+            result = _preflight_gate("get_offer_range", _resolved(), ctx)
         assert result["blocked"]
         assert "Alanzo" in result["message"] or "follow" in result["message"].lower()
 
-    def test_open_permission_passes(self):
+    def test_default_permissions_deny(self, monkeypatch):
         from backend.voice.tools import _preflight_gate
-        from backend.contracts.intel_packet import DEFAULT_OPEN_PERMISSIONS
-        ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet={"action_permissions": DEFAULT_OPEN_PERMISSIONS})
+        from backend.contracts.intel_packet import DEFAULT_DENY_PERMISSIONS
+        monkeypatch.setenv("OUTBOUND_ENABLED", "true")
+        ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet={"safe_for_live_call": True, "action_permissions": DEFAULT_DENY_PERMISSIONS})
         with patch("backend.lib.db.write_tool_gate_log"):
-            result = _preflight_gate("get_offer_range", {"lead_id": "test123"}, ctx)
+            result = _preflight_gate("get_offer_range", _resolved(), ctx)
+        assert result["blocked"]
+
+    def test_granted_permission_passes(self, monkeypatch):
+        from backend.voice.tools import _preflight_gate
+        monkeypatch.setenv("OUTBOUND_ENABLED", "true")
+        packet = {"safe_for_live_call": True, "action_permissions": {"get_offer_range": {"level": "quote_range", "scope": "call", "granted_by": "bob"}}}
+        ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet=packet)
+        with patch("backend.lib.db.write_tool_gate_log"):
+            result = _preflight_gate("get_offer_range", _resolved(), ctx)
         assert not result["blocked"]
 
 

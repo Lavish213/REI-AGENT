@@ -38,12 +38,7 @@ GATED_TOOLS = frozenset([
 
 ALWAYS_ALLOWED_TOOLS = frozenset([
     "end_call",
-    "transfer_call",
-    "ask_operator",
     "set_disposition",
-    "schedule_followup",
-    "schedule_callback",
-    "send_followup_sms",
 ])
 
 DEFAULT_FALLBACK_PERMISSIONS: dict[str, dict] = {
@@ -56,13 +51,18 @@ DEFAULT_FALLBACK_PERMISSIONS: dict[str, dict] = {
     "drop_voicemail":          {"level": "blocked",          "scope": "call", "granted_by": "fallback", "reason": "system_degraded"},
 }
 
-DEFAULT_OPEN_PERMISSIONS: dict[str, dict] = {
-    "book_appointment":        {"level": "book_appointment", "scope": "call", "granted_by": "system"},
-    "send_offer_summary":      {"level": "send_summary",     "scope": "call", "granted_by": "system"},
-    "get_offer_range":         {"level": "quote_range",      "scope": "call", "granted_by": "system"},
-    "send_followup_email":     {"level": "send_summary",     "scope": "call", "granted_by": "system"},
-    "collect_and_send_email":  {"level": "send_summary",     "scope": "call", "granted_by": "system"},
-    "drop_voicemail":          {"level": "send_summary",     "scope": "call", "granted_by": "system"},
+DEFAULT_DENY_PERMISSIONS: dict[str, dict] = {
+    "book_appointment":        {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "send_offer_summary":      {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "get_offer_range":         {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "send_followup_email":     {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "collect_and_send_email":  {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "drop_voicemail":          {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "send_followup_sms":       {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "schedule_followup":       {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "schedule_callback":       {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "transfer_call":           {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "ask_operator":            {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
 }
 
 
@@ -72,7 +72,7 @@ def migrate_packet(raw: dict) -> dict:
         return raw
     raw.setdefault("action_permissions", {})
     raw.setdefault("conflict_flags", [])
-    raw.setdefault("safe_for_live_call", True)
+    raw.setdefault("safe_for_live_call", False)
     raw.setdefault("packet_state", "system_assembled")
     raw.setdefault("pending_update", None)
     raw["schema_version"] = PACKET_SCHEMA_VERSION
@@ -81,10 +81,15 @@ def migrate_packet(raw: dict) -> dict:
 
 def get_permission_level(packet: dict, tool_name: str) -> str:
     if tool_name in ALWAYS_ALLOWED_TOOLS:
-        return "book_appointment"
+        return "allowed"
+    if not isinstance(packet, dict):
+        return "blocked"
     perms = packet.get("action_permissions") or {}
     perm = perms.get(tool_name) or {}
-    return perm.get("level", "blocked")
+    level = perm.get("level")
+    if not isinstance(level, str) or not level:
+        return "blocked"
+    return level
 
 
 def is_permission_expired(perm: dict) -> bool:
@@ -93,10 +98,12 @@ def is_permission_expired(perm: dict) -> bool:
     if not expires_at:
         return False
     try:
-        exp = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-        return datetime.now(timezone.utc) > exp
+        exp = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
     except Exception:
-        return False
+        return True
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) > exp
 
 
 def build_prompt_intel_slice(packet: dict) -> str:

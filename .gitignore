@@ -103,3 +103,6 @@ test-results/
 *.wav
 *.pcm
 *.onnx
+# Personal data must never be committed. See PII_PURGE_RUNBOOK.md
+scripts/data/*.csv
+*.bak
