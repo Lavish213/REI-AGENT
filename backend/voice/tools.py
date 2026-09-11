@@ -90,6 +90,18 @@ SOPHIA_TOOLS = [
         },
     },
     {
+        "name": "honor_stop_request",
+        "description": "Call this the moment the seller asks not to be contacted again — stop, remove me, take me off your list, do not call, quit calling, or any clear refusal of further contact. Suppresses all future contact for this person, records the request, and ends the call. Never ask a follow-up question, never ask for a referral, and never try to keep them talking after calling this.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "verbatim": {"type": "string", "description": "What the seller actually said, word for word"},
+                "channel": {"type": "string", "enum": ["all", "call", "sms", "email"], "description": "Scope of the request. Use all unless the seller was explicit about one channel."},
+            },
+            "required": ["verbatim"],
+        },
+    },
+    {
         "name": "end_call",
         "description": "End the conversation after wrapping up.",
         "input_schema": {
@@ -365,6 +377,12 @@ def execute_tool(
             logger.warning("tool_denied_unresolved_context tool={} reason={}", tool_name, str(error))
             return "Let me have someone follow up on that."
 
+        if getattr(call_ctx, "stop_requested", False) and tool_name != "end_call":
+            logger.warning(
+                "tool_denied_after_stop tool={} call_sid={}", tool_name, resolved.call_sid
+            )
+            return "You're already removed from our list. Take care."
+
         gate = _preflight_gate(tool_name, resolved, call_ctx)
         if gate["blocked"]:
             return gate["message"]
@@ -388,6 +406,11 @@ def execute_tool(
 
         elif tool_name == "schedule_followup":
             result = _schedule_followup(tool_input)
+
+        elif tool_name == "honor_stop_request":
+            result = _honor_stop_request(tool_input, resolved, call_ctx)
+            if call_ctx is not None:
+                call_ctx.call_should_end = True
 
         elif tool_name == "end_call":
             result = _end_call(tool_input)
@@ -435,6 +458,61 @@ def execute_tool(
         logger.exception("tool execution failed tool={} error={}", tool_name, str(e))
         return "Tool execution failed."
 
+
+
+def _honor_stop_request(inp: dict, resolved, call_ctx=None) -> str:
+    from backend.lib import db
+
+    channel = (inp.get("channel") or "all").strip().lower()
+    if channel not in ("all", "call", "sms", "email"):
+        channel = "all"
+
+    verbatim = (inp.get("verbatim") or "").strip()
+
+    results = {
+        "evidence": db.try_write(
+            "stop_evidence",
+            db.record_suppression_event,
+            tenant_id=resolved.tenant_id,
+            lead_id=resolved.lead_id,
+            contact_point=resolved.seller_phone,
+            contact_type="phone",
+            channel=channel,
+            method="verbal_stop_request",
+            source="live_call",
+            reason="seller_requested_no_contact",
+            call_sid=resolved.call_sid,
+            verbatim=verbatim,
+            actor="sophia",
+        ),
+        "dnc": db.try_write(
+            "stop_dnc", db.add_to_dnc, resolved.tenant_id, resolved.seller_phone, reason="seller_request"
+        ),
+        "lead_flag": db.try_write("stop_lead_flag", db.mark_lead_opted_out, resolved.lead_id),
+    }
+
+    if call_ctx is not None:
+        call_ctx.stop_requested = True
+        call_ctx.call_should_end = True
+        call_ctx.runtime_instruction = None
+
+    wrote = [k for k, ok in results.items() if ok]
+    missed = [k for k, ok in results.items() if not ok]
+
+    if not wrote:
+        logger.critical(
+            "STOP_REQUEST_UNPERSISTED lead_id={} call_sid={} phone_suffix={} "
+            "seller was told they are removed and NOTHING was written — "
+            "suppress this contact manually before any further outreach",
+            resolved.lead_id, resolved.call_sid, resolved.seller_phone[-4:],
+        )
+    elif missed:
+        logger.error("stop_request_partial lead_id={} wrote={} failed={}", resolved.lead_id, wrote, missed)
+    else:
+        logger.info("stop_request_honored lead_id={} call_sid={} channel={}",
+                    resolved.lead_id, resolved.call_sid, channel)
+
+    return "Understood — you're removed from our list and you won't hear from us again. Sorry to have bothered you."
 
 
 def _send_offer_summary(inp: dict, call_ctx=None) -> str:

@@ -17,7 +17,10 @@ IDENTITY_KEYS = frozenset({
     "call_sid",
 })
 
+STOP_TOOL = "honor_stop_request"
+
 SIDE_EFFECT_TOOLS = frozenset({
+    "set_disposition",
     "book_appointment",
     "send_followup_sms",
     "send_followup_email",
@@ -74,12 +77,7 @@ def _resolve_tenant(lead: dict, lead_id: str) -> str:
 
     lead_tenant = str(lead.get("tenant_id") or "").strip()
     if not lead_tenant:
-        logger.warning(
-            "tenant_absent_on_lead adopting_configured_tenant lead_id={} tenant={}",
-            lead_id,
-            system_tenant,
-        )
-        return system_tenant
+        raise ContextResolutionError("no_tenant_on_lead")
 
     if lead_tenant != system_tenant:
         raise ContextResolutionError("tenant_mismatch")

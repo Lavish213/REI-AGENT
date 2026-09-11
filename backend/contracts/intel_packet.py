@@ -28,6 +28,7 @@ ACTION_LEVELS = frozenset([
 ])
 
 GATED_TOOLS = frozenset([
+    "set_disposition",
     "send_offer_summary",
     "send_followup_email",
     "collect_and_send_email",
@@ -38,7 +39,7 @@ GATED_TOOLS = frozenset([
 
 ALWAYS_ALLOWED_TOOLS = frozenset([
     "end_call",
-    "set_disposition",
+    "honor_stop_request",
 ])
 
 DEFAULT_FALLBACK_PERMISSIONS: dict[str, dict] = {
@@ -61,6 +62,7 @@ DEFAULT_DENY_PERMISSIONS: dict[str, dict] = {
     "send_followup_sms":       {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
     "schedule_followup":       {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
     "schedule_callback":       {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
+    "set_disposition":         {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
     "transfer_call":           {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
     "ask_operator":            {"level": "blocked", "scope": "call", "granted_by": "deny_default", "reason": "no_intel_packet"},
 }

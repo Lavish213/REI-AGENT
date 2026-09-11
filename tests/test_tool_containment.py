@@ -204,7 +204,7 @@ class TestTenantBoundary:
     def test_matching_tenant_resolves(self):
         assert execution_context.resolve(FakeCtx()).tenant_id == "tenant-1"
 
-    def test_absent_lead_tenant_adopts_configured(self, monkeypatch):
+    def test_lead_without_tenant_denies(self, monkeypatch):
         monkeypatch.setattr(
             db,
             "get_lead_with_property",
@@ -215,7 +215,18 @@ class TestTenantBoundary:
             },
             raising=False,
         )
-        assert execution_context.resolve(FakeCtx()).tenant_id == "tenant-1"
+        with pytest.raises(execution_context.ContextResolutionError) as exc:
+            execution_context.resolve(FakeCtx())
+        assert "no_tenant_on_lead" in str(exc.value)
+
+    def test_lead_without_tenant_denies_tool_execution(self, monkeypatch):
+        monkeypatch.setattr(
+            db,
+            "get_lead_with_property",
+            lambda lead_id: {"id": lead_id, "owner_phone": REAL_PHONE, "properties": {}},
+            raising=False,
+        )
+        assert execute_denied(FakeCtx(), "send_followup_sms")
 
 
 class TestFailClosed:
@@ -267,7 +278,7 @@ class TestAlwaysAllowed:
         assert not overlap, f"side-effecting tools still unconditional: {overlap}"
 
     def test_only_local_tools_remain_unconditional(self):
-        assert intel_packet.ALWAYS_ALLOWED_TOOLS == frozenset({"end_call", "set_disposition"})
+        assert intel_packet.ALWAYS_ALLOWED_TOOLS == frozenset({"end_call", "honor_stop_request"})
 
 
 class TestOutboundKillSwitch:
@@ -345,3 +356,137 @@ class TestPhoneNormalization:
 def execute_denied(ctx, tool_name):
     result = tools.execute_tool(tool_name, {"message": "hi"}, call_ctx=ctx)
     return "follow up" in result.lower() or "not able" in result.lower()
+
+
+class TestStopRequest:
+    def test_stop_tool_is_unconditional(self):
+        assert "honor_stop_request" in intel_packet.ALWAYS_ALLOWED_TOOLS
+
+    def test_set_disposition_is_no_longer_unconditional(self):
+        assert "set_disposition" not in intel_packet.ALWAYS_ALLOWED_TOOLS
+        assert "set_disposition" in intel_packet.GATED_TOOLS
+
+    def test_only_end_call_and_stop_are_unconditional(self):
+        assert intel_packet.ALWAYS_ALLOWED_TOOLS == frozenset({"end_call", "honor_stop_request"})
+
+    def test_stop_schema_asks_only_for_evidence(self):
+        tool = next(t for t in tools.SOPHIA_TOOLS if t["name"] == "honor_stop_request")
+        props = set(tool["input_schema"]["properties"])
+        assert props == {"verbatim", "channel"}
+        assert not props & execution_context.IDENTITY_KEYS
+
+    def test_stop_works_with_no_intel_packet(self, monkeypatch):
+        calls = _capture_suppression(monkeypatch)
+        ctx = FakeCtx(packet={})
+        result = tools.execute_tool("honor_stop_request", {"verbatim": "stop calling me"}, call_ctx=ctx)
+        assert "removed" in result.lower()
+        assert calls["events"], "STOP must record evidence even with no packet"
+
+    def test_stop_works_in_fallback_mode(self, monkeypatch):
+        calls = _capture_suppression(monkeypatch)
+        ctx = FakeCtx()
+        ctx.fallback_mode = True
+        tools.execute_tool("honor_stop_request", {"verbatim": "take me off"}, call_ctx=ctx)
+        assert calls["events"]
+
+    def test_stop_works_when_outbound_disabled(self, monkeypatch):
+        monkeypatch.delenv("OUTBOUND_ENABLED", raising=False)
+        calls = _capture_suppression(monkeypatch)
+        tools.execute_tool("honor_stop_request", {"verbatim": "do not call"}, call_ctx=FakeCtx())
+        assert calls["events"]
+
+    def test_stop_uses_server_contact_not_model_supplied(self, monkeypatch):
+        calls = _capture_suppression(monkeypatch)
+        tools.execute_tool(
+            "honor_stop_request",
+            {"verbatim": "stop", "seller_phone": ATTACKER_PHONE, "lead_id": ATTACKER_LEAD},
+            call_ctx=FakeCtx(),
+        )
+        assert calls["events"][0]["contact_point"] == REAL_PHONE
+        assert calls["events"][0]["lead_id"] == REAL_LEAD
+
+    def test_stop_only_suppresses_never_grants(self, monkeypatch):
+        calls = _capture_suppression(monkeypatch)
+        tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=FakeCtx())
+        assert all(e.get("action", "suppressed") == "suppressed" for e in calls["events"])
+        assert calls["dnc"], "STOP must add to the DNC list"
+
+    def test_stop_ends_the_call(self, monkeypatch):
+        _capture_suppression(monkeypatch)
+        ctx = FakeCtx()
+        tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
+        assert ctx.call_should_end is True
+        assert ctx.stop_requested is True
+
+    def test_no_action_occurs_after_stop(self, monkeypatch):
+        _capture_suppression(monkeypatch)
+        ctx = FakeCtx()
+        tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
+        for name in sorted(execution_context.SIDE_EFFECT_TOOLS):
+            result = tools.execute_tool(name, {"message": "hi"}, call_ctx=ctx)
+            assert "already removed" in result.lower(), f"{name} ran after STOP"
+
+    def test_referral_ask_cannot_run_after_stop(self, monkeypatch):
+        _capture_suppression(monkeypatch)
+        ctx = FakeCtx()
+        tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
+        assert "already removed" in tools.execute_tool(
+            "send_followup_sms", {"message": "know anyone selling?"}, call_ctx=ctx
+        ).lower()
+
+    def test_total_write_failure_still_ends_call(self, monkeypatch):
+        def boom(*a, **k):
+            raise RuntimeError("database down")
+        monkeypatch.setattr(db, "record_suppression_event", boom, raising=False)
+        monkeypatch.setattr(db, "add_to_dnc", boom, raising=False)
+        monkeypatch.setattr(db, "mark_lead_opted_out", boom, raising=False)
+        ctx = FakeCtx()
+        result = tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
+        assert ctx.call_should_end is True
+        assert ctx.stop_requested is True
+        assert "removed" in result.lower()
+
+    def test_channel_is_clamped_to_known_values(self, monkeypatch):
+        calls = _capture_suppression(monkeypatch)
+        tools.execute_tool(
+            "honor_stop_request", {"verbatim": "stop", "channel": "../../etc/passwd"}, call_ctx=FakeCtx()
+        )
+        assert calls["events"][0]["channel"] == "all"
+
+
+class TestReplayAndDegradedOperation:
+    def test_repeated_stop_is_idempotent_in_effect(self, monkeypatch):
+        calls = _capture_suppression(monkeypatch)
+        ctx = FakeCtx()
+        tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
+        tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
+        assert all(e["contact_point"] == REAL_PHONE for e in calls["events"])
+        assert ctx.stop_requested is True
+
+    def test_replayed_side_effect_after_stop_is_denied(self, monkeypatch):
+        _capture_suppression(monkeypatch)
+        ctx = FakeCtx()
+        payload = {"message": "hi"}
+        assert "already removed" not in tools.execute_tool("send_followup_sms", payload, call_ctx=ctx).lower()
+        tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
+        assert "already removed" in tools.execute_tool("send_followup_sms", payload, call_ctx=ctx).lower()
+
+    def test_degraded_context_never_widens_authority(self, monkeypatch):
+        ctx = FakeCtx(packet={})
+        ctx.fallback_mode = True
+        resolved = execution_context.resolve(ctx)
+        for name in sorted(intel_packet.GATED_TOOLS):
+            assert tools._preflight_gate(name, resolved, ctx)["blocked"], f"{name} allowed while degraded"
+
+
+def _capture_suppression(monkeypatch):
+    calls = {"events": [], "dnc": [], "flags": []}
+
+    def _event(**kwargs):
+        calls["events"].append(kwargs)
+        return "evt-1"
+
+    monkeypatch.setattr(db, "record_suppression_event", _event, raising=False)
+    monkeypatch.setattr(db, "add_to_dnc", lambda *a, **k: calls["dnc"].append(a), raising=False)
+    monkeypatch.setattr(db, "mark_lead_opted_out", lambda lid: calls["flags"].append(lid), raising=False)
+    return calls
