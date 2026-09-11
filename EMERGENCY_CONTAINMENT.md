@@ -52,7 +52,33 @@ asks the model for `lead_id`, `seller_phone`, `to`, `email`, `address`,
 **Layer 2 — resolution.** `resolve(call_ctx)` builds a frozen `ResolvedContext`
 from authenticated call state and the lead record. It raises, and the tool is
 denied, when any of these is missing: call context, `lead_id`, `call_sid`, the
-lead row itself, or a verified contact point.
+lead row itself, a verified contact point, or the configured tenant.
+
+### Tenant — closed in a follow-up, with one documented allowance
+
+The first pass resolved `tenant_id` but never rejected on its absence. That was
+a gap against the spec and is now closed, but the closure needed a judgement
+call worth stating plainly.
+
+**There is no tenant boundary anywhere in this system.** No migration creates a
+`tenant_id` column, no code outside this module references one, and no env var
+declared it. Every other occurrence of "tenant" in the codebase means *renter*.
+A literal "reject when tenant is missing" would therefore have denied 100% of
+tool calls — correct on paper, and indistinguishable from a bug in a week.
+
+What landed instead, in `_resolve_tenant`:
+
+| Condition | Result |
+|---|---|
+| `TENANT_ID` env var unset | **Deny** — `no_configured_tenant` |
+| Lead's `tenant_id` differs from `TENANT_ID` | **Deny** — `tenant_mismatch` |
+| Lead carries no `tenant_id` | Adopt configured tenant, log `tenant_absent_on_lead` |
+
+The third row is the allowance. It is what makes a single-operator deployment
+work before the column exists, and it is **not** tenant isolation — a lead with
+no tenant is accepted into whatever tenant is configured. The cross-tenant
+rejection that the review actually cares about is live now and will keep working
+unchanged once the column lands.
 
 **Layer 3 — sanitization.** `sanitize()` strips every identity key from the
 model payload regardless of whether the schema advertised it, logs
@@ -114,13 +140,14 @@ via `redact()`. The Langfuse trace call was changed the same way.
 
 ## 5. Tests
 
-`tests/test_tool_containment.py` — **34 tests, all passing.**
+`tests/test_tool_containment.py` — **40 tests, all passing.**
 
 | Class | Proves |
 |---|---|
 | `TestIdentitySubstitution` | Substituted lead ID, phone, email, address are discarded; every identity key is server-owned; no schema asks for one |
 | `TestPromptInjection` | An injected redirect cannot change target; injected text survives as inert content |
 | `TestUnresolvableContext` | Missing ctx, lead ID, call SID, lead row, or contact point each deny |
+| `TestTenantBoundary` | Unconfigured tenant denies; cross-tenant lead denies; matching tenant resolves; absent lead tenant adopts configured |
 | `TestFailClosed` | Missing packet, unsafe packet, unknown tool, malformed expiry, expired permission, migrated packet, missing level |
 | `TestAlwaysAllowed` | No side-effecting tool is unconditional |
 | `TestOutboundKillSwitch` | Default off; only literal `true` enables; every side-effect tool denied when off |
@@ -140,7 +167,7 @@ via `redact()`. The Langfuse trace call was changed the same way.
 
 | | Before | After |
 |---|---|---|
-| Full suite | 143 failed / 83 passed | **76 failed / 186 passed** |
+| Full suite | 143 failed / 83 passed | **76 failed / 192 passed** |
 | `test_intel_governance.py` | 11 failed / 6 passed | 10 failed / 8 passed |
 
 Most of that gain is installing `supabase`, not the patch. `tests/conftest.py`
@@ -173,9 +200,10 @@ than executed.
 - **No permission ledger.** `callable` is still an authorization proxy (N-C3).
 - **No migrations.** 22 tables still absent.
 - **No durable execution.** No outbox, no idempotency, no leases.
-- **No tenant boundary.** `ResolvedContext` carries `tenant_id`, but nothing
-  enforces it yet — that field exists so the enforcement point is already
-  threaded when Gate 1A adds it.
+- **No real tenant isolation.** Cross-tenant mismatch and unconfigured tenant
+  now deny, but a lead with no `tenant_id` is adopted into the configured tenant
+  because the column does not exist. Real isolation needs the column, RLS,
+  repository filters, and job scoping — Gate 1A.
 - **Disclosure remains model-discretionary.** Prompt-resident, not deterministic.
 - **`send_sms` is unchanged** (N-H1). The tool path is now gated, but the
   primitive is still importable and still checks only Pacific clock hours.

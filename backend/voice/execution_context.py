@@ -63,6 +63,30 @@ def outbound_enabled() -> bool:
     return os.environ.get("OUTBOUND_ENABLED", "false").strip().lower() == "true"
 
 
+def configured_tenant() -> str:
+    return os.environ.get("TENANT_ID", "").strip()
+
+
+def _resolve_tenant(lead: dict, lead_id: str) -> str:
+    system_tenant = configured_tenant()
+    if not system_tenant:
+        raise ContextResolutionError("no_configured_tenant")
+
+    lead_tenant = str(lead.get("tenant_id") or "").strip()
+    if not lead_tenant:
+        logger.warning(
+            "tenant_absent_on_lead adopting_configured_tenant lead_id={} tenant={}",
+            lead_id,
+            system_tenant,
+        )
+        return system_tenant
+
+    if lead_tenant != system_tenant:
+        raise ContextResolutionError("tenant_mismatch")
+
+    return lead_tenant
+
+
 def _normalize_phone(raw: str | None) -> str:
     if not raw:
         return ""
@@ -92,7 +116,7 @@ def resolve(call_ctx) -> ResolvedContext:
     if not lead:
         raise ContextResolutionError("lead_not_found")
 
-    tenant_id = str(lead.get("tenant_id") or "").strip()
+    tenant_id = _resolve_tenant(lead, lead_id)
 
     seller_phone = _normalize_phone(
         lead.get("owner_phone") or getattr(call_ctx, "seller_phone", "")

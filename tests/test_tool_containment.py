@@ -58,6 +58,7 @@ def _stub_db(monkeypatch):
     monkeypatch.setattr(db, "write_tool_gate_log", lambda *a, **k: None, raising=False)
     monkeypatch.setattr(db, "create_approval_request", lambda *a, **k: "appr-1", raising=False)
     monkeypatch.setenv("OUTBOUND_ENABLED", "true")
+    monkeypatch.setenv("TENANT_ID", "tenant-1")
 
 
 class TestIdentitySubstitution:
@@ -156,6 +157,65 @@ class TestUnresolvableContext:
             raising=False,
         )
         assert execute_denied(FakeCtx(), "send_followup_sms")
+
+
+class TestTenantBoundary:
+    def test_unconfigured_system_tenant_denies(self, monkeypatch):
+        monkeypatch.delenv("TENANT_ID", raising=False)
+        with pytest.raises(execution_context.ContextResolutionError) as exc:
+            execution_context.resolve(FakeCtx())
+        assert "no_configured_tenant" in str(exc.value)
+
+    def test_unconfigured_system_tenant_denies_tool_execution(self, monkeypatch):
+        monkeypatch.delenv("TENANT_ID", raising=False)
+        assert execute_denied(FakeCtx(), "send_followup_sms")
+
+    def test_cross_tenant_lead_denies(self, monkeypatch):
+        monkeypatch.setattr(
+            db,
+            "get_lead_with_property",
+            lambda lead_id: {
+                "id": lead_id,
+                "tenant_id": "someone-elses-tenant",
+                "owner_phone": REAL_PHONE,
+                "owner_email": REAL_EMAIL,
+                "properties": {"address": REAL_ADDRESS},
+            },
+            raising=False,
+        )
+        with pytest.raises(execution_context.ContextResolutionError) as exc:
+            execution_context.resolve(FakeCtx())
+        assert "tenant_mismatch" in str(exc.value)
+
+    def test_cross_tenant_lead_denies_tool_execution(self, monkeypatch):
+        monkeypatch.setattr(
+            db,
+            "get_lead_with_property",
+            lambda lead_id: {
+                "id": lead_id,
+                "tenant_id": "someone-elses-tenant",
+                "owner_phone": REAL_PHONE,
+                "properties": {},
+            },
+            raising=False,
+        )
+        assert execute_denied(FakeCtx(), "send_followup_sms")
+
+    def test_matching_tenant_resolves(self):
+        assert execution_context.resolve(FakeCtx()).tenant_id == "tenant-1"
+
+    def test_absent_lead_tenant_adopts_configured(self, monkeypatch):
+        monkeypatch.setattr(
+            db,
+            "get_lead_with_property",
+            lambda lead_id: {
+                "id": lead_id,
+                "owner_phone": REAL_PHONE,
+                "properties": {"address": REAL_ADDRESS},
+            },
+            raising=False,
+        )
+        assert execution_context.resolve(FakeCtx()).tenant_id == "tenant-1"
 
 
 class TestFailClosed:
