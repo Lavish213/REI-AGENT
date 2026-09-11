@@ -316,9 +316,10 @@ The third is **not** simply a duplicate — `sophia/turn.py` imports
 | `dashboard/app/api/ingest/*` (4 routes) | `REPLACE` | **No authentication** (3.3); writes to shared Supabase |
 | `dashboard/lib/supabase.ts` | `HARDEN` | Service key in a Next.js route |
 | `dashboard/app/**` (12 pages, 1 component) | `ADAPT` | Merge Sophia-Agent's `/health`, `/reasoning`, `/discovered`, `/buyers`, auth middleware |
-| `supabase/migrations/*` (13) | `KEEP` | Applied; forward-only |
+| `supabase/migrations/*` (13) | `REPLACE` | **Corrected 2026-09-11.** Migrations create only 6 tables (`call_events`, `compliance_log`, `followups`, `offers`, `transcript_chunks`, `workflows`) and ALTER three more. Code references 28. The baseline schema for `leads`, `properties`, `calls`, `contacts`, `sms_messages`, `dnc_list` and 16 others is **not in version control** — a clean environment cannot be built from this repo. See `SECOND_AUDIT_VERIFICATION.md` §3.1 |
 | `tests/*` (10 files, 257 tests) | `KEEP` | |
-| `scripts/*` (9 py, 2 csv) | `KEEP` | Never imported |
+| `scripts/*.py` (9) | `KEEP` | Never imported |
+| `scripts/data/*.csv` (2) | `DELETE` + history rewrite | **Corrected 2026-09-11.** 578 rows of real personal data — owner first/last names, mailing addresses, and named listing agents with email and phone. Deleting from HEAD does not clear history, forks, or clones. See `SECOND_AUDIT_VERIFICATION.md` §3.2 |
 | `SOPHIA_*.md` (16 files) | `ADAPT` | Behaviour specs; reconcile against §12 |
 | `docs/**` (6) | `KEEP` | |
 | `AGENTS.md` | `ADAPT` | Missing the config.py and no-shared-DB rules |
