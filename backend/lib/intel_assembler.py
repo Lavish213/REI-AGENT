@@ -17,8 +17,12 @@ def _is_stale(assembled_at: str | None) -> bool:
 
 def _detect_conflicts(bob_max_offer: int | None, comp_arv: int | None, seller_price_floor: int | None) -> list[dict]:
     flags = []
+    values = {"bob_max_offer": bob_max_offer, "comp_arv": comp_arv, "seller_price_floor": seller_price_floor}
+    invalid = [key for key, value in values.items() if value is not None and (type(value) is not int or value <= 0)]
+    if invalid:
+        return [{"type": "INVALID_MONEY_INPUT", "fields": invalid}]
     if bob_max_offer and comp_arv:
-        if comp_arv < bob_max_offer * 0.85:
+        if comp_arv * 100 < bob_max_offer * 85:
             flags.append({"type": "COMP_BELOW_MAX_OFFER", "bob_max": bob_max_offer, "comp_arv": comp_arv})
     if bob_max_offer and seller_price_floor:
         if seller_price_floor > bob_max_offer:
@@ -76,15 +80,12 @@ def assemble_intel_packet(lead_id: str) -> dict:
     call_summary = lead.get("call_summary") or ""
     hot_topics = lead.get("hot_topics") or []
     price_floor_cents = lead.get("price_floor")
-    price_floor = price_floor_cents // 100 if price_floor_cents else None
     objections = lead.get("objections_raised") or []
     timeline = lead.get("timeline_urgency")
     disposition = lead.get("disposition", "").upper()
 
     arv_cents = prop.get("estimated_arv")
     mao_cents = prop.get("mao")
-    arv = arv_cents // 100 if arv_cents else None
-    mao = mao_cents // 100 if mao_cents else None
     arv_confidence = prop.get("arv_confidence", "low")
 
     seller_profile = {
@@ -99,8 +100,8 @@ def assemble_intel_packet(lead_id: str) -> dict:
 
     property_profile = {
         "address": {"value": prop.get("address"), "source": "db", "updated_at": now},
-        "arv": {"value": arv, "source": "comps", "updated_at": now, "confidence": arv_confidence},
-        "mao": {"value": mao, "source": "comps", "updated_at": now},
+        "arv": {"value": arv_cents, "unit": "USD_cents", "source": "comps", "updated_at": now, "confidence": arv_confidence},
+        "mao": {"value": mao_cents, "unit": "USD_cents", "source": "comps", "updated_at": now},
         "distress_type": {"value": prop.get("distress_type"), "source": "db", "updated_at": now},
         "distress_score": {"value": prop.get("distress_score"), "source": "db", "updated_at": now},
         "equity_pct": {"value": prop.get("equity_pct"), "source": "db", "updated_at": now},
@@ -113,8 +114,8 @@ def assemble_intel_packet(lead_id: str) -> dict:
 
     conflict_flags = _detect_conflicts(
         bob_max_offer=bob_max_offer,
-        comp_arv=arv,
-        seller_price_floor=price_floor,
+        comp_arv=arv_cents,
+        seller_price_floor=price_floor_cents,
     )
 
     action_permissions = bob_packet.get("action_permissions") or DEFAULT_DENY_PERMISSIONS.copy()

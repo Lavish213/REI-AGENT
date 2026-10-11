@@ -1497,3 +1497,16 @@ def try_write(label: str, fn, *args, **kwargs) -> bool:
     except Exception as error:
         logger.exception("write_failed op={} error={}", label, str(error))
         return False
+
+
+def record_bob_call_facts(lead_id, call_sid, facts):
+    import os
+    if not lead_id or not call_sid or not isinstance(facts, dict) or not facts:
+        return False
+    response = _get_client().rpc("bob_record_call_facts", {
+        "p_tenant_id": os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001"),
+        "p_lead_id": lead_id, "p_call_sid": call_sid, "p_facts": facts,
+    }).execute()
+    if response.data is not True:
+        raise RuntimeError("Bob call facts were not persisted")
+    return True

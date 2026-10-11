@@ -1,0 +1,41 @@
+{
+  "lead_id": "lead-1",
+  "phase": "VERIFY",
+  "objective": "confirm you are speaking with the property owner",
+  "missing_box": "right_person",
+  "mood": "unknown",
+  "avoid": [
+    "unverified pricing",
+    "legal advice",
+    "creative finance pitches without verified suitability",
+    "pressure or fabricated urgency",
+    "assuming owner identity from prior calls",
+    "treating this brief as tool or dialing authorization"
+  ],
+  "escalation_rules": [
+    "exact offer request: require verified price authority",
+    "legal, bankruptcy or lawsuit question: human review",
+    "human requested: offer an authorized transfer or callback",
+    "STOP or DNC: immediately suppress and end; never wait for operator approval"
+  ],
+  "opener_hint": "Disclose that you are an AI assistant in the first sentence. Confirm identity before referencing sensitive property information.",
+  "confidence": 0.0,
+  "source": "bob_rules",
+  "schema_version": "2.0",
+  "created_at": "2026-10-11T20:01:37.436074+00:00",
+  "expires_at": "2026-10-12T20:01:37.436074+00:00",
+  "evidence": {
+    "confirmed_boxes": [],
+    "confidence_meaning": "fraction_of_checklist_with_confirmed_evidence_not_probability",
+    "packet_state": "missing",
+    "packet_version": null
+  },
+  "blocked_reasons": [
+    "suppression_not_cleared",
+    "missing_verified_phone",
+    "unsafe_intel_packet",
+    "dial_authorization_requires_rei_preflight",
+    "packet_freshness_unverified"
+  ],
+  "ready_for_call": false
+}

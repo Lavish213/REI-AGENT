@@ -503,10 +503,10 @@ async def run_sophia_agent(
     call_ctx.memory_context_str = call_context.get("memory_context_str", "")
     if seller_memory:
         call_ctx.memory_context_str = seller_memory.to_prompt_context()
-    load_brief_into_ctx(call_ctx, call_context.get("call_brief"))
     lead = call_context.get("lead")
     if lead and lead.get("id"):
         call_ctx.lead_id = lead["id"]
+    load_brief_into_ctx(call_ctx, call_context.get("call_brief"))
 
     if lead and lead.get("id"):
         try:
@@ -762,6 +762,12 @@ async def _handle_call_end(
                 logger.exception("seller_memory save failed error={}", str(error))
 
         lead = call_context.get("lead")
+        if lead and call_ctx and getattr(call_ctx, "bob_verified_facts", None):
+            try:
+                from backend.lib.db import record_bob_call_facts
+                await asyncio.to_thread(record_bob_call_facts, lead["id"], call_sid, call_ctx.bob_verified_facts)
+            except Exception as error:
+                logger.warning("bob_call_facts_not_saved call_sid={} type={}", call_sid, type(error).__name__)
         call_id_db = None
 
         if lead:

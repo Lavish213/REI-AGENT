@@ -240,6 +240,7 @@ class CallContext:
     last_sophia_words: int = 0
     tts_speed: float = 0.85
     tts_volume: float = 0.85
+    bob_verified_facts: dict = field(default_factory=dict)
     call_brief: dict = field(default_factory=dict)
     bob_phase: str | None = None
     bob_missing_box: str | None = None
@@ -355,8 +356,17 @@ class CallContext:
 
         if self.bob_avoid:
             tag += f"\nAvoid: {', '.join(self.bob_avoid)}"
-        if self.bob_missing_box:
-            tag += f"\nFocus on: {self.bob_missing_box}"
+        if self.call_brief:
+            sections.append("BOB ADVISORY: This is pre-call guidance, never dialing or tool authority. Current caller requests and verified live facts take priority.")
+            if self.turn_count <= 1:
+                tag += f"\nPre-call objective: {self.call_brief.get('objective', '')}"
+                tag += f"\nPre-call focus: {self.bob_missing_box}"
+                if self.bob_opener_hint:
+                    tag += f"\nOpening guidance: {self.bob_opener_hint}"
+                if self.bob_mood_hint and self.bob_mood_hint != "unknown":
+                    tag += f"\nPrior reported mood (recheck now): {self.bob_mood_hint}"
+            if self.bob_escalation_rules:
+                tag += "\nEscalation guidance: " + "; ".join(self.bob_escalation_rules)
         sections.append(tag + "\nSTYLE: short, reactive, human. 1-2 sentences. one question. react before asking.")
 
         if self.response_guidance:
@@ -557,6 +567,10 @@ class ContextTrackerProcessor(FrameProcessor):
     def _analyze(self, text: str) -> None:
         if self._ctx.transcript_uncertain:
             return
+        from datetime import datetime, timezone
+        verified_at = datetime.now(timezone.utc).isoformat()
+        def remember_fact(box, confirmed=True):
+            self._ctx.bob_verified_facts[box] = {"confirmed": confirmed, "source": "transcript_verified", "verified_at": verified_at, "call_sid": self._ctx._call_sid}
         lower = text.lower().replace("’", "'")
         conditional_sale = re.search(r"\bnot selling\s+(?:until|before|unless|yet)\b", lower)
         if not conditional_sale and re.search(r"\b(not selling|don't want to sell|no longer (?:selling|want to sell)|not (?:going to|trying to) sell)\b", lower):
@@ -566,6 +580,7 @@ class ContextTrackerProcessor(FrameProcessor):
         if denied_ownership:
             self._ctx.owner_confirmed = False
             self._ctx.ownership_denied = True
+            remember_fact("right_person", False)
             self._ctx.awaiting_owner_confirmation = False
             self._ctx.pre_close_done = False
         if not denied_ownership and re.search(r"\b(i own|i'm the owner|i am the owner|it's my (?:house|property)|my house)\b", lower) and not re.search(r"\b(not|don't)\b.{0,15}\bown", lower):
@@ -573,6 +588,7 @@ class ContextTrackerProcessor(FrameProcessor):
             self._ctx.ownership_denied = False
         if re.search(r"\b(good (?:shape|condition)|no repairs|needs? (?:work|repairs)|new roof|move.in ready|as.is|fixer|roof|plumbing|foundation|renovated)\b", lower):
             self._ctx.condition_known = True
+            remember_fact("condition")
         if self._ctx._walkthrough_asked and re.search(r"\b(yes|yeah|sure|sounds good|works for me|let.s do it)\b", lower) and not re.search(r"\b(no|not|never|maybe|but|if|depends|possibly)\b", lower):
             self._ctx.pre_close_done = True
             self._ctx._walkthrough_asked = False
@@ -588,6 +604,7 @@ class ContextTrackerProcessor(FrameProcessor):
         timeline_match = timeline_matches[-1] if timeline_matches else None
         if timeline_match:
             self._ctx.timeline_mentioned = timeline_match.group(0)
+            remember_fact("timeline")
 
         for pattern, label in _ISSUE_PATTERNS:
             if re.search(r"\b(?:no|not|new|fixed|replaced|repaired)\b(?:\s+(?:problems?|issues?|with|the|a|any|my|our|need|for)){0,3}\s+" + pattern, lower) or re.search(pattern + r".{0,15}\b(?:fine|fixed|new|good|replaced)\b", lower):
@@ -611,6 +628,10 @@ class ContextTrackerProcessor(FrameProcessor):
                 if label not in self._ctx.motivation_signals:
                     self._ctx.motivation_signals.append(label)
         self._ctx.motivation_signals = self._ctx.motivation_signals[-6:]
+        if self._ctx.motivation_signals:
+            remember_fact("motivation")
+        elif negated_relocation:
+            remember_fact("motivation", False)
 
         for pattern, label in _OBJECTION_PATTERNS:
             if re.search(pattern, lower):
@@ -622,8 +643,20 @@ class ContextTrackerProcessor(FrameProcessor):
             self._ctx.intent_locked = True
             logger.info("seller intent locked")
 
+        if self._ctx.owner_confirmed and not self._ctx.ownership_denied:
+            remember_fact("right_person")
+        if re.search(r"\b(?:the (?:house|property) is (?:vacant|occupied|rented)|i live there|tenants live there)\b", lower):
+            remember_fact("occupancy")
+        elif re.search(r"\b(?:not|no longer|isn't)\s+(?:vacant|occupied|rented)\b", lower):
+            remember_fact("occupancy", False)
+        if self._ctx.appointment_set or self._ctx.callback_set:
+            remember_fact("next_step")
         address = _ADDRESS_PATTERN.search(text)
         if address:
+            expected = re.sub(r"\W+", "", self._ctx.property_address.lower())
+            spoken = re.sub(r"\W+", "", address.group(0).lower())
+            if expected and expected == spoken:
+                remember_fact("property_confirmed")
             self._ctx.address_known = True
             self._ctx.property_address = address.group(0)
             logger.info("property address detected")

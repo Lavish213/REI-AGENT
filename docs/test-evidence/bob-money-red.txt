@@ -1,0 +1,41 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________ test_real_assembler_call_preserves_cents_for_conflict_checks _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f2bbebcc610>
+
+    def test_real_assembler_call_preserves_cents_for_conflict_checks(monkeypatch):
+        from unittest.mock import MagicMock
+        from backend.lib import db, intel_assembler
+        client = MagicMock()
+        lead_query = MagicMock()
+        prop_query = MagicMock()
+        for query in [lead_query, prop_query]:
+            for method in ['select', 'eq', 'limit']:
+                getattr(query, method).return_value = query
+        lead_query.execute.return_value.data = [{'id': 'lead-1', 'price_floor': 28000000, 'disposition': 'WARM'}]
+        prop_query.execute.return_value.data = [{'id': 'property', 'estimated_arv': 42000000, 'mao': 26900000, 'arv_confidence': 'high'}]
+        client.table.side_effect = lambda table: lead_query if table == 'leads' else prop_query
+        monkeypatch.setattr(db, '_get_client', lambda: client)
+        monkeypatch.setattr(db, 'load_intel_packet', lambda lead_id: {'packet_state': 'draft', 'strategy_context': {'max_offer': 34000000}})
+        monkeypatch.setattr(db, 'save_intel_packet', lambda packet: None)
+        monkeypatch.setattr(db, 'write_packet_event', lambda **kwargs: None)
+        result = intel_assembler.assemble_intel_packet('lead-1')
+>       assert result['conflict_flags'] == []
+E       AssertionError: assert [{'type': 'CO...nts': 140000}] == []
+E         
+E         Left contains 2 more items, first extra item: {'type': 'COMP_BELOW_MAX_OFFER', 'bob_max': 34000000, 'comp_arv': 420000}
+E         Use -v to get more diff
+
+tests/test_bob_brief_contract.py:137: AssertionError
+----------------------------- Captured stderr call -----------------------------
+2026-10-11 17:14:51.902 | INFO     | backend.lib.intel_assembler:assemble_intel_packet:197 - intel_assembler assembled lead_id=lead-1 state=conflicted conflicts=2
+=============================== warnings summary ===============================
+.venv/lib/python3.11/site-packages/pipecat/audio/utils.py:14
+  /workspace/scratch/189c92124d0f/REI-AGENT/.venv/lib/python3.11/site-packages/pipecat/audio/utils.py:14: DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+    import audioop
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_bob_brief_contract.py::test_real_assembler_call_preserves_cents_for_conflict_checks
+1 failed, 1 warning in 0.58s
