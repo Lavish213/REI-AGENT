@@ -18,7 +18,7 @@ def load_brief_into_ctx(call_ctx, brief: dict | None) -> None:
     call_ctx.bob_missing_box = brief.get("missing_box")
     call_ctx.bob_mood_hint = brief.get("mood")
     call_ctx.bob_avoid = brief.get("avoid") or []
-    call_ctx.bob_escalation_rules = brief.get("escalation_rules") or []
+    call_ctx.bob_escalation_rules = brief.get("escalation") or brief.get("escalation_rules") or []
     call_ctx.bob_opener_hint = brief.get("opener_hint")
     if brief.get("phase"):
         stage = _PHASE_TO_STAGE.get(brief["phase"])

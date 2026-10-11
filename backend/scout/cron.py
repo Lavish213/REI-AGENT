@@ -9,7 +9,6 @@ load_dotenv()
 
 from backend.lib.db import (
     upsert_property,
-    get_new_properties_since,
     insert_lead,
     get_lead_by_property,
 )
@@ -78,12 +77,11 @@ def run_scout() -> None:
                 leads_created += 1
 
                 csv_phone = prop.pop("_owner_phone", None)
-                csv_phone_2 = prop.pop("_owner_phone_2", None)
+                prop.pop("_owner_phone_2", None)
                 csv_email = prop.pop("_owner_email", None)
                 if csv_phone or csv_email:
                     try:
                         from backend.lib.db import _get_client
-                        from datetime import datetime, timezone
                         lead_upd = {"updated_at": datetime.now(timezone.utc).isoformat()}
                         if csv_phone:
                             lead_upd["owner_phone"] = csv_phone

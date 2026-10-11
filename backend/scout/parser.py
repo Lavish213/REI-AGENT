@@ -1,4 +1,5 @@
 import csv
+from contextlib import nullcontext
 import os
 from typing import Any
 
@@ -37,7 +38,7 @@ def _normalize_header(header: str) -> str:
 def _find_value(row: dict[str, str], candidates: list[str]) -> str | None:
     for candidate in candidates:
         if candidate in row:
-            val = row[candidate].strip()
+            val = (row[candidate] or "").strip()
             if val and val.lower() not in ("", "n/a", "null", "none", "-"):
                 return val
     return None
@@ -103,7 +104,7 @@ def _to_cents(val: str | None) -> int | None:
 
 
 def parse_csv(file_path: str) -> list[dict[str, Any]]:
-    if not os.path.exists(file_path):
+    if not hasattr(file_path, "read") and not os.path.exists(file_path):
         logger.error("CSV file not found: {}", file_path)
         return []
 
@@ -112,7 +113,8 @@ def parse_csv(file_path: str) -> list[dict[str, Any]]:
     skipped = 0
     parsed = 0
 
-    with open(file_path, newline="", encoding="utf-8-sig") as f:
+    source = nullcontext(file_path) if hasattr(file_path, "read") else open(file_path, newline="", encoding="utf-8-sig")
+    with source as f:
         reader = csv.DictReader(f)
 
         if reader.fieldnames is None:

@@ -1,8 +1,11 @@
-const API = process.env.NEXT_PUBLIC_API_URL || ''
+import Link from 'next/link'
+export const dynamic = 'force-dynamic'
+
+import { backendFetch } from '@/lib/backend'
 
 async function getQueue() {
   try {
-    const res = await fetch(`${API}/api/leads/queue`, { cache: 'no-store' })
+    const res = await backendFetch(`/api/leads/queue`, { cache: 'no-store' })
     if (!res.ok) return null
     return res.json()
   } catch {
@@ -80,7 +83,7 @@ export default async function QueuePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.top_10.map((lead: any) => (
+                    {data.top_10.map((lead: { id: string; lead_id?: string; address?: string; score: number; composite_score: number; callable_phones: string[] | string }) => (
                       <tr key={lead.lead_id} className="border-b border-gray-700 hover:bg-gray-750">
                         <td className="px-4 py-3 max-w-xs truncate font-mono text-xs text-gray-300">
                           {lead.address || '—'}
@@ -106,7 +109,7 @@ export default async function QueuePage() {
 
           {data.eligible_count === 0 && data.needs_enrich_count === 0 && (
             <div className="bg-gray-800 rounded-lg p-8 text-center text-gray-500">
-              No leads in system yet. <a href="/upload" className="text-blue-400 underline">Upload a CSV</a> to get started.
+              No leads in system yet. <Link href="/upload" className="text-blue-400 underline">Upload a CSV</Link> to get started.
             </div>
           )}
         </>

@@ -1,7 +1,9 @@
+import Link from 'next/link'
+export const dynamic = 'force-dynamic'
+
 import { supabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 
-const API = process.env.NEXT_PUBLIC_API_URL || ''
 
 function formatCurrency(cents: number | null | undefined) {
   if (cents == null) return '—'
@@ -138,8 +140,8 @@ function MotivBar({ level }: { level: number | null }) {
   )
 }
 
-export default async function LeadDetailPage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
 
   const [
     leadRes,
@@ -194,8 +196,8 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 
   if (!leadRes.data) notFound()
 
-  const lead = leadRes.data as any
-  const prop = (lead.properties as any) ?? {}
+  const lead = leadRes.data
+  const prop = (Array.isArray(lead.properties) ? lead.properties[0] : lead.properties) ?? {}
   const calls = callsRes.data ?? []
   const workflowHistory = workflowRes.data ?? []
   const followups = followupsRes.data ?? []
@@ -215,7 +217,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 
       {/* Header */}
       <div className="mb-6">
-        <a href="/leads" className="text-blue-400 text-sm hover:underline mb-2 inline-block">← Back to leads</a>
+        <Link href="/leads" className="text-blue-400 text-sm hover:underline mb-2 inline-block">← Back to leads</Link>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -237,7 +239,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 
           {/* Quick actions */}
           <div className="flex flex-wrap gap-2">
-            <form action={`${API}/api/workflow/leads/${id}/escalate`} method="POST">
+            <form action={`/api/backend/api/workflow/leads/${id}/escalate`} method="POST">
               <button type="submit" className="text-xs px-3 py-1.5 bg-red-900/40 text-red-300 rounded hover:bg-red-900/60">
                 Escalate
               </button>
@@ -362,7 +364,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
               <p className="text-gray-600 text-sm">No calls yet</p>
             ) : (
               <div className="space-y-2">
-                {calls.map((call: any) => (
+                {calls.map((call) => (
                   <div key={call.id} className="border border-gray-700 rounded-lg p-3">
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-xs text-gray-500 shrink-0">{formatDateShort(call.created_at)}</span>
@@ -404,7 +406,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
               <p className="text-gray-600 text-sm">No workflow transitions yet</p>
             ) : (
               <div className="space-y-2">
-                {workflowHistory.map((wf: any) => (
+                {workflowHistory.map((wf) => (
                   <div key={wf.id} className="flex items-center gap-3 text-xs">
                     <span className="text-gray-600 w-20 shrink-0">{timeAgo(wf.created_at)}</span>
                     <WorkflowBadge state={wf.state} />
@@ -427,7 +429,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
               <p className="text-gray-600 text-sm italic">No notes yet</p>
             )}
             <form
-              action={`${API}/api/workflow/leads/${id}/notes`}
+              action={`/api/backend/api/workflow/leads/${id}/notes`}
               method="POST"
               className="mt-3"
             >
@@ -472,7 +474,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
               {lead.walkthrough_completed_at && (
                 <p className="text-xs text-gray-500 mt-0.5">{formatDate(lead.walkthrough_completed_at)}</p>
               )}
-              <form action={`${API}/api/workflow/leads/${id}/walkthrough`} method="POST" className="mt-2">
+              <form action={`/api/backend/api/workflow/leads/${id}/walkthrough`} method="POST" className="mt-2">
                 <select name="state" className="text-xs bg-gray-700 text-gray-300 rounded px-2 py-1 border border-gray-600">
                   <option value="none">none</option>
                   <option value="scheduled">scheduled</option>
@@ -499,7 +501,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
               <p className="text-gray-600 text-xs">No pending tasks</p>
             ) : (
               <div className="space-y-2">
-                {followups.map((f: any) => (
+                {followups.map((f) => (
                   <div key={f.id} className="border border-gray-700 rounded p-2.5">
                     <div className="flex items-center gap-2 flex-wrap">
                       <PriorityBadge priority={f.priority} />
@@ -513,10 +515,10 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
                       <p className="text-xs text-blue-300 mt-1">{formatDate(f.scheduled_at)}</p>
                     )}
                     <div className="flex gap-3 mt-2">
-                      <form action={`${API}/api/workflow/followups/${f.id}/complete`} method="POST">
+                      <form action={`/api/backend/api/workflow/followups/${f.id}/complete`} method="POST">
                         <button type="submit" className="text-xs text-green-400 hover:text-green-300">✓ Done</button>
                       </form>
-                      <form action={`${API}/api/workflow/followups/${f.id}/cancel`} method="POST">
+                      <form action={`/api/backend/api/workflow/followups/${f.id}/cancel`} method="POST">
                         <button type="submit" className="text-xs text-gray-500 hover:text-gray-400">× Cancel</button>
                       </form>
                     </div>
@@ -524,7 +526,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
                 ))}
               </div>
             )}
-            <form action={`${API}/api/workflow/leads/${id}/followup`} method="POST" className="mt-3 pt-3 border-t border-gray-700">
+            <form action={`/api/backend/api/workflow/leads/${id}/followup`} method="POST" className="mt-3 pt-3 border-t border-gray-700">
               <div className="flex gap-2">
                 <select name="followup_type" className="flex-1 text-xs bg-gray-700 text-gray-300 rounded px-2 py-1 border border-gray-600">
                   <option value="call">call</option>
@@ -557,7 +559,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
               <p className="text-gray-600 text-xs">No offers yet</p>
             ) : (
               <div className="space-y-2 mb-3">
-                {offers.map((offer: any) => (
+                {offers.map((offer) => (
                   <div key={offer.id} className="border border-gray-700 rounded p-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-semibold text-gray-200">{formatCurrency(offer.offer_amount)}</span>
@@ -576,7 +578,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
             )}
             {/* Quick offer creation from existing ARV */}
             {maoCents != null && (
-              <form action={`${API}/api/offers`} method="POST" className="pt-3 border-t border-gray-700">
+              <form action={`/api/backend/api/offers`} method="POST" className="pt-3 border-t border-gray-700">
                 <input type="hidden" name="lead_id" value={id} />
                 <div className="space-y-2">
                   <div>
@@ -602,7 +604,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           {/* Set Workflow State */}
           <section className="bg-gray-800 rounded-lg p-4">
             <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Set Workflow State</h2>
-            <form action={`${API}/api/workflow/leads/${id}/state`} method="POST">
+            <form action={`/api/backend/api/workflow/leads/${id}/state`} method="POST">
               <select name="state" className="w-full text-xs bg-gray-700 text-gray-300 rounded px-2 py-1.5 border border-gray-600 mb-2">
                 {[
                   'new_lead', 'active_contact', 'followup_required',
@@ -629,7 +631,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
             <section className="bg-gray-800 rounded-lg p-4">
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Activity</h2>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {events.map((ev: any, i: number) => (
+                {events.map((ev, i: number) => (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span className="text-gray-600 w-14 shrink-0 text-right">{timeAgo(ev.created_at)}</span>
                     <span className="font-mono text-blue-300 truncate">{ev.event_type}</span>

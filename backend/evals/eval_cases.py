@@ -180,3 +180,11 @@ EVAL_CASES = [
         ],
     },
 ]
+
+
+def get_all_cases() -> list[dict]:
+    return list(EVAL_CASES)
+
+
+def get_cases_by_category(category: str) -> list[dict]:
+    return [case for case in EVAL_CASES if case.get("category") == category]

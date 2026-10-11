@@ -117,18 +117,13 @@ async def upload_properties_csv(
 
         for prop in properties:
             try:
-                score_result = calculate_distress_score(prop)
-                if score_result.get("disqualified"):
-                    errors += 1
-                    continue
-
-                prop["distress_score"] = score_result["score"]
-                prop["distress_type"] = score_result.get("distress_type", prop.get("distress_type", "unknown"))
+                score = calculate_distress_score(prop)
+                prop["distress_score"] = score
 
                 upsert_property(prop)
                 upserted += 1
 
-                if score_result["score"] < min_score:
+                if score < min_score:
                     skipped_score += 1
                     continue
 

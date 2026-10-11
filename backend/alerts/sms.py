@@ -8,35 +8,21 @@ from loguru import logger
 
 def _e164(raw: str) -> str:
     digits = "".join(c for c in (raw or "") if c.isdigit())
-    if (raw or "").strip().startswith("+"):
-        return raw.strip()
+    if (raw or "").strip().startswith("+") and 8 <= len(digits) <= 15:
+        return "+" + digits
     if len(digits) == 11 and digits.startswith("1"):
         return "+" + digits
     if len(digits) == 10:
         return "+1" + digits
-    return (raw or "").strip()
-from signalwire.rest import Client as SignalWireClient
-
+    raise ValueError("A valid phone number is required")
 from backend.lib.db import insert_sms
+from backend.lib.signalwire_rest import signalwire_post
 
-_client: SignalWireClient | None = None
 _PACIFIC = pytz.timezone("America/Los_Angeles")
 
 
-def _get_client() -> SignalWireClient:
-    global _client
-    if _client is None:
-        _client = SignalWireClient(
-            os.environ["SIGNALWIRE_PROJECT_ID"],
-            os.environ["SIGNALWIRE_TOKEN"],
-            signalwire_space_url=os.environ["SIGNALWIRE_SPACE"],
-        )
-        logger.info("signalwire_client_initialized")
-    return _client
-
-
 def _is_tcpa_hours() -> bool:
-    start = int(os.environ.get("CALLING_HOURS_START", 8))
+    start = int(os.environ.get("CALLING_HOURS_START", 9))
     end = int(os.environ.get("CALLING_HOURS_END", 21))
     return start <= datetime.now(_PACIFIC).hour < end
 
@@ -51,26 +37,38 @@ def _status_callback_url() -> str | None:
 
 
 def send_sms(to: str, body: str, lead_id: str = "", bypass_hours: bool = False) -> bool:
-    to = _e164(to)
+    try:
+        to = _e164(to)
+    except ValueError:
+        return False
+    if lead_id:
+        from backend.compliance.compliance import ComplianceEngine
+        if not ComplianceEngine().check_sms_allowed(lead_id).allowed:
+            return False
     if not bypass_hours and not _is_tcpa_hours():
         logger.warning("send_sms blocked outside TCPA hours to={}", to)
         return False
     try:
-        client = _get_client()
-        kwargs: dict = {"from_": _from_number(), "to": to, "body": body}
+        kwargs = {"From": _from_number(), "To": to, "Body": body}
         callback = _status_callback_url()
         if callback:
-            kwargs["status_callback"] = callback
-        message = client.messages.create(**kwargs)
+            kwargs["StatusCallback"] = callback
+        message = signalwire_post("Messages.json", kwargs)
         insert_sms({
             "lead_id": lead_id or None,
             "direction": "outbound",
             "body": body,
-            "signalwire_message_id": message.sid,
-            "delivery_status": "sent",
+            "signalwire_message_id": message["sid"],
+            "delivery_status": message.get("status", "queued"),
             "sent_at": datetime.now(timezone.utc).isoformat(),
         })
-        logger.info("send_sms to={} sid={} lead_id={}", to, message.sid, lead_id)
+        if lead_id:
+            try:
+                from backend.lib.db import update_sms_contact_time
+                update_sms_contact_time(lead_id, datetime.now(timezone.utc).isoformat())
+            except Exception as error:
+                logger.warning("sms_contact_time_not_saved error={}", str(error))
+        logger.info("send_sms to={} sid={} lead_id={}", to, message["sid"], lead_id)
         return True
     except Exception as e:
         logger.error("send_sms failed to={} error={}", to, str(e))

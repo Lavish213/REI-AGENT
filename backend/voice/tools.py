@@ -6,8 +6,6 @@ from loguru import logger
 
 from backend.lib.db import (
     create_followup,
-    insert_sms,
-    update_lead_appointment,
     update_lead_stage,
 )
 from backend.alerts.sms import send_sms
@@ -17,6 +15,11 @@ _PACIFIC = pytz.timezone("America/Los_Angeles")
 
 
 SOPHIA_TOOLS = [
+    {
+        "name": "get_available_appointments",
+        "description": "Read approved open walkthrough slots before proposing a date. Times are shown in Pacific local time.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
     {
         "name": "book_appointment",
         "description": (
@@ -33,8 +36,9 @@ SOPHIA_TOOLS = [
                 "lead_id": {"type": "string", "description": "Lead ID"},
                 "seller_phone": {"type": "string", "description": "Seller phone number"},
                 "seller_name": {"type": "string", "description": "Seller first name"},
+                "confirmed": {"type": "boolean", "description": "Seller explicitly confirmed date, time, timezone, and address"},
             },
-            "required": ["date", "time", "address", "lead_id", "seller_phone"],
+            "required": ["date", "time", "address", "lead_id", "seller_phone", "confirmed"],
         },
     },
     {
@@ -88,7 +92,7 @@ SOPHIA_TOOLS = [
                 "lead_id": {"type": "string", "description": "Lead ID"},
                 "priority": {"type": "string", "enum": ["high", "medium", "low"], "description": "Follow-up priority"},
                 "notes": {"type": "string", "description": "Callback notes"},
-                "callback_time": {"type": "string", "description": "Requested callback timing"},
+                "callback_time": {"type": "string", "description": "Seller-confirmed ISO 8601 timestamp with timezone offset; ask for an exact date and time first"},
             },
             "required": ["lead_id", "priority", "notes"],
         },
@@ -131,7 +135,9 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "delay_hours": {"type": "number"},
+                "date": {"type": "string", "description": "Exact future date YYYY-MM-DD"},
+                "time": {"type": "string", "description": "Pacific local time HH:MM"},
+                "delay_hours": {"type": "number", "description": "Only an explicitly requested relative delay"},
                 "day_of_week": {"type": "string"},
                 "notes": {"type": "string"},
                 "lead_id": {"type": "string"},
@@ -255,11 +261,20 @@ _ASK_ONLY_RESPONSES = {
 }
 
 
+def write_tool_gate_log(*args, **kwargs):
+    try:
+        from backend.lib.db import write_tool_gate_log as persist_log
+        return persist_log(*args, **kwargs)
+    except Exception as error:
+        logger.warning("tool_gate_log_unavailable error={}", str(error))
+        return None
+
+
 def _preflight_gate(tool_name: str, tool_input: dict, call_ctx) -> dict:
     from backend.contracts.intel_packet import (
         ALWAYS_ALLOWED_TOOLS, GATED_TOOLS, get_permission_level, is_permission_expired
     )
-    from backend.lib.db import write_tool_gate_log, create_approval_request
+    from backend.lib.db import create_approval_request
 
     lead_id = (tool_input.get("lead_id") or "") if tool_input else ""
     if not lead_id and call_ctx is not None:
@@ -274,12 +289,13 @@ def _preflight_gate(tool_name: str, tool_input: dict, call_ctx) -> dict:
         return {"blocked": False, "level": "allowed"}
 
     fallback_mode = getattr(call_ctx, "fallback_mode", False) if call_ctx else False
-    if fallback_mode and tool_name in _RISKY_TOOLS_MAP:
+    if fallback_mode and tool_name in _RISKY_TOOLS_MAP and tool_name != "book_appointment":
         write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "fallback_blocked", "system_degraded", packet_version)
         return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "System unavailable right now.")}
 
     conflict_active = getattr(call_ctx, "conflict_active", False) if call_ctx else False
-    if conflict_active and tool_name in _RISKY_TOOLS_MAP:
+    approved_permission = ((getattr(call_ctx, "action_permissions", None) or {}).get(tool_name) or {}) if call_ctx else {}
+    if conflict_active and tool_name in _RISKY_TOOLS_MAP and approved_permission.get("granted_by") != "operator":
         approval_id = create_approval_request(
             lead_id=lead_id, call_sid=call_sid,
             approval_type="conflict_resolution", requested_action=tool_name,
@@ -292,7 +308,9 @@ def _preflight_gate(tool_name: str, tool_input: dict, call_ctx) -> dict:
 
     intel_packet = getattr(call_ctx, "intel_packet", None) if call_ctx else None
     if not intel_packet:
-        return {"blocked": False, "level": "open_default"}
+        if tool_name == "book_appointment":
+            return {"blocked": False, "level": "book_appointment"}
+        return {"blocked": True, "message": "No verified permissions are available. Let the team approve this action first."}
 
     level = get_permission_level(intel_packet, tool_name)
     perms = intel_packet.get("action_permissions") or {}
@@ -313,6 +331,10 @@ def _preflight_gate(tool_name: str, tool_input: dict, call_ctx) -> dict:
     if level == "ask_only":
         write_tool_gate_log(lead_id, call_sid, tool_name, "ask_only", "ask_only_mode", "", packet_version)
         return {"blocked": True, "message": _ASK_ONLY_RESPONSES.get(tool_name, "I can discuss that conceptually — let me have Alanzo follow up with specifics.")}
+
+    expected_level = {"book_appointment": "book_appointment", "get_offer_range": "quote_range", "send_offer_summary": "send_summary", "send_followup_email": "send_summary", "collect_and_send_email": "send_summary"}.get(tool_name)
+    if expected_level and level != expected_level:
+        return {"blocked": True, "message": "This action needs specific operator permission."}
 
     compliance = intel_packet.get("compliance_context") or {}
     threshold = compliance.get("requires_human_approval_above")
@@ -350,7 +372,7 @@ def _resolve_approval(approval_id: str, answer: str, call_ctx) -> None:
             if req.data:
                 action = req.data[0].get("requested_action", "")
                 perms = call_ctx.action_permissions or {}
-                perms[action] = {"level": "book_appointment", "scope": "call", "granted_by": "operator"}
+                perms[action] = {"level": {"book_appointment": "book_appointment", "get_offer_range": "quote_range"}.get(action, "send_summary"), "scope": "call", "granted_by": "operator"}
                 call_ctx.action_permissions = perms
                 if call_ctx.intel_packet:
                     call_ctx.intel_packet["action_permissions"] = perms
@@ -368,15 +390,37 @@ def execute_tool(
     call_ctx=None,
     lf_trace=None,
 ) -> str:
-    logger.info("execute_tool name={} input={}", tool_name, tool_input)
+    logger.info("execute_tool name={}", tool_name)
+    tool_input = dict(tool_input)
+    if call_ctx is not None:
+        bound_lead = getattr(call_ctx, "lead_id", "")
+        requested_lead = tool_input.get("lead_id", "")
+        if requested_lead and requested_lead != bound_lead:
+            return "Action refused: the lead does not match this call."
+        if bound_lead:
+            tool_input["lead_id"] = bound_lead
+        bound_phone = getattr(call_ctx, "seller_phone", "")
+        phone_fields = ("to", "seller_phone") if tool_name == "send_followup_sms" else ("seller_phone",)
+        for field in phone_fields:
+            if field in tool_input:
+                if not bound_phone:
+                    return "Action refused: this call has no verified seller phone."
+                tool_input[field] = bound_phone
+        if getattr(call_ctx, "kill_switch_active", False) and tool_name not in ("end_call", "set_disposition", "transfer_call"):
+            return "Action refused: human review is required."
 
     try:
         gate = _preflight_gate(tool_name, tool_input, call_ctx)
         if gate["blocked"]:
             return gate["message"]
 
-        if tool_name == "book_appointment":
-            result = _book_appointment(tool_input)
+        if tool_name == "get_available_appointments":
+            from backend.lib.db import list_walkthrough_availability
+            slots = list_walkthrough_availability()
+            result = "Available walkthrough times: " + "; ".join(datetime.fromisoformat(slot["starts_at"].replace("Z", "+00:00")).astimezone(_PACIFIC).strftime("%Y-%m-%d %H:%M %Z") for slot in slots[:10]) if slots else "No approved open slots are available. Offer a human callback."
+
+        elif tool_name == "book_appointment":
+            result = _book_appointment(tool_input, call_ctx)
 
         elif tool_name == "send_followup_sms":
             result = _send_followup_sms(tool_input)
@@ -388,6 +432,8 @@ def execute_tool(
             result = _schedule_followup(tool_input)
 
         elif tool_name == "end_call":
+            if tool_input.get("reason") == "appointment_booked" and not getattr(call_ctx, "appointment_set", False):
+                return "Call remains open: no appointment has been confirmed."
             result = _end_call(tool_input)
             if call_ctx is not None:
                 call_ctx.call_should_end = True
@@ -467,7 +513,8 @@ def _send_offer_summary(inp: dict, call_ctx=None) -> str:
     )
     try:
         from backend.alerts.sms import send_sms
-        send_sms(to=seller_phone, body=body)
+        if not send_sms(to=seller_phone, body=body, lead_id=lead_id):
+            return "Text delivery could not be confirmed. Offer a human follow-up."
         logger.info("send_offer_summary sent lead_id={}", lead_id)
         return f"Sent! Check your texts — offer range is ${offer_low:,} to ${offer_high:,}."
     except Exception as e:
@@ -490,9 +537,11 @@ def _collect_and_send_email(inp: dict, call_ctx=None) -> str:
     offer_high = int(inp.get("offer_high") or 0)
     address = inp.get("address", "").strip()
     first_name = getattr(call_ctx, "seller_name", "") or "there"
+    if offer_low <= 0 or offer_high < offer_low:
+        return "No verified offer is available. Ask the owner to approve pricing first."
     try:
         from backend.alerts.email import send_offer_summary_email
-        sent = send_offer_summary_email(to=email, first_name=first_name, address=address, offer_low=offer_low or 150000, offer_high=offer_high or 175000, lead_id=lead_id)
+        sent = send_offer_summary_email(to=email, first_name=first_name, address=address, offer_low=offer_low, offer_high=offer_high, lead_id=lead_id)
         return "Sent! Check your inbox." if sent else "Had trouble with that email. Can I text you instead?"
     except Exception as e:
         logger.exception("collect_and_send_email failed error={}", str(e))
@@ -502,88 +551,40 @@ def _collect_and_send_email(inp: dict, call_ctx=None) -> str:
 def _drop_voicemail(inp: dict, call_ctx=None) -> str:
     lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
     script = inp.get("script", "standard")
-    scripts = {
-        "standard": "Hey — this is Sophia with San Joaquin House Buyers. I was reaching out about your property. Give us a call back when you get a chance. Have a good one.",
-        "callback": "Hey — Sophia with San Joaquin House Buyers. Just following up — we had talked about your property. Call me back when you get a chance.",
-        "urgent": "Hey — Sophia with San Joaquin House Buyers. Wanted to touch base about your property — we may have a buyer lined up. Call us back soon.",
-    }
-    message = scripts.get(script, scripts["standard"])
     logger.info("drop_voicemail lead_id={} script={}", lead_id, script)
-    return f"Voicemail left: {message}"
+    return "Voicemail delivery is unavailable. No voicemail was sent."
 
 
-def _book_appointment(inp: dict) -> str:
+def _book_appointment(inp: dict, call_ctx=None) -> str:
+    from backend.lib.db import reserve_voice_appointment
+    from backend.voice.scheduling import local_slot
     lead_id = inp.get("lead_id", "")
-    date_str = inp.get("date", "")
-    time_str = inp.get("time", "")
-    address = inp.get("address", "")
-    seller_phone = inp.get("seller_phone", "")
-    seller_name = inp.get("seller_name") or "there"
-    owner_phone = os.environ.get("OWNER_PHONE", "")
-    dt_pacific = None
-
+    address = inp.get("address", "").strip()
+    if not lead_id or not address or inp.get("confirmed") is not True:
+        return "Appointment not booked. Confirm the exact date, time, Pacific timezone, and address with the seller first."
     try:
-        dt_naive = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-        dt_pacific = _PACIFIC.localize(dt_naive)
-        dt_display = dt_naive.strftime("%A %b %d at %I:%M %p")
-        day_display = dt_naive.strftime("%A")
-        time_display = dt_naive.strftime("%I:%M %p")
-    except ValueError:
-        logger.warning("invalid appointment datetime date={} time={}", date_str, time_str)
-        dt_display = f"{date_str} at {time_str}"
-        day_display = date_str
-        time_display = time_str
-
-    if lead_id:
-        update_lead_stage(lead_id, "walkthrough_booked")
-        if dt_pacific:
-            update_lead_appointment(lead_id, dt_pacific.isoformat())
-
-    confirmation_msg = (
-        f"Hey {seller_name}, Sophia here — "
-        f"we're confirmed for {day_display} at "
-        f"{time_display} at {address}. "
-        f"Looking forward to meeting you."
-    )
-
-    if seller_phone:
-        try:
-            send_sms(to=seller_phone, body=confirmation_msg)
-        except Exception as sms_err:
-            logger.warning("seller confirmation sms failed error={}", str(sms_err))
-
-    if owner_phone:
-        try:
-            send_sms(to=owner_phone, body=f"Walkthrough booked:\n{seller_name}\n{address}\n{dt_display}")
-        except Exception as owner_sms_err:
-            logger.warning("owner alert sms failed error={}", str(owner_sms_err))
-
-    logger.info("appointment booked lead_id={} address={}", lead_id, address)
-    return f"Appointment booked for {dt_display}."
+        slot = local_slot(inp.get("date", ""), inp.get("time", ""))
+        reservation_id = reserve_voice_appointment(lead_id, slot.astimezone(timezone.utc).isoformat(), address)
+    except Exception as error:
+        logger.warning("appointment_not_reserved lead_id={} error={}", lead_id, str(error))
+        return "Appointment not booked. That time could not be reserved; offer a different time or a human callback."
+    if call_ctx is not None:
+        call_ctx.appointment_set = True
+        call_ctx.pre_close_done = True
+    display = slot.strftime("%A %B %d, %Y at %I:%M %p %Z")
+    phone = inp.get("seller_phone", "")
+    sms_sent = send_sms(to=phone, body=f"Walkthrough confirmed: {display}, {address}.", lead_id=lead_id) if phone else False
+    suffix = " Confirmation text accepted for delivery." if sms_sent else " Confirmation text was not sent."
+    return f"Appointment booked for {display} at {address}. Reservation {reservation_id}." + suffix
 
 
 def _send_followup_sms(inp: dict) -> str:
     to = inp.get("to", "").strip()
     message = inp.get("message", "").strip()
-    lead_id = inp.get("lead_id", "")
-
     if not to or not message:
-        logger.warning("followup sms missing fields")
         return "SMS not sent. Missing phone number or message."
-
-    try:
-        send_sms(to=to, body=message)
-        insert_sms({
-            "lead_id": lead_id or None,
-            "direction": "outbound",
-            "body": message,
-            "sent_at": datetime.now(timezone.utc).isoformat(),
-        })
-        logger.info("followup sms sent to={} lead_id={}", to, lead_id)
-        return "Follow-up SMS sent."
-    except Exception as e:
-        logger.exception("followup sms failed error={}", str(e))
-        return "SMS sending failed."
+    sent = send_sms(to=to, body=message, lead_id=inp.get("lead_id", ""))
+    return "Follow-up SMS accepted for delivery." if sent else "SMS not sent. Offer a human follow-up."
 
 
 def _set_disposition(inp: dict, call_ctx) -> str:
@@ -624,8 +625,14 @@ def _schedule_followup(inp: dict) -> str:
     notes = inp.get("notes", "").strip()
     callback_time = inp.get("callback_time", "").strip()
 
-    if callback_time:
-        notes = f"{notes} | Callback: {callback_time}" if notes else f"Callback: {callback_time}"
+    if not callback_time:
+        return "Ask the seller for an exact callback date and time before scheduling."
+    try:
+        scheduled = datetime.fromisoformat(callback_time.replace("Z", "+00:00"))
+        if scheduled.tzinfo is None or not 0 < (scheduled - datetime.now(timezone.utc)).total_seconds() <= 180 * 86400:
+            return "Callback must have a timezone and be within the next 180 days."
+    except ValueError:
+        return "Ask for an exact callback date and time; the requested timestamp is invalid."
 
     try:
         followup_id = create_followup(
@@ -634,7 +641,10 @@ def _schedule_followup(inp: dict) -> str:
             followup_type="call",
             notes=notes,
             created_by="sophia",
+            scheduled_at=scheduled.astimezone(timezone.utc).isoformat(),
         )
+        if not followup_id:
+            return "Failed to save follow-up. No callback has been scheduled."
         logger.info("followup created id={} lead_id={}", followup_id, lead_id)
         return f"Follow-up scheduled ({priority})."
     except Exception as e:
@@ -667,75 +677,39 @@ def _end_call(inp: dict) -> str:
 
 
 def _transfer_call(inp: dict, call_ctx=None) -> str:
-    reason = inp.get("reason", "seller requested human")
-    lead_id = inp.get("lead_id", "")
-    owner_phone = os.environ.get("OWNER_PHONE", "")
-    from_phone = os.environ.get("SIGNALWIRE_PHONE", "")
-    raw = owner_phone or ""
-    digits = "".join(c for c in raw if c.isdigit())
-    if not raw.startswith("+"):
-        owner_phone = "+" + digits if digits.startswith("1") and len(digits) == 11 else ("+1" + digits if len(digits) == 10 else raw)
-
-    logger.info("transfer_call reason={} lead_id={} to={}", reason, lead_id, owner_phone)
-
+    from backend.alerts.sms import _e164
+    from backend.lib.signalwire_rest import signalwire_post
+    from xml.sax.saxutils import escape
+    owner_phone = _e164(os.environ.get("OWNER_PHONE", ""))
+    call_sid = getattr(call_ctx, "_call_sid", "")
+    if not owner_phone or not call_sid:
+        return "Transfer failed: a live call and an owner phone number are required."
+    try:
+        laml = '<Response><Dial timeout="30">' + escape(owner_phone) + '</Dial></Response>'
+        signalwire_post(f"Calls/{call_sid}.json", {"Twiml": laml})
+    except Exception as error:
+        logger.warning("warm_transfer_failed error={}", str(error))
+        return "Transfer failed. Offer to schedule a callback with our team."
     if call_ctx is not None:
         call_ctx.call_should_end = True
-        call_ctx.disposition = "WARM"
-        call_sid = getattr(call_ctx, "call_sid", "") or getattr(call_ctx, "_call_sid", "")
-        if call_sid and owner_phone:
-            try:
-                from signalwire.rest import Client as _SW
-                _sw = _SW(
-                    os.environ["SIGNALWIRE_PROJECT_ID"],
-                    os.environ["SIGNALWIRE_TOKEN"],
-                    signalwire_space_url=os.environ["SIGNALWIRE_SPACE"],
-                )
-                laml = (
-                    '<?xml version="1.0" encoding="UTF-8"?>'
-                    f'<Response><Dial timeout="30" callerId="{from_phone}">{owner_phone}</Dial></Response>'
-                )
-                _sw.calls(call_sid).update(twiml=laml)
-                logger.info("warm_transfer_initiated call_sid={} to={}", call_sid, owner_phone)
-            except Exception as _te:
-                logger.warning("warm_transfer_failed error={}", str(_te))
-
-    if lead_id:
-        try:
-            update_lead_stage(lead_id, "contacted")
-        except Exception as e:
-            logger.warning("transfer_stage_update_failed lead_id={} error={}", lead_id, str(e))
-
-    return f"transferring to {owner_phone or 'owner'}"
+    return "Transfer accepted by the phone provider."
 
 
 def _schedule_callback(inp, call_ctx=None):
-    from datetime import datetime, timezone, timedelta
+    from backend.lib.db import save_callback
+    from backend.voice.scheduling import callback_slot
     lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
-    delay_hours = float(inp.get("delay_hours") or 24)
-    day_of_week = (inp.get("day_of_week") or "").strip().lower()
-    notes = inp.get("notes", "").strip()
     if not lead_id:
-        return "Need a lead ID."
-    now = datetime.now(timezone.utc)
-    callback_at = now + timedelta(hours=delay_hours)
-    if day_of_week:
-        days = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
-        target = days.get(day_of_week)
-        if target is not None:
-            ahead = (target - now.weekday()) % 7 or 7
-            callback_at = now.replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=ahead)
+        return "Callback not scheduled: no lead is associated with this call."
     try:
-        from backend.lib.db import schedule_callback
-        schedule_callback(lead_id, callback_at.isoformat())
-        if notes:
-            from backend.lib.db import _get_client
-            _get_client().table("leads").update({"callback_notes": notes}).eq("id", lead_id).execute()
-        display = callback_at.strftime("%A at %I:%M %p")
-        logger.info("schedule_callback lead_id={} at={}", lead_id, callback_at.isoformat())
-        return f"Got it. I'll call you back {display} Pacific time."
-    except Exception as e:
-        logger.exception("schedule_callback failed error={}", str(e))
-        return "Had trouble scheduling that."
+        slot = callback_slot(inp)
+        save_callback(lead_id, slot.astimezone(timezone.utc).isoformat(), inp.get("notes", ""))
+    except Exception as error:
+        logger.warning("callback_not_saved lead_id={} error={}", lead_id, str(error))
+        return "Callback not scheduled. Please confirm a future calendar date and local time, or an explicit delay."
+    if call_ctx is not None:
+        call_ctx.callback_set = True
+    return "Callback saved for " + slot.strftime("%A %B %d, %Y at %I:%M %p %Z") + "."
 
 
 def _ask_operator(inp, call_ctx=None):
@@ -788,8 +762,8 @@ def _send_followup_email(inp, call_ctx=None):
     to = inp.get("to", "").strip()
     first_name = inp.get("first_name", "").strip() or (getattr(call_ctx, "seller_name", "") or "there").split()[0]
     address = inp.get("address", "").strip()
-    offer_low = int(inp.get("offer_low") or 150000)
-    offer_high = int(inp.get("offer_high") or 175000)
+    offer_low = int(inp.get("offer_low") or 0)
+    offer_high = int(inp.get("offer_high") or 0)
     lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
     if not to:
         try:
@@ -806,6 +780,8 @@ def _send_followup_email(inp, call_ctx=None):
             _get_client().table("leads").update({"owner_email": to}).eq("id", lead_id).execute()
         except Exception:
             pass
+    if offer_low <= 0 or offer_high < offer_low:
+        return "No verified offer is available. Ask the team to approve pricing first."
     try:
         from backend.alerts.email import send_offer_summary_email
         sent = send_offer_summary_email(to=to, first_name=first_name, address=address, offer_low=offer_low, offer_high=offer_high, lead_id=lead_id)
@@ -832,9 +808,7 @@ def _get_offer_range(inp: dict) -> str:
         confidence = prop.get("arv_confidence", "low")
 
         if arv_cents and mao_cents:
-            arv_raw = int(arv_cents)
             mao_raw = int(mao_cents)
-            arv = arv_raw if arv_raw > 10000 else arv_raw * 100
             mao = mao_raw if mao_raw > 10000 else mao_raw * 100
             low = int(mao * 0.95)
             high = int(mao * 1.05)

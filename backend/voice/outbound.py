@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import httpx
@@ -129,7 +129,7 @@ def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
         "AsyncAmd": "true",
         "AsyncAmdStatusCallback": callback_url,
         "Record": "true",
-        "RecordingStatusCallback": f"{status_url}",
+        "RecordingStatusCallback": f"{railway_url}/api/voice/recording-status/{lead_id}",
         "RecordingStatusCallbackMethod": "POST",
     }
 
@@ -171,25 +171,28 @@ def _get_redis_client():
         return None
 
 
+_ACQUIRE_SLOT_LUA = """
+local now = tonumber(ARGV[1])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
+if redis.call('ZSCORE', KEYS[1], ARGV[2]) then return 0 end
+if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then return 0 end
+redis.call('ZADD', KEYS[1], now + tonumber(ARGV[4]), ARGV[2])
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]) + 60)
+return 1
+"""
+
+
 def _acquire_call_slot(lead_id: str) -> bool:
+    import time
     client = _get_redis_client()
     if not client:
-        return True
+        logger.error("call_capacity_unavailable")
+        return False
     try:
-        import time
-        pipe = client.pipeline()
-        now = time.time()
-        pipe.zremrangebyscore(_REDIS_CONCURRENT_KEY, "-inf", now - 900)
-        pipe.zcard(_REDIS_CONCURRENT_KEY)
-        _, current_count = pipe.execute()
-        if current_count >= _MAX_CONCURRENT_CALLS:
-            logger.warning("concurrency_limit_reached lead_id={} active={}", lead_id, current_count)
-            return False
-        client.zadd(_REDIS_CONCURRENT_KEY, {lead_id: now + 900})
-        return True
-    except Exception as e:
-        logger.warning("acquire_call_slot failed error={}", str(e))
-        return True
+        return bool(client.eval(_ACQUIRE_SLOT_LUA, 1, _REDIS_CONCURRENT_KEY, time.time(), lead_id, _MAX_CONCURRENT_CALLS, 3600))
+    except Exception as error:
+        logger.warning("acquire_call_slot failed error={}", str(error))
+        return False
 
 
 def _release_call_slot(lead_id: str) -> None:
@@ -222,6 +225,7 @@ def _schedule_retry_for_disposition(lead_id: str, disposition: str, attempt_coun
             followup_type="call",
             notes=f"Auto-retry after {disposition}. Attempt {attempt_count + 1}.",
             created_by="sophia",
+            scheduled_at=(datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)).isoformat(),
         )
         logger.info("retry_scheduled lead_id={} disposition={} delay_hours={:.1f}", lead_id, disposition, delay_seconds / 3600)
     except Exception as e:
@@ -234,7 +238,7 @@ def _check_active_call(lead_id: str) -> bool:
         return False
     try:
         import time
-        client.zremrangebyscore(_REDIS_CONCURRENT_KEY, "-inf", time.time() - 900)
+        client.zremrangebyscore(_REDIS_CONCURRENT_KEY, "-inf", time.time())
         count = client.zcard(_REDIS_CONCURRENT_KEY)
         if count >= _MAX_CONCURRENT_CALLS:
             logger.warning("active_call_detected lead_id={} count={}", lead_id, count)
@@ -250,6 +254,9 @@ def call_lead(
     bypass_cooldown: bool = False,
 ) -> dict[str, Any]:
     try:
+        from backend.lib.db import campaign_is_running
+        if not campaign_is_running():
+            return {"success": False, "reason": "campaign_paused"}
         from backend.compliance.compliance import ComplianceEngine
         engine = ComplianceEngine()
         result = engine.check_call_allowed(lead_id)
@@ -271,6 +278,8 @@ def call_lead(
             return {"success": False, "reason": "lead_not_found"}
 
         prop = lead.get("properties") or {}
+        if lead.get("callable") is False or lead.get("workflow_state") in ("closed", "dead_lead") or lead.get("stage") in ("closed", "dead"):
+            return {"success": False, "reason": "lead_not_callable"}
 
         if not _is_calling_hours():
             logger.warning("call_lead_outside_hours lead_id={}", lead_id)
@@ -299,15 +308,12 @@ def call_lead(
 
         score = int(prop.get("distress_score", 0))
 
-        if score < MIN_DISTRESS_SCORE:
+        if score < MIN_DISTRESS_SCORE and not bypass_cooldown:
             return {"success": False, "reason": "score_too_low"}
-
-        if not prop.get("estimated_arv"):
-            return {"success": False, "reason": "no_arv"}
 
         callback_at = _safe_iso_to_datetime(lead.get("callback_scheduled_at"))
         if callback_at and callback_at > datetime.now(timezone.utc):
-            logger.info("call_lead_callback_pending lead_id={} callback_at={}", lead_id, callback_at.isoformat())
+            return {"success": False, "reason": "callback_not_due"}
 
         if _check_active_call(lead_id):
             return {"success": False, "reason": "call_in_progress"}
@@ -322,6 +328,8 @@ def call_lead(
 
         result = _make_call(primary_phone, lead_id)
 
+        if not result["call_sid"]:
+            raise RuntimeError("Phone provider did not return a call ID")
         update_lead_call_outcome(lead_id, "initiated", result["call_sid"])
 
         logger.info("call_lead_success lead_id={} call_sid={}", lead_id, result["call_sid"])
@@ -400,12 +408,16 @@ def build_outbound_answer_laml(lead_id: str) -> str:
 
     logger.info("build_outbound_answer_laml lead_id={} ws_url={}", lead_id, ws_url)
 
+    from backend.voice.session import issue_stream_token
+    token = issue_stream_token("outbound:" + lead_id)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
         <Stream
             url="{ws_url}"
             track="inbound_track"
-        />
+        >
+            <Parameter name="authorization" value="{token}"/>
+        </Stream>
     </Connect>
 </Response>"""

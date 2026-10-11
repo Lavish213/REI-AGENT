@@ -5,7 +5,7 @@ router = APIRouter()
 
 
 @router.post("/evals/run")
-async def run_evals(count: int = Query(default=5)):
+async def run_evals(count: int = Query(default=5, ge=1, le=20)):
     from backend.voice.simulator import run_batch_simulations
     results = await run_batch_simulations(count=count)
     passed = sum(1 for r in results if r.get("overall_score", 0) >= 7.0)
@@ -24,7 +24,7 @@ async def run_evals(count: int = Query(default=5)):
 
 
 @router.get("/evals/history")
-async def get_eval_history(limit: int = Query(default=10)):
+async def get_eval_history(limit: int = Query(default=10, ge=1, le=100)):
     from backend.lib.db import _get_client
     client = _get_client()
     response = (

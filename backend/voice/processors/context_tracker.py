@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import re
+import asyncio
 from dataclasses import dataclass, field
 from typing import Literal
 
 from loguru import logger
-from pipecat.frames.frames import Frame
+from pipecat.frames.frames import Frame, LLMContextFrame, TTSSpeakFrame, EndFrame
 from pipecat.frames.frames import TranscriptionFrame, UserStartedSpeakingFrame
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.processors.frame_processor import FrameProcessor
@@ -157,6 +157,7 @@ _SITUATION_PATTERNS: list[tuple[SituationLabel, re.Pattern]] = [
 
 @dataclass(slots=True)
 class CallContext:
+    transcript_events: list[dict] = field(default_factory=list)
     seller_name: str | None = None
     seller_energy: SellerEnergy = "calm"
     energy_history: list[str] = field(default_factory=list)
@@ -168,6 +169,13 @@ class CallContext:
     timeline_mentioned: str | None = None
     disposition: str | None = None
     turn_count: int = 0
+    owner_confirmed: bool = False
+    pre_close_done: bool = False
+    _walkthrough_asked: bool = False
+    property_address: str = ""
+    appointment_set: bool = False
+    callback_set: bool = False
+    _dnc_flagged: bool = False
     address_known: bool = False
     intent_locked: bool = False
     extended_loaded: bool = False
@@ -178,7 +186,7 @@ class CallContext:
     free_and_clear: bool = False
     price_resistance: bool = False
 
-    objective: str = "GET_MOTIVATION"
+    objective: str = "STAGE_1_QUALIFY"
     runtime_instruction: str | None = None
     is_outbound: bool = False
     seller_name_used_count: int = 0
@@ -247,23 +255,19 @@ class CallContext:
 
     def build_context_prefix(self) -> str:
         _OBJ_MAP = {
-            "STAGE_1_QUALIFY": "Say: \"I\'m guessing you\'re probably never going to sell that place. Am I right?\" — wait for their answer. If they already confirmed ownership move to: \"What\'s going on over there?\"",
-            "STAGE_2_DISCOVER": "You\'re learning their situation. Ask ONE of: why they\'re considering selling, what condition the place is in, or what their timeline looks like. Pick whichever is still unknown. React first, then ask.",
-            "STAGE_3_PRECLOSE": "Say: \"If I could get you a number that actually worked — would you be open to having us come take a look?\" Then stop. Wait for answer.",
-            "STAGE_4_CLOSE": "Book the walkthrough. Say: \"What works better for you — mornings or afternoons?\" Get day and time. Nothing else. If they stall use: \"You\'re not committing to anything — we just come take a look and give you a real number.\"",
-            "STAGE_5_WRAP": "Confirm next steps, give Alanzo\'s number, do referral ask, end call warmly.",
-            "HANDLE_OBJECTION": "Hear them out first. Then: \"Totally. Before I let you go — you\'d never sell or just not unless the number was really strong?\"",
-            "TRUST_REPAIR": "Answer directly and simply. No sales language. Pure facts. Do not push forward.",
-            "EMOTIONAL_HOLD": "Acknowledge what they said. One short empathetic response. No questions. No sales. Let them finish.",
-            "OUTBOUND_OPEN": "Wait — opener already fired. Respond naturally to whatever they just said. Do not re-introduce yourself.",
-            "OWNERSHIP_CONFIRM": "Say: \"I\'m guessing you\'re probably never going to sell that place. Am I right?\"",
-            "BOOK_APPOINTMENT": "Book the walkthrough. Ask morning or afternoon, then get a day.",
-            "NURTURE_EXIT": "Wrap up warmly. Referral ask. End call.",
-            "LEAN_IN": "Seller is warming. One soft qualifying question. Do not back off.",
-            "GET_MOTIVATION": "React to what they said, then: \"What\'s going on over there exactly?\"",
-            "GET_TIMELINE": "React first, then: \"I\'m guessing timeline isn\'t really a pressure for you. Am I right?\"",
-            "GET_MORTGAGE": "Say: \"I\'m guessing there\'s probably still a loan on it. Am I right?\"",
-            "GET_ADDRESS": "Let them bring it up. If 3+ turns in ask: \"Which property is that exactly?\"",
+            "STAGE_1_QUALIFY": "Confirm the intended person and ask whether this is a good time. Respect a no.",
+            "STAGE_2_DISCOVER": "React first. Ask one relevant missing question about motivation, timeline, or condition. Answer the caller's questions first.",
+            "STAGE_3_PRECLOSE": "Ask whether a no-obligation walkthrough would be useful. Wait for their answer.",
+            "STAGE_4_CLOSE": "Agree an exact future date, local time, timezone, and address. Confirm with the seller, then reserve through the tool. Never promise unverified availability.",
+            "STAGE_5_WRAP": "Confirm only the next step that was actually saved, resolve open questions, and end warmly. Do not request referrals after an opt-out or rejection.",
+            "HANDLE_OBJECTION": "Answer directly, respect the caller's preference, and do not pressure them.",
+            "TRUST_REPAIR": "Answer directly with verified facts. No sales push.",
+            "EMOTIONAL_HOLD": "Acknowledge briefly and empathetically. Let the caller finish. Offer another time or a human when helpful.",
+            "BOOK_APPOINTMENT": "Ask for an exact date and time, confirm timezone and address, then use the booking tool.",
+            "GET_MOTIVATION": "Ask a relevant question only if the motivation is unknown.",
+            "GET_TIMELINE": "Ask what timing works for them only if unknown.",
+            "GET_MORTGAGE": "Ask about a loan only if relevant; do not assume there is one.",
+            "GET_ADDRESS": "Confirm the actual property address if unknown.",
         }
         _MODE_MAP = {
             "FAST": "keep it brief and get to the point",
@@ -315,12 +319,14 @@ class CallContext:
             + comm_note + savvy_note + arv_note + mao_note + distress_note
         )
 
+        if self.property_address:
+            tag += f"\nProperty address confirmed in this call: {self.property_address}"
+
         if self.objections_raised:
             tag += f"\nLast objection raised: {self.objections_raised[-1]}"
 
         if self.runtime_instruction:
             tag += f"\nContext: {self.runtime_instruction}"
-            self.runtime_instruction = None
 
         sections = []
 
@@ -350,6 +356,8 @@ def _extract_price_cents(text: str) -> int | None:
         return None
 
     for match in matches:
+        if "$" not in match.group(0) and not match.group(2) and not re.search(r"\b(asking|offer|price|want|worth|looking for|would take)\b", text, re.I):
+            continue
         raw = match.group(1).replace(",", "")
         suffix = (match.group(2) or "").lower()
 
@@ -398,21 +406,7 @@ class ContextTrackerProcessor(FrameProcessor):
             text = frame.text.strip()
 
             if text:
-                is_outbound = getattr(self._ctx, "is_outbound", False)
-                if is_outbound and not getattr(self._ctx, "_opener_fired", False):
-                    self._ctx._opener_fired = True
-                    logger.info("outbound_first_word word={!r} — queuing opener", text[:20])
-                    from pipecat.frames.frames import TTSSpeakFrame as _TTSSpeakFrame
-                    opener = getattr(self._ctx, "_opener_text", None)
-                    if opener and self._task_ref:
-                        import asyncio as _asyncio
-                        _asyncio.create_task(self._task_ref.queue_frames([_TTSSpeakFrame(opener)]))
-                    self._ctx.turn_count += 1
-                    self._analyze(text)
-                    if self._objective_engine is not None:
-                        self._ctx.objective = self._objective_engine.decide(self._ctx)
-                    return
-
+                self._ctx._opener_fired = True
                 self._ctx.turn_count += 1
                 self._analyze(text)
                 _obj = getattr(self._ctx, "objective", "")
@@ -425,16 +419,24 @@ class ContextTrackerProcessor(FrameProcessor):
                         self._ctx.address_known = True
                         logger.info("owner_confirmed via affirmative turn={}", _tc)
                 import re as _re
-                _DNC = _re.compile(r"\b(stop calling|take me off|do not call|remove me|never call again)\b", _re.IGNORECASE)
+                _DNC = _re.compile(r"\b(stop calling|take me off|do not call|remove me|never call again|leave me alone|no me llames|deja de llamar)\b", _re.IGNORECASE)
                 if _DNC.search(text) and not getattr(self._ctx, "_dnc_flagged", False):
                     self._ctx._dnc_flagged = True
                     self._ctx.runtime_instruction = "[DNC: call set_disposition(disposition=DEAD) then end_call immediately.]"
-                    logger.warning("dnc_signal_detected text={!r}", text[:60])
+                    logger.warning("dnc_signal_detected")
+                    from backend.lib.db import record_do_not_call
+                    try:
+                        await asyncio.to_thread(record_do_not_call, self._ctx.lead_id, self._ctx.seller_phone)
+                    except Exception as error:
+                        logger.error("dnc_persistence_failed error={}", str(error))
+                    self._ctx.call_should_end = True
+                    if self._ctx._task_ref:
+                        await self._ctx._task_ref.queue_frames([TTSSpeakFrame("Understood. We'll stop contacting you. Goodbye."), EndFrame()])
+                    return
 
                 if self._objective_engine is not None:
                     self._ctx.objective = self._objective_engine.decide(self._ctx)
 
-                await self._maybe_compress_context()
                 current_turn = self._ctx.turn_count
                 if getattr(self, "_last_injected_turn", -1) != current_turn:
                     self._inject_context_prefix()
@@ -442,7 +444,7 @@ class ContextTrackerProcessor(FrameProcessor):
                     try:
                         from backend.karpathys import emitter as _ke
                         import asyncio as _aio
-                        _sid = getattr(self._ctx, "call_sid", "") or ""
+                        _sid = getattr(self._ctx, "_call_sid", "") or ""
                         _trust = getattr(self._ctx, "trust_score", None)
                         _heat = getattr(self._ctx, "deal_heat", None)
                         _turn = getattr(self._ctx, "turn_count", 0)
@@ -530,45 +532,22 @@ class ContextTrackerProcessor(FrameProcessor):
     def _inject_context_prefix(self) -> None:
         if not self._llm_context:
             return
-        self._trim_history()
-        messages = getattr(self._llm_context, "messages", None)
-        if not messages:
-            return
-
-        memory_ctx = getattr(self._ctx, "memory_context_str", "")
+        messages = self._llm_context.messages
         prefix = self._ctx.build_context_prefix()
-        if memory_ctx and "SELLER MEMORY" not in prefix:
-            prefix = memory_ctx + "\n\n" + prefix if prefix else memory_ctx
-
-        last_user = next(
-            (m for m in reversed(messages) if m.get("role") == "user"),
-            None,
-        )
-        if not last_user:
-            return
-
-        content = last_user.get("content", "")
-        if isinstance(content, str):
-            content = re.sub(r"\[CTX:[^\]]*\]\s*", "", content).strip()
-            content = re.sub(r"\[RUNTIME:[^\]]*\]\s*", "", content).strip()
-            content = re.sub(r"<ctx>[\s\S]*?</ctx>\s*", "", content).strip()
-            content = re.sub(r"<seller>([\s\S]*?)</seller>", r"\1", content).strip()
-            last_user["content"] = f"<ctx>\n{prefix}\n</ctx>\n<seller>{content}</seller>"
-        elif isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    block["text"] = re.sub(r"\[CTX:[^\]]*\]\s*", "", block["text"]).strip()
-                    block["text"] = re.sub(r"\[RUNTIME:[^\]]*\]\s*", "", block["text"]).strip()
-                    block["text"] = re.sub(r"<ctx>[\s\S]*?</ctx>\s*", "", block["text"]).strip()
-                    block["text"] = re.sub(r"<seller>([\s\S]*?)</seller>", r"\1", block["text"]).strip()
-                    block["text"] = f"<ctx>\n{prefix}\n</ctx>\n<seller>{block['text']}</seller>"
-                    break
-
+        memory = self._ctx.memory_context_str
+        content = "[CURRENT CALL STATE]\n" + (memory + "\n" if memory else "") + prefix
+        state = next((m for m in messages if m.get("role") == "system" and isinstance(m.get("content"), str) and m["content"].startswith("[CURRENT CALL STATE]")), None)
+        if state is None:
+            messages.insert(1, {"role": "system", "content": content})
+        else:
+            state["content"] = content
         self._last_context_prefix = prefix
-        logger.debug("context prefix updated prefix={}", prefix)
 
     def _analyze(self, text: str) -> None:
         lower = text.lower()
+        if self._ctx._walkthrough_asked and re.search(r"\b(yes|yeah|sure|sounds good|works for me|let.s do it)\b", lower) and not re.search(r"\b(no|not|never)\b", lower):
+            self._ctx.pre_close_done = True
+            self._ctx._walkthrough_asked = False
 
         price = _extract_price_cents(text)
         if price is not None:
@@ -596,15 +575,19 @@ class ContextTrackerProcessor(FrameProcessor):
                     self._ctx.objections_raised.append(label)
         self._ctx.objections_raised = self._ctx.objections_raised[-6:]
 
-        if not self._ctx.intent_locked and any(phrase in lower for phrase in _INTENT_PHRASES):
+        if not self._ctx.intent_locked and any(phrase in lower for phrase in _INTENT_PHRASES) and not re.search(r"\b(not|never|don.t|won.t|isn.t|aren.t)\b.{0,25}\b(sell|selling|move|moving)\b", lower):
             self._ctx.intent_locked = True
             logger.info("seller intent locked")
 
-        if not self._ctx.address_known and _ADDRESS_PATTERN.search(text):
+        address = _ADDRESS_PATTERN.search(text)
+        if address:
             self._ctx.address_known = True
+            self._ctx.property_address = address.group(0)
             logger.info("property address detected")
 
-        if not self._ctx.has_agent and _AGENT_PATTERN.search(text):
+        if re.search(r"\b(no agent|not (?:using|working with) (?:an? )?agent|don.t have (?:an? )?agent)\b", lower):
+            self._ctx.has_agent = False
+        elif not self._ctx.has_agent and _AGENT_PATTERN.search(text):
             self._ctx.has_agent = True
             logger.info("agent detected")
 
@@ -621,6 +604,9 @@ class ContextTrackerProcessor(FrameProcessor):
         self._update_situation_label(text)
 
     def _update_seller_energy(self, text: str) -> None:
+        if re.search(r"\b(no rush|not in a hurry|no hurry)\b", text, re.I):
+            self._ctx.seller_energy = "calm"
+            return
         for energy, pattern in _ENERGY_PATTERNS:
             if pattern.search(text):
                 if energy == self._ctx.seller_energy:
@@ -639,3 +625,15 @@ class ContextTrackerProcessor(FrameProcessor):
                 self._ctx.situation_label = label
                 logger.info("seller situation detected label={}", label)
                 return
+
+class ContextStateProcessor(FrameProcessor):
+    def __init__(self, tracker):
+        super().__init__()
+        self._tracker = tracker
+
+    async def process_frame(self, frame, direction):
+        await super().process_frame(frame, direction)
+        if direction == FrameDirection.DOWNSTREAM and isinstance(frame, LLMContextFrame):
+            self._tracker._inject_context_prefix()
+            self._tracker._ctx.runtime_instruction = None
+        await self.push_frame(frame, direction)

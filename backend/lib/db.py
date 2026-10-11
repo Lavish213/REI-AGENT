@@ -21,10 +21,14 @@ def get_supabase() -> Client:
     return _get_client()
 
 
-def upsert_property(data: dict) -> None:
+def upsert_property(data: dict) -> str:
     client = _get_client()
-    client.table("properties").upsert(data, on_conflict="apn").execute()
-    logger.debug("upsert_property apn={}", data.get("apn"))
+    payload = {key: value for key, value in data.items() if not key.startswith("_")}
+    response = client.table("properties").upsert(payload, on_conflict="apn").execute()
+    if not response.data or not response.data[0].get("id"):
+        raise RuntimeError("Property was not saved")
+    data["id"] = response.data[0]["id"]
+    return data["id"]
 
 
 def get_properties_by_score(min_score: int) -> list[dict]:
@@ -62,6 +66,7 @@ def insert_lead(property_id: str) -> str:
         .execute()
     )
     lead_id = response.data[0]["id"]
+    client.table("properties").update({"lead_id": lead_id}).eq("id", property_id).execute()
     logger.info("insert_lead property_id={} lead_id={}", property_id, lead_id)
     return lead_id
 
@@ -944,7 +949,7 @@ def create_offer(
     now = datetime.now(timezone.utc).isoformat()
     mao_calculated: int | None = None
     if arv_used is not None:
-        mao_calculated = int(arv_used * 0.70) - repair_estimate
+        mao_calculated = (arv_used * 70 // 100) - repair_estimate
 
     response = client.table("offers").insert({
         "lead_id": lead_id,
@@ -952,8 +957,8 @@ def create_offer(
         "arv_used": arv_used,
         "repair_estimate": repair_estimate,
         "mao_calculated": mao_calculated,
-        "amount": offer_amount if offer_amount is not None else mao_calculated,
-        "status": "draft",
+        "offer_amount": offer_amount if offer_amount is not None else mao_calculated,
+        "offer_status": "draft",
         "notes": notes,
         "created_by": created_by,
         "created_at": now,
@@ -992,7 +997,7 @@ def get_offers_for_lead(lead_id: str) -> list[dict]:
 def update_offer_status(offer_id: str, status: str, notes: str | None = None) -> None:
     client = _get_client()
     data: dict = {
-        "status": status,
+        "offer_status": status,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     if notes is not None:
@@ -1088,14 +1093,14 @@ def get_workflow_analytics() -> dict:
     calls_this_week = calls_week_resp.count or 0
 
     # Offer pipeline
-    offer_resp = client.table("offers").select("status, amount").execute()
+    offer_resp = client.table("offers").select("offer_status, offer_amount").execute()
     offer_by_status: dict[str, int] = {}
     offer_pipeline_value = 0
     for o in (offer_resp.data or []):
         s = o.get("offer_status", "draft")
         offer_by_status[s] = offer_by_status.get(s, 0) + 1
         if s in ("sent", "countered", "accepted"):
-            offer_pipeline_value += o.get("amount") or 0
+            offer_pipeline_value += o.get("offer_amount") or 0
 
     # Conversion: active → appointment
     active = sum(workflow_pipeline.get(s, 0) for s in ("active_contact", "followup_required"))
@@ -1266,3 +1271,89 @@ def write_bob_feedback_event(lead_id, call_sid, event_type, payload):
     except Exception as e:
         if "duplicate" not in str(e).lower() and "unique" not in str(e).lower():
             logger.warning("write_bob_feedback_event failed error={}", str(e))
+
+
+def reserve_voice_appointment(lead_id: str, starts_at: str, address: str) -> str:
+    response = _get_client().rpc("reserve_voice_appointment", {
+        "p_lead_id": lead_id,
+        "p_starts_at": starts_at,
+        "p_address": address,
+    }).execute()
+    if not response.data:
+        raise RuntimeError("Appointment reservation was not confirmed")
+    return str(response.data)
+
+
+def save_callback(lead_id: str, callback_at: str, notes: str) -> None:
+    response = _get_client().table("leads").update({
+        "callback_scheduled_at": callback_at,
+        "callback_notes": notes,
+    }).eq("id", lead_id).execute()
+    if not response.data:
+        raise RuntimeError("Callback was not saved")
+
+
+def get_operator_user(access_token: str):
+    response = _get_client().auth.get_user(access_token)
+    user = response.user
+    if user and (user.app_metadata or {}).get("role") in ("operator", "admin"):
+        return user
+    return None
+
+
+def record_do_not_call(lead_id: str, phone: str) -> None:
+    client = _get_client()
+    if phone:
+        client.table("dnc_list").upsert({"phone": phone}, on_conflict="phone").execute()
+    if lead_id:
+        mark_lead_opted_out(lead_id)
+
+
+def phone_is_do_not_call(phone: str) -> bool:
+    response = _get_client().table("dnc_list").select("id").eq("phone", phone).limit(1).execute()
+    return bool(response.data)
+
+
+def claim_due_callbacks(limit: int = 3) -> list[dict]:
+    return _get_client().rpc("claim_due_callbacks", {"p_limit": limit}).execute().data or []
+
+
+def claim_due_call_followups(limit: int = 5) -> list[dict]:
+    return _get_client().rpc("claim_due_call_followups", {"p_limit": limit}).execute().data or []
+
+
+def finish_callback_claim(lead_id: str, scheduled_at: str, success: bool) -> None:
+    changes = {"callback_claimed_until": None}
+    if success:
+        changes["callback_scheduled_at"] = None
+    _get_client().table("leads").update(changes).eq("id", lead_id).eq("callback_scheduled_at", scheduled_at).execute()
+
+
+def finish_followup_claim(followup_id: str, success: bool) -> None:
+    _get_client().table("followups").update({
+        "state": "completed" if success else "pending",
+        "claimed_until": None,
+    }).eq("id", followup_id).eq("state", "processing").execute()
+
+
+def campaign_is_running(campaign_id: str = "default") -> bool:
+    response = _get_client().table("campaigns").select("state").eq("id", campaign_id).limit(1).execute()
+    return bool(response.data and response.data[0].get("state") == "running")
+
+
+def list_walkthrough_availability() -> list[dict]:
+    client = _get_client()
+    now = datetime.now(timezone.utc).isoformat()
+    slots = client.table("walkthrough_availability").select("*").gt("starts_at", now).order("starts_at").limit(100).execute().data or []
+    appointments = client.table("voice_appointments").select("starts_at,ends_at").eq("status", "confirmed").gt("ends_at", now).execute().data or []
+    def parsed(value):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return [slot for slot in slots if not any(parsed(slot["starts_at"]) < parsed(appointment["ends_at"]) and parsed(slot["ends_at"]) > parsed(appointment["starts_at"]) for appointment in appointments)]
+
+
+def add_walkthrough_availability(starts_at: str, ends_at: str) -> None:
+    _get_client().table("walkthrough_availability").upsert({"starts_at": starts_at, "ends_at": ends_at}, on_conflict="starts_at").execute()
+
+
+def update_sms_contact_time(lead_id: str, sent_at: str) -> None:
+    _get_client().table("leads").update({"last_sms_at": sent_at}).eq("id", lead_id).execute()

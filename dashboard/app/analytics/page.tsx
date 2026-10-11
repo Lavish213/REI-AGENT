@@ -1,8 +1,11 @@
-const API = process.env.NEXT_PUBLIC_API_URL || ''
+import Link from 'next/link'
+export const dynamic = 'force-dynamic'
+
+import { backendFetch } from '@/lib/backend'
 
 async function fetchAnalytics(path: string) {
   try {
-    const res = await fetch(`${API}/api${path}`, { cache: 'no-store' })
+    const res = await backendFetch(`/api${path}`, { cache: 'no-store' })
     if (!res.ok) return null
     return res.json()
   } catch {
@@ -42,7 +45,6 @@ export default async function AnalyticsPage() {
   const offerPipeline: Record<string, number> = workflow.offer_pipeline ?? {}
 
   const maxWorkflow = Math.max(1, ...Object.values(workflowPipeline) as number[])
-  const maxStage = Math.max(1, ...Object.values(stagePipeline) as number[])
   const maxDisp = Math.max(1, ...Object.values(disposition30d) as number[])
 
   const workflowStateColors: Record<string, string> = {
@@ -70,9 +72,9 @@ export default async function AnalyticsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold">Analytics</h1>
         <div className="flex gap-3 text-sm">
-          <a href="/" className="text-blue-400 hover:underline">Ops →</a>
-          <a href="/workflow" className="text-blue-400 hover:underline">Workflow →</a>
-          <a href="/leads" className="text-blue-400 hover:underline">Leads →</a>
+          <Link href="/" className="text-blue-400 hover:underline">Ops →</Link>
+          <Link href="/workflow" className="text-blue-400 hover:underline">Workflow →</Link>
+          <Link href="/leads" className="text-blue-400 hover:underline">Leads →</Link>
         </div>
       </div>
 
@@ -112,7 +114,7 @@ export default async function AnalyticsPage() {
           <div className="bg-gray-800 rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <tbody>
-                {Object.entries(workflowPipeline).map(([state, count]: [string, any]) => (
+                {Object.entries(workflowPipeline).map(([state, count]: [string, number]) => (
                   <tr key={state} className="border-b border-gray-700/50 last:border-0">
                     <td className="px-4 py-2.5 text-gray-400 capitalize w-44">{state.replace(/_/g, ' ')}</td>
                     <td className="px-4 py-2.5 text-right w-12">
@@ -139,7 +141,7 @@ export default async function AnalyticsPage() {
             <div className="bg-gray-800 rounded-lg p-4 space-y-2">
               {Object.entries(disposition30d)
                 .filter(([k]) => k !== 'unknown' || (disposition30d[k] ?? 0) > 0)
-                .map(([disp, count]: [string, any]) => (
+                .map(([disp, count]: [string, number]) => (
                 <div key={disp} className="flex items-center gap-3">
                   <span className={`text-sm font-semibold w-16 ${dispColors[disp] ?? 'text-gray-400'}`}>{disp}</span>
                   <div className="flex-1">
@@ -174,7 +176,7 @@ export default async function AnalyticsPage() {
               <div className="border-t border-gray-700 pt-2 flex justify-between text-xs">
                 <span className="text-gray-500">Total pending</span>
                 <span className="text-gray-300 font-mono">
-                  {Object.values(followupQueue).reduce((a: any, b: any) => a + b, 0)}
+                  {Object.values(followupQueue).reduce((a, b) => a + b, 0)}
                 </span>
               </div>
             </div>
@@ -185,7 +187,7 @@ export default async function AnalyticsPage() {
             <section>
               <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Offer Pipeline</h2>
               <div className="bg-gray-800 rounded-lg p-4 space-y-2">
-                {Object.entries(offerPipeline).map(([status, count]: [string, any]) => (
+                {Object.entries(offerPipeline).map(([status, count]: [string, number]) => (
                   <div key={status} className="flex items-center justify-between text-sm">
                     <span className="text-gray-400 capitalize">{status}</span>
                     <span className="font-mono font-semibold text-gray-200">{count}</span>
@@ -208,7 +210,7 @@ export default async function AnalyticsPage() {
         <section className="mt-6">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Stage Pipeline</h2>
           <div className="grid grid-cols-4 sm:grid-cols-7 gap-3">
-            {Object.entries(stagePipeline).map(([stage, count]: [string, any]) => (
+            {Object.entries(stagePipeline).map(([stage, count]: [string, number]) => (
               <div key={stage} className="bg-gray-800 rounded-lg p-3 text-center">
                 <p className={`text-xl font-bold font-mono ${count > 0 && stage !== 'dead' ? 'text-white' : 'text-gray-600'}`}>
                   {count}

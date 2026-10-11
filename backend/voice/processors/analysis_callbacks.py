@@ -111,7 +111,7 @@ class AnalysisCallbackProcessor(FrameProcessor):
             logger.info("phrase_trigger goodbye text={!r}", text[:40])
             self._ctx.runtime_instruction = (
                 "[Seller is saying goodbye. Wrap up warmly. "
-                "Do the referral ask, then use end_call tool.]"
+                "Respect their goodbye, then use end_call tool.]"
             )
 
     def _run_analysis(self, text: str) -> None:
@@ -120,13 +120,8 @@ class AnalysisCallbackProcessor(FrameProcessor):
     def _run_orchestrator(self) -> None:
         try:
             decision = self._runtime_orchestrator.decide(self._ctx)
-            if decision.objective_override:
-                self._ctx.objective = decision.objective_override
-            if decision.inject_instruction:
+            if decision.inject_instruction and not self._ctx.runtime_instruction:
                 self._ctx.runtime_instruction = decision.inject_instruction
-            if decision.end_call:
-                logger.info("orchestrator end_call reason={}", decision.end_reason)
-                self._ctx.call_should_end = True
         except Exception as e:
             logger.warning("orchestrator failed error={}", str(e))
     def _accumulate_entities(self, text: str) -> None:

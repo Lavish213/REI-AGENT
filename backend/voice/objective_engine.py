@@ -82,7 +82,7 @@ class ObjectiveEngine:
         }
         bob_floor_stage = _BOB_TO_STAGE.get(bob_phase, "STAGE_1_QUALIFY")
 
-        if disposition in ("DEAD", "HOT", "WARM", "COLD"):
+        if disposition == "DEAD" or appointment_set or getattr(call_ctx, "callback_set", False) or getattr(call_ctx, "call_should_end", False):
             logger.debug("objective=STAGE_5_WRAP disposition={}", disposition)
             return "STAGE_5_WRAP"
 
@@ -104,7 +104,7 @@ class ObjectiveEngine:
 
         qualify_gate = (
             (owner_confirmed or address_known) and (intent_locked or bool(motivation_signals))
-        ) or turn_count >= 4
+        )
         if not qualify_gate:
             logger.debug("objective=STAGE_1_QUALIFY owner={} intent={} turn={}", owner_confirmed, intent_locked, turn_count)
             return _apply_floor("STAGE_1_QUALIFY")

@@ -6,7 +6,7 @@ from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 _AI_QUESTION = re.compile(
-    r"\b(are you a robot|are you ai|are you real|is this automated|are you human|are you a bot|are you a computer|is this a recording)\b",
+    r"\b(are you (?:a )?robot|are you (?:an? )?ai|are you real|is this automated|is this (?:a )?bot|am i talking to (?:a )?computer|(?:are you a )?real person|are you human|are you a bot|are you a computer|is this a recording)\b",
     re.IGNORECASE,
 )
 

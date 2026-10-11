@@ -108,33 +108,9 @@ Keep responses under 3 sentences like a real phone call.
 
 
 def _build_sophia_prompt(prop: dict) -> str:
-    prompts_dir = os.path.join(os.path.dirname(__file__), "prompts")
-    parts = []
-    for filename in ["sophia_system.md", "sophia_scenarios.md", "sophia_scripts.md"]:
-        filepath = os.path.join(prompts_dir, filename)
-        if os.path.exists(filepath):
-            with open(filepath) as f:
-                parts.append(f.read().strip())
-
-    base = "\n\n---\n\n".join(parts)
-
-    arv = f"${prop.get('estimated_arv', 0) / 100:,.0f}"
-    mao = f"${prop.get('mao', 0) / 100:,.0f}"
-
-    context = f"""
-CALLER PROPERTY CONTEXT
-Address: {prop.get('address')} {prop.get('city')} {prop.get('zip')}
-Beds/Baths: {prop.get('beds')}/{prop.get('baths')}
-Sqft: {prop.get('sqft')}
-Year Built: {prop.get('year_built')}
-Distress: {prop.get('distress_type', '').replace('_', ' ').title()}
-Equity: {prop.get('equity_pct')}%
-Estimated ARV: {arv}
-Your Max Offer MAO: {mao}
-Anchor above MAO. Never reveal MAO directly.
-""".strip()
-
-    return f"{base}\n\n---\n\n{context}"
+    from backend.voice.agent import _load_system_prompt
+    context = f"SIMULATION: Property {prop.get('address', 'unknown')}, {prop.get('city', '')}. No real bookings or messages can be sent in this text simulation."
+    return _load_system_prompt({"property_context_str": context})
 
 
 async def run_simulation(
@@ -211,7 +187,7 @@ async def run_simulation(
 
     scores = {}
     try:
-        scores = grade_call(
+        scores = await grade_call(
             transcript=transcript_str,
             lead_id="simulation",
             call_sid=f"sim_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",

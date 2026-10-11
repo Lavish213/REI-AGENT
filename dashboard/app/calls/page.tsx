@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { supabase } from '@/lib/supabase'
 
 function formatDate(iso: string | null) {
@@ -44,14 +46,14 @@ export default async function CallsPage() {
         {rows.length === 0 && (
           <div className="bg-gray-800 rounded-lg p-8 text-center text-gray-500">No calls found</div>
         )}
-        {rows.map((call: any) => {
+        {rows.map((call) => {
           const qa = call.score_overall
           const qaColor =
             qa == null ? 'text-gray-500' :
             qa >= 8 ? 'text-green-400' :
             qa >= 6 ? 'text-yellow-400' : 'text-red-400'
 
-          const address = call.leads?.address ?? '—'
+          const address = (Array.isArray(call.leads) ? call.leads[0] : call.leads)?.address ?? '—'
           const disposition = call.call_disposition
           const dispColor: Record<string, string> = {
             HOT: 'text-red-400', WARM: 'text-yellow-400',

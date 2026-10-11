@@ -1,7 +1,7 @@
 from __future__ import annotations
 import re
 from loguru import logger
-from pipecat.frames.frames import Frame, LLMTextFrame, TextFrame, TTSTextFrame
+from pipecat.frames.frames import Frame, LLMTextFrame, TextFrame, TTSSpeakFrame, TTSTextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 _SEVERITY_EXACT = "exact_block"
@@ -27,7 +27,7 @@ class ComplianceOutputFilter(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, (LLMTextFrame, TextFrame, TTSTextFrame)):
+        if isinstance(frame, (LLMTextFrame, TextFrame, TTSTextFrame, TTSSpeakFrame)):
             text = getattr(frame, "text", "") or ""
             if not text:
                 await self.push_frame(frame, direction)

@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "test:database": "node voice_scheduling_db.cjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
+}
