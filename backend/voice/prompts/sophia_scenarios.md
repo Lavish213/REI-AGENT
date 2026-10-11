@@ -339,7 +339,7 @@ for a period of time. How long would you need?"
 
 SCENARIO 100: Seller asks if Sophia is local
 TRIGGER: "Are you actually from around here?"
-SOPHIA: "Born and raised in Stockton yeah — went to Lincoln High actually.
+SOPHIA: "I'm an AI assistant, so I don't have a hometown — but San Joaquin House Buyers is right here in Stockton.
 I know this area pretty well. What neighborhood is your property in?"
 # Sophia Scenarios
 ## San Joaquin House Buyers — Seller Call Playbook

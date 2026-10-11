@@ -1266,3 +1266,74 @@ def write_bob_feedback_event(lead_id, call_sid, event_type, payload):
     except Exception as e:
         if "duplicate" not in str(e).lower() and "unique" not in str(e).lower():
             logger.warning("write_bob_feedback_event failed error={}", str(e))
+
+
+def record_suppression_event(
+    tenant_id: str,
+    lead_id: str | None,
+    contact_point: str,
+    method: str,
+    source: str,
+    contact_type: str = "phone",
+    channel: str = "all",
+    reason: str | None = None,
+    call_sid: str | None = None,
+    verbatim: str | None = None,
+    actor: str = "system",
+) -> str | None:
+    client = _get_client()
+    row = {
+        "tenant_id": tenant_id,
+        "lead_id": lead_id or None,
+        "contact_point": contact_point,
+        "contact_type": contact_type,
+        "channel": channel,
+        "action": "suppressed",
+        "reason": reason,
+        "method": method,
+        "source": source,
+        "call_sid": call_sid,
+        "verbatim": (verbatim or "")[:2000] or None,
+        "actor": actor,
+    }
+    result = client.table("suppression_events").insert(row).execute()
+    event_id = result.data[0]["id"] if result.data else None
+    logger.info(
+        "suppression_recorded event_id={} lead_id={} method={} channel={}",
+        event_id, lead_id, method, channel,
+    )
+    return event_id
+
+
+def add_to_dnc(tenant_id: str, phone: str, reason: str = "seller_request") -> None:
+    client = _get_client()
+    client.table("dnc_list").upsert(
+        {"tenant_id": tenant_id, "phone": phone, "reason": reason},
+        on_conflict="phone",
+    ).execute()
+    logger.info("dnc_added phone_suffix={} reason={}", phone[-4:], reason)
+
+
+def is_contact_suppressed(tenant_id: str, contact_point: str) -> bool:
+    client = _get_client()
+    result = (
+        client.table("suppression_events")
+        .select("action")
+        .eq("tenant_id", tenant_id)
+        .eq("contact_point", contact_point)
+        .order("occurred_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        return False
+    return result.data[0].get("action") == "suppressed"
+
+
+def try_write(label: str, fn, *args, **kwargs) -> bool:
+    try:
+        fn(*args, **kwargs)
+        return True
+    except Exception as error:
+        logger.exception("write_failed op={} error={}", label, str(error))
+        return False

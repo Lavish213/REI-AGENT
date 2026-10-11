@@ -200,6 +200,7 @@ class CallContext:
     seller_sophistication: str = "AVERAGE"
     consecutive_silences: int = 0
     call_should_end: bool = False
+    stop_requested: bool = False
     seller_phone: str = ""
     lead_id: str = ""
     _opener_text: str = ""
