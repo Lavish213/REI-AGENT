@@ -1,0 +1,2384 @@
+{
+  "runs": 33,
+  "passed": 33,
+  "failed": 0,
+  "model_generated_conversations": 0,
+  "results": [
+    {
+      "scenario": "relocation",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "I own the house and want to sell because I'm relocating",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "What timing works for you?",
+          "seller": "Next week ideally",
+          "response_goal": "condition",
+          "expected_goal": "condition",
+          "question_limit": 1,
+          "guidance": "Ask one broad question about the property's condition. A house in good condition is a valid answer; do not insist on finding defects.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "How is the house's condition?",
+          "seller": "Good condition, no repairs needed",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Would a walkthrough be useful?",
+          "seller": "Are there any fees?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "The team can explain any terms before you decide.",
+          "seller": "Yeah, a walkthrough sounds good",
+          "response_goal": "schedule",
+          "expected_goal": "schedule",
+          "question_limit": 1,
+          "guidance": "They accepted discussing a walkthrough. Ask for one missing scheduling detail. Read back date, Pacific time and address, obtain confirmation, then use the reservation tool.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Which date would work?",
+          "seller": "Tuesday, but which times do you have?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "relocation",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "I OWN THE HOUSE AND WANT TO SELL BECAUSE I'M RELOCATING",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "What timing works for you?",
+          "seller": "NEXT WEEK IDEALLY",
+          "response_goal": "condition",
+          "expected_goal": "condition",
+          "question_limit": 1,
+          "guidance": "Ask one broad question about the property's condition. A house in good condition is a valid answer; do not insist on finding defects.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "How is the house's condition?",
+          "seller": "GOOD CONDITION, NO REPAIRS NEEDED",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Would a walkthrough be useful?",
+          "seller": "ARE THERE ANY FEES?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "The team can explain any terms before you decide.",
+          "seller": "YEAH, A WALKTHROUGH SOUNDS GOOD",
+          "response_goal": "schedule",
+          "expected_goal": "schedule",
+          "question_limit": 1,
+          "guidance": "They accepted discussing a walkthrough. Ask for one missing scheduling detail. Read back date, Pacific time and address, obtain confirmation, then use the reservation tool.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Which date would work?",
+          "seller": "TUESDAY, BUT WHICH TIMES DO YOU HAVE?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "relocation",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "I own the house and want to sell because I’m relocating",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "What timing works for you?",
+          "seller": "Next week ideally",
+          "response_goal": "condition",
+          "expected_goal": "condition",
+          "question_limit": 1,
+          "guidance": "Ask one broad question about the property's condition. A house in good condition is a valid answer; do not insist on finding defects.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "How is the house's condition?",
+          "seller": "Good condition, no repairs needed",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Would a walkthrough be useful?",
+          "seller": "Are there any fees?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "The team can explain any terms before you decide.",
+          "seller": "Yeah, a walkthrough sounds good",
+          "response_goal": "schedule",
+          "expected_goal": "schedule",
+          "question_limit": 1,
+          "guidance": "They accepted discussing a walkthrough. Ask for one missing scheduling detail. Read back date, Pacific time and address, obtain confirmation, then use the reservation tool.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Which date would work?",
+          "seller": "Tuesday, but which times do you have?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "busy",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "I'm at work",
+          "response_goal": "callback",
+          "expected_goal": "callback",
+          "question_limit": 1,
+          "guidance": "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Would another time work better?",
+          "seller": "Call me back tomorrow",
+          "response_goal": "callback",
+          "expected_goal": "callback",
+          "question_limit": 1,
+          "guidance": "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "What Pacific time tomorrow works?",
+          "seller": "Hold on one second",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Take your time.",
+          "seller": "Actually make that Thursday at three",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Which Thursday do you mean?",
+          "seller": "Why do you need the exact date?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "So the callback can be saved for the right day.",
+          "seller": "Okay, I have to go now",
+          "response_goal": "goodbye",
+          "expected_goal": "goodbye",
+          "question_limit": 0,
+          "guidance": "Respect the goodbye. End warmly without another question or an invented next step.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "busy",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "I'M AT WORK",
+          "response_goal": "callback",
+          "expected_goal": "callback",
+          "question_limit": 1,
+          "guidance": "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Would another time work better?",
+          "seller": "CALL ME BACK TOMORROW",
+          "response_goal": "callback",
+          "expected_goal": "callback",
+          "question_limit": 1,
+          "guidance": "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "What Pacific time tomorrow works?",
+          "seller": "HOLD ON ONE SECOND",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Take your time.",
+          "seller": "ACTUALLY MAKE THAT THURSDAY AT THREE",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Which Thursday do you mean?",
+          "seller": "WHY DO YOU NEED THE EXACT DATE?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "So the callback can be saved for the right day.",
+          "seller": "OKAY, I HAVE TO GO NOW",
+          "response_goal": "goodbye",
+          "expected_goal": "goodbye",
+          "question_limit": 0,
+          "guidance": "Respect the goodbye. End warmly without another question or an invented next step.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "busy",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "I’m at work",
+          "response_goal": "callback",
+          "expected_goal": "callback",
+          "question_limit": 1,
+          "guidance": "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Would another time work better?",
+          "seller": "Call me back tomorrow",
+          "response_goal": "callback",
+          "expected_goal": "callback",
+          "question_limit": 1,
+          "guidance": "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "What Pacific time tomorrow works?",
+          "seller": "Hold on one second",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Take your time.",
+          "seller": "Actually make that Thursday at three",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Which Thursday do you mean?",
+          "seller": "Why do you need the exact date?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "So the callback can be saved for the right day.",
+          "seller": "Okay, I have to go now",
+          "response_goal": "goodbye",
+          "expected_goal": "goodbye",
+          "question_limit": 0,
+          "guidance": "Respect the goodbye. End warmly without another question or an invented next step.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "grief",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "What prompted your call?",
+          "seller": "My dad passed away",
+          "response_goal": "empathy",
+          "expected_goal": "empathy",
+          "question_limit": 0,
+          "guidance": "Acknowledge what they actually shared in one grounded sentence. Do not claim shared personal experience, force optimism, or pivot immediately into condition/price questions.",
+          "objective": "EMOTIONAL_HOLD",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "I'm sorry about your dad.",
+          "seller": "I need time to think",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "Respect the need for time or another decision-maker. Do not lean in, manufacture urgency, or suggest they agreed. Offer an optional next step rather than demanding one.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "You can take your time.",
+          "seller": "Can I talk to a real person?",
+          "response_goal": "human",
+          "expected_goal": "human",
+          "question_limit": 0,
+          "guidance": "Attempt the permitted transfer now. Explain a failed transfer honestly; offer a human callback without restarting discovery.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "I can try connecting you with the team.",
+          "seller": "Wait, are you AI?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Yes, I'm an AI assistant for San Joaquin House Buyers.",
+          "seller": "Let me finish before you ask anything",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Go ahead.",
+          "seller": "I don't want to sell",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "grief",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "What prompted your call?",
+          "seller": "MY DAD PASSED AWAY",
+          "response_goal": "empathy",
+          "expected_goal": "empathy",
+          "question_limit": 0,
+          "guidance": "Acknowledge what they actually shared in one grounded sentence. Do not claim shared personal experience, force optimism, or pivot immediately into condition/price questions.",
+          "objective": "EMOTIONAL_HOLD",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "I'm sorry about your dad.",
+          "seller": "I NEED TIME TO THINK",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "Respect the need for time or another decision-maker. Do not lean in, manufacture urgency, or suggest they agreed. Offer an optional next step rather than demanding one.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "You can take your time.",
+          "seller": "CAN I TALK TO A REAL PERSON?",
+          "response_goal": "human",
+          "expected_goal": "human",
+          "question_limit": 0,
+          "guidance": "Attempt the permitted transfer now. Explain a failed transfer honestly; offer a human callback without restarting discovery.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "I can try connecting you with the team.",
+          "seller": "WAIT, ARE YOU AI?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Yes, I'm an AI assistant for San Joaquin House Buyers.",
+          "seller": "LET ME FINISH BEFORE YOU ASK ANYTHING",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Go ahead.",
+          "seller": "I DON'T WANT TO SELL",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "grief",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "What prompted your call?",
+          "seller": "My dad passed away",
+          "response_goal": "empathy",
+          "expected_goal": "empathy",
+          "question_limit": 0,
+          "guidance": "Acknowledge what they actually shared in one grounded sentence. Do not claim shared personal experience, force optimism, or pivot immediately into condition/price questions.",
+          "objective": "EMOTIONAL_HOLD",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "I'm sorry about your dad.",
+          "seller": "I need time to think",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "Respect the need for time or another decision-maker. Do not lean in, manufacture urgency, or suggest they agreed. Offer an optional next step rather than demanding one.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "You can take your time.",
+          "seller": "Can I talk to a real person?",
+          "response_goal": "human",
+          "expected_goal": "human",
+          "question_limit": 0,
+          "guidance": "Attempt the permitted transfer now. Explain a failed transfer honestly; offer a human callback without restarting discovery.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "I can try connecting you with the team.",
+          "seller": "Wait, are you AI?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Yes, I'm an AI assistant for San Joaquin House Buyers.",
+          "seller": "Let me finish before you ask anything",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Go ahead.",
+          "seller": "I don’t want to sell",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "corrections",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "What price are you asking?",
+          "seller": "I want $220k",
+          "response_goal": "contact",
+          "expected_goal": "contact",
+          "question_limit": 1,
+          "guidance": "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Is it your house?",
+          "seller": "It's my house and I need to sell because I'm moving",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "What timing works?",
+          "seller": "Next week, but actually I'm asking $210k now",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Got it, your asking price is $210,000.",
+          "seller": "The roof leaks",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Would a walkthrough be useful?",
+          "seller": "Actually the roof is fine now",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Thanks for correcting that.",
+          "seller": "Can you offer $210k?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": 21000000,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "corrections",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "What price are you asking?",
+          "seller": "I WANT $220K",
+          "response_goal": "contact",
+          "expected_goal": "contact",
+          "question_limit": 1,
+          "guidance": "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Is it your house?",
+          "seller": "IT'S MY HOUSE AND I NEED TO SELL BECAUSE I'M MOVING",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "What timing works?",
+          "seller": "NEXT WEEK, BUT ACTUALLY I'M ASKING $210K NOW",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Got it, your asking price is $210,000.",
+          "seller": "THE ROOF LEAKS",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Would a walkthrough be useful?",
+          "seller": "ACTUALLY THE ROOF IS FINE NOW",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Thanks for correcting that.",
+          "seller": "CAN YOU OFFER $210K?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": 21000000,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "corrections",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "What price are you asking?",
+          "seller": "I want $220k",
+          "response_goal": "contact",
+          "expected_goal": "contact",
+          "question_limit": 1,
+          "guidance": "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Is it your house?",
+          "seller": "It’s my house and I need to sell because I’m moving",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "What timing works?",
+          "seller": "Next week, but actually I’m asking $210k now",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Got it, your asking price is $210,000.",
+          "seller": "The roof leaks",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Would a walkthrough be useful?",
+          "seller": "Actually the roof is fine now",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Thanks for correcting that.",
+          "seller": "Can you offer $210k?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": 21000000,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "identity_repeat",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "Are you a robot?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Yes, I'm an AI assistant.",
+          "seller": "How did you get my number?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "I don't have the verified source available.",
+          "seller": "Are you AI though?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Yes, I'm an AI assistant for San Joaquin House Buyers.",
+          "seller": "Can I speak to a human?",
+          "response_goal": "human",
+          "expected_goal": "human",
+          "question_limit": 0,
+          "guidance": "Attempt the permitted transfer now. Explain a failed transfer honestly; offer a human callback without restarting discovery.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "I can try connecting you.",
+          "seller": "Hold on",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Take your time.",
+          "seller": "Not interested",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "identity_repeat",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "ARE YOU A ROBOT?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Yes, I'm an AI assistant.",
+          "seller": "HOW DID YOU GET MY NUMBER?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "I don't have the verified source available.",
+          "seller": "ARE YOU AI THOUGH?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Yes, I'm an AI assistant for San Joaquin House Buyers.",
+          "seller": "CAN I SPEAK TO A HUMAN?",
+          "response_goal": "human",
+          "expected_goal": "human",
+          "question_limit": 0,
+          "guidance": "Attempt the permitted transfer now. Explain a failed transfer honestly; offer a human callback without restarting discovery.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "I can try connecting you.",
+          "seller": "HOLD ON",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Take your time.",
+          "seller": "NOT INTERESTED",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "identity_repeat",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "Are you a robot?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Yes, I'm an AI assistant.",
+          "seller": "How did you get my number?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "I don't have the verified source available.",
+          "seller": "Are you AI though?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Yes, I'm an AI assistant for San Joaquin House Buyers.",
+          "seller": "Can I speak to a human?",
+          "response_goal": "human",
+          "expected_goal": "human",
+          "question_limit": 0,
+          "guidance": "Attempt the permitted transfer now. Explain a failed transfer honestly; offer a human callback without restarting discovery.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "I can try connecting you.",
+          "seller": "Hold on",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Take your time.",
+          "seller": "Not interested",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "short_answers",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "What prompted you to consider selling?",
+          "seller": "Moving",
+          "response_goal": "contact",
+          "expected_goal": "contact",
+          "question_limit": 1,
+          "guidance": "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Is it your house?",
+          "seller": "My house",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "What timing works?",
+          "seller": "Next week",
+          "response_goal": "condition",
+          "expected_goal": "condition",
+          "question_limit": 1,
+          "guidance": "Ask one broad question about the property's condition. A house in good condition is a valid answer; do not insist on finding defects.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "How is the house's condition?",
+          "seller": "Good condition",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Would a walkthrough help?",
+          "seller": "Yes",
+          "response_goal": "schedule",
+          "expected_goal": "schedule",
+          "question_limit": 1,
+          "guidance": "They accepted discussing a walkthrough. Ask for one missing scheduling detail. Read back date, Pacific time and address, obtain confirmation, then use the reservation tool.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Which date works?",
+          "seller": "What times are available?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "short_answers",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "What prompted you to consider selling?",
+          "seller": "MOVING",
+          "response_goal": "contact",
+          "expected_goal": "contact",
+          "question_limit": 1,
+          "guidance": "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Is it your house?",
+          "seller": "MY HOUSE",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "What timing works?",
+          "seller": "NEXT WEEK",
+          "response_goal": "condition",
+          "expected_goal": "condition",
+          "question_limit": 1,
+          "guidance": "Ask one broad question about the property's condition. A house in good condition is a valid answer; do not insist on finding defects.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "How is the house's condition?",
+          "seller": "GOOD CONDITION",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Would a walkthrough help?",
+          "seller": "YES",
+          "response_goal": "schedule",
+          "expected_goal": "schedule",
+          "question_limit": 1,
+          "guidance": "They accepted discussing a walkthrough. Ask for one missing scheduling detail. Read back date, Pacific time and address, obtain confirmation, then use the reservation tool.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Which date works?",
+          "seller": "WHAT TIMES ARE AVAILABLE?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "short_answers",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "What prompted you to consider selling?",
+          "seller": "Moving",
+          "response_goal": "contact",
+          "expected_goal": "contact",
+          "question_limit": 1,
+          "guidance": "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Is it your house?",
+          "seller": "My house",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "What timing works?",
+          "seller": "Next week",
+          "response_goal": "condition",
+          "expected_goal": "condition",
+          "question_limit": 1,
+          "guidance": "Ask one broad question about the property's condition. A house in good condition is a valid answer; do not insist on finding defects.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "How is the house's condition?",
+          "seller": "Good condition",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Would a walkthrough help?",
+          "seller": "Yes",
+          "response_goal": "schedule",
+          "expected_goal": "schedule",
+          "question_limit": 1,
+          "guidance": "They accepted discussing a walkthrough. Ask for one missing scheduling detail. Read back date, Pacific time and address, obtain confirmation, then use the reservation tool.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Which date works?",
+          "seller": "What times are available?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_4_CLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "spanish",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Hola, soy Sophia, asistente automatizada.",
+          "seller": "Eres una IA?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Sí, soy una asistente automatizada.",
+          "seller": "No puedo hablar",
+          "response_goal": "callback",
+          "expected_goal": "callback",
+          "question_limit": 1,
+          "guidance": "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "Podemos acordar otro momento.",
+          "seller": "Un momento",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Claro.",
+          "seller": "En realidad prefiero otro día",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Podemos aclarar qué día te viene bien.",
+          "seller": "No quiero vender",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "spanish",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Hola, soy Sophia, asistente automatizada.",
+          "seller": "ERES UNA IA?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Sí, soy una asistente automatizada.",
+          "seller": "NO PUEDO HABLAR",
+          "response_goal": "callback",
+          "expected_goal": "callback",
+          "question_limit": 1,
+          "guidance": "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "Podemos acordar otro momento.",
+          "seller": "UN MOMENTO",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Claro.",
+          "seller": "EN REALIDAD PREFIERO OTRO DÍA",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Podemos aclarar qué día te viene bien.",
+          "seller": "NO QUIERO VENDER",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "spanish",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Hola, soy Sophia, asistente automatizada.",
+          "seller": "Eres una IA?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "Sí, soy una asistente automatizada.",
+          "seller": "No puedo hablar",
+          "response_goal": "callback",
+          "expected_goal": "callback",
+          "question_limit": 1,
+          "guidance": "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "Podemos acordar otro momento.",
+          "seller": "Un momento",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Claro.",
+          "seller": "En realidad prefiero otro día",
+          "response_goal": "correction",
+          "expected_goal": "correction",
+          "question_limit": 1,
+          "guidance": "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "Podemos aclarar qué día te viene bien.",
+          "seller": "No quiero vender",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "conditional_interest",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "I own the house and am moving",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "What timing works for you?",
+          "seller": "I'm not selling until next month",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 1,
+          "guidance": "Respect the seller's timing or condition. Do not treat conditional willingness as a permanent refusal or an agreed visit. Ask at most one relevant clarification.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "We can respect that timing.",
+          "seller": "The house is in good condition",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Would a walkthrough help?",
+          "seller": "Maybe, I'm not sure",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "They have not accepted the walkthrough. Respect uncertainty, answer any concern, and do not start scheduling or repeat the same pitch.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "You can take your time.",
+          "seller": "Yes but only if you pay my asking price",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "They have not accepted the walkthrough. Respect uncertainty, answer any concern, and do not start scheduling or repeat the same pitch.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "The team would need to review before any offer.",
+          "seller": "Are you an AI?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "conditional_interest",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "I OWN THE HOUSE AND AM MOVING",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "What timing works for you?",
+          "seller": "I'M NOT SELLING UNTIL NEXT MONTH",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 1,
+          "guidance": "Respect the seller's timing or condition. Do not treat conditional willingness as a permanent refusal or an agreed visit. Ask at most one relevant clarification.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "We can respect that timing.",
+          "seller": "THE HOUSE IS IN GOOD CONDITION",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Would a walkthrough help?",
+          "seller": "MAYBE, I'M NOT SURE",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "They have not accepted the walkthrough. Respect uncertainty, answer any concern, and do not start scheduling or repeat the same pitch.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "You can take your time.",
+          "seller": "YES BUT ONLY IF YOU PAY MY ASKING PRICE",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "They have not accepted the walkthrough. Respect uncertainty, answer any concern, and do not start scheduling or repeat the same pitch.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "The team would need to review before any offer.",
+          "seller": "ARE YOU AN AI?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "conditional_interest",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "I own the house and am moving",
+          "response_goal": "timeline",
+          "expected_goal": "timeline",
+          "question_limit": 1,
+          "guidance": "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "What timing works for you?",
+          "seller": "I’m not selling until next month",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 1,
+          "guidance": "Respect the seller's timing or condition. Do not treat conditional willingness as a permanent refusal or an agreed visit. Ask at most one relevant clarification.",
+          "objective": "STAGE_2_DISCOVER",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "We can respect that timing.",
+          "seller": "The house is in good condition",
+          "response_goal": "walkthrough",
+          "expected_goal": "walkthrough",
+          "question_limit": 1,
+          "guidance": "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Would a walkthrough help?",
+          "seller": "Maybe, I’m not sure",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "They have not accepted the walkthrough. Respect uncertainty, answer any concern, and do not start scheduling or repeat the same pitch.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "You can take your time.",
+          "seller": "Yes but only if you pay my asking price",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "They have not accepted the walkthrough. Respect uncertainty, answer any concern, and do not start scheduling or repeat the same pitch.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "The team would need to review before any offer.",
+          "seller": "Are you an AI?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_3_PRECLOSE",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "question_scope",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Would a walkthrough help?",
+          "seller": "How does that work?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "The team can explain the visit. Is this a good time?",
+          "seller": "Yes",
+          "response_goal": "contact",
+          "expected_goal": "contact",
+          "question_limit": 1,
+          "guidance": "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "Are you a real person?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "I'm an AI assistant for San Joaquin House Buyers.",
+          "seller": "Can I talk to a real person?",
+          "response_goal": "human",
+          "expected_goal": "human",
+          "question_limit": 0,
+          "guidance": "Attempt the permitted transfer now. Explain a failed transfer honestly; offer a human callback without restarting discovery.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "I can try connecting you with the team.",
+          "seller": "Hold on a moment",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Go ahead.",
+          "seller": "Have to go now",
+          "response_goal": "goodbye",
+          "expected_goal": "goodbye",
+          "question_limit": 0,
+          "guidance": "Respect the goodbye. End warmly without another question or an invented next step.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "question_scope",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Would a walkthrough help?",
+          "seller": "HOW DOES THAT WORK?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "The team can explain the visit. Is this a good time?",
+          "seller": "YES",
+          "response_goal": "contact",
+          "expected_goal": "contact",
+          "question_limit": 1,
+          "guidance": "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "ARE YOU A REAL PERSON?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "I'm an AI assistant for San Joaquin House Buyers.",
+          "seller": "CAN I TALK TO A REAL PERSON?",
+          "response_goal": "human",
+          "expected_goal": "human",
+          "question_limit": 0,
+          "guidance": "Attempt the permitted transfer now. Explain a failed transfer honestly; offer a human callback without restarting discovery.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "I can try connecting you with the team.",
+          "seller": "HOLD ON A MOMENT",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Go ahead.",
+          "seller": "HAVE TO GO NOW",
+          "response_goal": "goodbye",
+          "expected_goal": "goodbye",
+          "question_limit": 0,
+          "guidance": "Respect the goodbye. End warmly without another question or an invented next step.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "question_scope",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Would a walkthrough help?",
+          "seller": "How does that work?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "The team can explain the visit. Is this a good time?",
+          "seller": "Yes",
+          "response_goal": "contact",
+          "expected_goal": "contact",
+          "question_limit": 1,
+          "guidance": "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "Are you a real person?",
+          "response_goal": "identity",
+          "expected_goal": "identity",
+          "question_limit": 0,
+          "guidance": "Say directly that Sophia is an AI assistant for San Joaquin House Buyers. Do not give a biography or dodge the question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "I'm an AI assistant for San Joaquin House Buyers.",
+          "seller": "Can I talk to a real person?",
+          "response_goal": "human",
+          "expected_goal": "human",
+          "question_limit": 0,
+          "guidance": "Attempt the permitted transfer now. Explain a failed transfer honestly; offer a human callback without restarting discovery.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "I can try connecting you with the team.",
+          "seller": "Hold on a moment",
+          "response_goal": "wait",
+          "expected_goal": "wait",
+          "question_limit": 0,
+          "guidance": "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Go ahead.",
+          "seller": "Have to go now",
+          "response_goal": "goodbye",
+          "expected_goal": "goodbye",
+          "question_limit": 0,
+          "guidance": "Respect the goodbye. End warmly without another question or an invented next step.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "wrong_person",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "You have the wrong number",
+          "response_goal": "wrong_person",
+          "expected_goal": "wrong_person",
+          "question_limit": 0,
+          "guidance": "Apologize briefly and end. Do not ask for the correct number or pitch this person.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "wrong_person",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "YOU HAVE THE WRONG NUMBER",
+          "response_goal": "wrong_person",
+          "expected_goal": "wrong_person",
+          "question_limit": 0,
+          "guidance": "Apologize briefly and end. Do not ask for the correct number or pitch this person.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "wrong_person",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "You have the wrong number",
+          "response_goal": "wrong_person",
+          "expected_goal": "wrong_person",
+          "question_limit": 0,
+          "guidance": "Apologize briefly and end. Do not ask for the correct number or pitch this person.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "audio_repair",
+      "variant": "original",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "Say that again",
+          "response_goal": "repair",
+          "expected_goal": "repair",
+          "question_limit": 0,
+          "guidance": "Repeat or simplify only the last relevant answer, using shorter words. Do not introduce a new topic or ask another discovery question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "I'm Sophia, an AI assistant with San Joaquin House Buyers.",
+          "seller": "What did you say?",
+          "response_goal": "repair",
+          "expected_goal": "repair",
+          "question_limit": 0,
+          "guidance": "Repeat or simplify only the last relevant answer, using shorter words. Do not introduce a new topic or ask another discovery question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "Sophia, an AI assistant.",
+          "seller": "Slow down",
+          "response_goal": "repair",
+          "expected_goal": "repair",
+          "question_limit": 0,
+          "guidance": "Repeat or simplify only the last relevant answer, using shorter words. Do not introduce a new topic or ask another discovery question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Sure.",
+          "seller": "Why are you calling?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "To see whether discussing the property would be useful.",
+          "seller": "I need to talk to my wife",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "Respect the need for time or another decision-maker. Do not lean in, manufacture urgency, or suggest they agreed. Offer an optional next step rather than demanding one.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Take your time to discuss it.",
+          "seller": "Not selling",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "audio_repair",
+      "variant": "uppercase",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "SAY THAT AGAIN",
+          "response_goal": "repair",
+          "expected_goal": "repair",
+          "question_limit": 0,
+          "guidance": "Repeat or simplify only the last relevant answer, using shorter words. Do not introduce a new topic or ask another discovery question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "I'm Sophia, an AI assistant with San Joaquin House Buyers.",
+          "seller": "WHAT DID YOU SAY?",
+          "response_goal": "repair",
+          "expected_goal": "repair",
+          "question_limit": 0,
+          "guidance": "Repeat or simplify only the last relevant answer, using shorter words. Do not introduce a new topic or ask another discovery question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "Sophia, an AI assistant.",
+          "seller": "SLOW DOWN",
+          "response_goal": "repair",
+          "expected_goal": "repair",
+          "question_limit": 0,
+          "guidance": "Repeat or simplify only the last relevant answer, using shorter words. Do not introduce a new topic or ask another discovery question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Sure.",
+          "seller": "WHY ARE YOU CALLING?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "To see whether discussing the property would be useful.",
+          "seller": "I NEED TO TALK TO MY WIFE",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "Respect the need for time or another decision-maker. Do not lean in, manufacture urgency, or suggest they agreed. Offer an optional next step rather than demanding one.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Take your time to discuss it.",
+          "seller": "NOT SELLING",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    },
+    {
+      "scenario": "audio_repair",
+      "variant": "curly_apostrophes",
+      "window_seconds": 60,
+      "mode": "deterministic_policy_replay_without_llm_or_audio",
+      "turns": [
+        {
+          "virtual_second": 5,
+          "assistant_fixture": "Am I speaking with Alex?",
+          "seller": "Say that again",
+          "response_goal": "repair",
+          "expected_goal": "repair",
+          "question_limit": 0,
+          "guidance": "Repeat or simplify only the last relevant answer, using shorter words. Do not introduce a new topic or ask another discovery question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 15,
+          "assistant_fixture": "I'm Sophia, an AI assistant with San Joaquin House Buyers.",
+          "seller": "What did you say?",
+          "response_goal": "repair",
+          "expected_goal": "repair",
+          "question_limit": 0,
+          "guidance": "Repeat or simplify only the last relevant answer, using shorter words. Do not introduce a new topic or ask another discovery question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 25,
+          "assistant_fixture": "Sophia, an AI assistant.",
+          "seller": "Slow down",
+          "response_goal": "repair",
+          "expected_goal": "repair",
+          "question_limit": 0,
+          "guidance": "Repeat or simplify only the last relevant answer, using shorter words. Do not introduce a new topic or ask another discovery question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 35,
+          "assistant_fixture": "Sure.",
+          "seller": "Why are you calling?",
+          "response_goal": "answer",
+          "expected_goal": "answer",
+          "question_limit": 0,
+          "guidance": "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 45,
+          "assistant_fixture": "To see whether discussing the property would be useful.",
+          "seller": "I need to talk to my wife",
+          "response_goal": "space",
+          "expected_goal": "space",
+          "question_limit": 0,
+          "guidance": "Respect the need for time or another decision-maker. Do not lean in, manufacture urgency, or suggest they agreed. Offer an optional next step rather than demanding one.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        },
+        {
+          "virtual_second": 55,
+          "assistant_fixture": "Take your time to discuss it.",
+          "seller": "Not selling",
+          "response_goal": "decline",
+          "expected_goal": "decline",
+          "question_limit": 0,
+          "guidance": "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.",
+          "objective": "STAGE_1_QUALIFY",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "final_asking_price_cents": null,
+      "final_property_issues": [],
+      "appointment_booked": false
+    }
+  ]
+}

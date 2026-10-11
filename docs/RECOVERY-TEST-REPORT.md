@@ -1,6 +1,8 @@
 # Recovery test and repair report
 
-The latest local campaign passes **1,046 Python tests**, **30 dashboard HTTP checks**, and the PostgreSQL migration/recovery contracts. Real Redis contention admits exactly three calls in each of thirty rounds of 256 concurrent attempts. The expanded ledger contains all 129 original findings plus 15 new recovery findings. **This project is not established as A-grade.** The ledger still has 20 open and 17 partial findings, and the environment has no live voice-provider, Redis, or Supabase credentials.
+The recovery checkpoint passes **1,046 Python tests**, **30 dashboard HTTP checks**, and the PostgreSQL migration/recovery contracts. Real Redis contention admits exactly three calls in each of thirty rounds of 256 concurrent attempts. The expanded ledger contains all 129 original findings plus 15 new recovery findings. **This project is not established as A-grade.** The ledger still has 20 open and 17 partial findings, and the environment has no live voice-provider, Redis, or Supabase credentials.
+
+The later conversation campaign is documented in [CONVERSATION-REPAIR-REPORT.md](CONVERSATION-REPAIR-REPORT.md).
 
 ## Measured results
 
@@ -14,7 +16,7 @@ The latest local campaign passes **1,046 Python tests**, **30 dashboard HTTP che
 | Embedded PostgreSQL | All three containment/scheduling/recovery migrations; repeat booking, overlaps, cancelled rebooking, reset reminder flags, unique callback generation, stale worker completion, opt-out filtering, 100 repeat provider events, stale/terminal status preservation, cross-lead denial and anonymous denial |
 | Dashboard HTTP | 30 checks passed again using the built local Next server and mock backend, including authentication, uploads, concurrent requests, status preservation and deadlines |
 | Static checks | Python compilation, critical/unused-name lint, dependency compatibility and patch whitespace pass |
-| Hosted automation | Added GitHub Actions backend/database/dashboard regression workflow with read-only repository permissions and fake configuration; hosted execution is not yet verified |
+| Hosted automation | Added GitHub Actions backend/database/dashboard regression workflow with read-only repository permissions and fake configuration; hosted run 38152958585 succeeded on recovery commit 5a5ef41; later conversation changes require their own run |
 
 Evidence: [Python run](test-evidence/max-pytest.txt), [database recovery](test-evidence/database-recovery.txt), [dashboard HTTP](test-evidence/dashboard-http.json), [whole-backend coverage](test-evidence/backend-coverage.json), [all findings](VOICE-AUDIT-LEDGER.md).
 

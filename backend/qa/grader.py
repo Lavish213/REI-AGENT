@@ -33,7 +33,7 @@ TRANSCRIPT:
 """
 
 
-async def grade_call(transcript: str, lead_id: str, call_sid: str) -> dict:
+async def grade_call(transcript: str, lead_id: str, call_sid: str, persist: bool = True) -> dict:
     logger.info("grade_call call_sid={} lead_id={}", call_sid, lead_id)
 
     if not transcript or len(transcript.strip()) < 50:
@@ -102,15 +102,16 @@ async def grade_call(transcript: str, lead_id: str, call_sid: str) -> dict:
             "score_overall": overall,
             "summary": scores["call_summary"],
         }
-        from backend.lib.db import save_call_grade
-        await asyncio.to_thread(save_call_grade, call_sid, call_update)
+        if persist:
+            from backend.lib.db import save_call_grade
+            await asyncio.to_thread(save_call_grade, call_sid, call_update)
 
-        if overall < 6.0:
-            failures = scores.get("failures", [])
-            failure_preview = " | ".join(failures[:2]) if failures else "see dashboard"
-            alert = f"LOW QA CALL\nScore: {overall}/10\nIssues: {failure_preview}\nCall: {call_sid}"
-            await asyncio.to_thread(send_alert_to_owner, alert)
-            logger.warning("low QA score={} call_sid={}", overall, call_sid)
+            if overall < 6.0:
+                failures = scores.get("failures", [])
+                failure_preview = " | ".join(failures[:2]) if failures else "see dashboard"
+                alert = f"LOW QA CALL\nScore: {overall}/10\nIssues: {failure_preview}\nCall: {call_sid}"
+                await asyncio.to_thread(send_alert_to_owner, alert)
+                logger.warning("low QA score={} call_sid={}", overall, call_sid)
 
         logger.info("grade_call complete call_sid={} overall={}", call_sid, overall)
         return scores

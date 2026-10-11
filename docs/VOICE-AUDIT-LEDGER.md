@@ -1,6 +1,6 @@
 # Voice audit finding ledger
 
-All 129 original findings and 15 recovery follow-up findings remain recorded below. Addressed describes tested code changes, not production certification. Original evidence is preserved in [VOICE-AUDIT-FINDINGS.json](VOICE-AUDIT-FINDINGS.json). Open and partial items remain release blockers or follow-ups.
+All 129 original findings, 15 recovery findings and 16 conversation findings remain recorded below. Addressed describes tested code changes, not production certification. Original evidence is preserved in [VOICE-AUDIT-FINDINGS.json](VOICE-AUDIT-FINDINGS.json). Open and partial items remain release blockers or follow-ups.
 
 | Finding | Severity | Repair status | Problem |
 |---|---|---|---|
@@ -148,3 +148,19 @@ All 129 original findings and 15 recovery follow-up findings remain recorded bel
 | REI-142 | P1 | Addressed locally; production or hosted verification pending | Permanent speech provider failure defaulted to continuing the pipeline |
 | REI-143 | P2 | Addressed locally; production or hosted verification pending | Output and post-call network operations blocked the event loop |
 | REI-144 | P2 | Addressed locally; production or hosted verification pending | Regression checks had no hosted automation |
+| REI-145 | P2 | Addressed locally; generated conversation and real-call verification pending | Sales stages advanced without collected facts |
+| REI-146 | P2 | Addressed locally; generated conversation and real-call verification pending | Brief answers could force premature wrap |
+| REI-147 | P2 | Addressed locally; generated conversation and real-call verification pending | One rejection was scored repeatedly |
+| REI-148 | P1 | Addressed locally; generated conversation and real-call verification pending | Previous instructions leaked into new replies |
+| REI-149 | P2 | Addressed locally; generated conversation and real-call verification pending | Good condition was treated as missing discovery |
+| REI-150 | P2 | Addressed locally; generated conversation and real-call verification pending | Corrections retained outdated prices and defects |
+| REI-151 | P2 | Addressed locally; generated conversation and real-call verification pending | Numeric price answers lacked question context |
+| REI-152 | P1 | Addressed locally; generated conversation and real-call verification pending | Unrelated yes could confirm ownership or a walkthrough |
+| REI-153 | P1 | Addressed locally; generated conversation and real-call verification pending | Conditional interest and consent were misclassified |
+| REI-154 | P1 | Addressed locally; generated conversation and real-call verification pending | Repeated identity questions lost disclosure guidance |
+| REI-155 | P1 | Addressed locally; generated conversation and real-call verification pending | First caller speech could suppress the opener |
+| REI-156 | P1 | Addressed locally; generated conversation and real-call verification pending | Spoken word chunks lost the last question |
+| REI-157 | P2 | Addressed locally; generated conversation and real-call verification pending | Common timing answers were forgotten |
+| REI-158 | P1 | Addressed locally; generated conversation and real-call verification pending | Simulator fabricated booking success |
+| REI-159 | P1 | Addressed locally; generated conversation and real-call verification pending | Simulation blocked the event loop and could affect production QA |
+| REI-160 | P2 | Addressed locally; generated conversation and real-call verification pending | Simulations used a different opening and conversation policy |

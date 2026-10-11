@@ -63,6 +63,7 @@ from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 from backend.voice.processors.speech_output import SpeechOutputProcessor
 
 from backend.voice.trust_tracker import TrustTracker
+from backend.voice.conversation_policy import ConversationTurnReset, ConversationPolicyProcessor, remember_assistant_turn
 
 _MD_STRIP_PATTERN = re.compile(r"^#{1,3}\s+|[*`]|^---+$", re.MULTILINE)
 
@@ -307,14 +308,21 @@ class TranscriptJournal(FrameProcessor):
         super().__init__()
         self._ctx = call_ctx
         self._speaker = speaker
+        self._spoken_text = ""
 
     async def process_frame(self, frame, direction):
         await super().process_frame(frame, direction)
+        if isinstance(frame, UserStartedSpeakingFrame):
+            self._spoken_text = ""
         expected = TranscriptionFrame if self._speaker == "user" else TTSTextFrame
         if direction == FrameDirection.DOWNSTREAM and isinstance(frame, expected) and frame.text.strip():
             self._ctx.transcript_events.append({"role": self._speaker, "content": frame.text.strip()})
-            if self._speaker == "assistant" and "?" in frame.text and re.search(r"walkthrough|come (?:take|have) a look|come (?:by|over)|come out", frame.text, re.I):
-                self._ctx._walkthrough_asked = True
+            if self._speaker == "assistant":
+                separator = "" if getattr(frame, "includes_inter_frame_spaces", False) or not self._spoken_text else " "
+                self._spoken_text = (self._spoken_text + separator + frame.text)[-4096:]
+                if "?" in self._spoken_text:
+                    remember_assistant_turn(self._ctx, self._spoken_text)
+                    self._spoken_text = self._spoken_text.rsplit("?", 1)[-1]
         await self.push_frame(frame, direction)
 
 
@@ -614,6 +622,7 @@ async def run_sophia_agent(
         [
             transport.input(),
             stt,
+            ConversationTurnReset(call_ctx),
             input_guard,
             TranscriptJournal(call_ctx, "user"),
             ai_identity,
@@ -627,6 +636,7 @@ async def run_sophia_agent(
             microstate_engine,
             context_tracker,
             analysis_callbacks,
+            ConversationPolicyProcessor(call_ctx),
             context_aggregator.user(),
             ContextStateProcessor(context_tracker),
             llm,
@@ -675,26 +685,16 @@ async def run_sophia_agent(
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
         del transport, client
+        if call_ctx._opener_fired:
+            return
         logger.info("client connected call_sid={}", call_sid)
         from backend.karpathys import emitter
         spawn(emitter.emit_call_created(call_sid, call_context))
         if call_context.get("is_outbound") and call_ctx.lead_id:
             spawn(_monitor_call_capacity(task, call_ctx.lead_id, call_sid))
-        if not call_context.get("is_outbound"):
-            await asyncio.sleep(0.1)
-            opener_text = _build_opener(call_context)
-            logger.info("opener firing inbound text={!r}", opener_text)
-            await task.queue_frames([TTSSpeakFrame(opener_text)])
-        else:
-            async def _fire_opener_after_connect():
-                await asyncio.sleep(1.0)
-                opener = getattr(call_ctx, "_opener_text", None)
-                if opener and not getattr(call_ctx, "_opener_fired", False):
-                    call_ctx._opener_fired = True
-                    logger.info("outbound_opener_auto_fire call_sid={}", call_sid)
-                    await task.queue_frames([TTSSpeakFrame(opener)])
-            spawn(_fire_opener_after_connect())
-            logger.info("outbound_connected opener scheduled 1s call_sid={}", call_sid)
+        call_ctx._opener_fired = True
+        call_ctx.awaiting_owner_confirmation = bool(call_context.get("is_outbound"))
+        await task.queue_frames([TTSSpeakFrame(_build_opener(call_context))])
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):

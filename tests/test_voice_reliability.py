@@ -142,7 +142,7 @@ def test_context_injection_preserves_caller_and_tool_blocks():
 
 @pytest.mark.asyncio
 async def test_first_outbound_response_is_not_swallowed():
-    ctx = CallContext(is_outbound=True)
+    ctx = CallContext(is_outbound=True, awaiting_owner_confirmation=True, _opener_fired=True)
     tracker = ContextTrackerProcessor(ctx)
     tracker.push_frame = AsyncMock()
     frame = TranscriptionFrame("Yes, speaking", "seller", "now")
@@ -282,7 +282,8 @@ async def test_live_pipeline_can_construct_without_network(monkeypatch):
     assert "BotSpeakingSTTMuteProcessor" not in names
     assert "PhoneEQProcessor" not in names
     assert names.index("SentenceStreamProcessor") < names.index("ComplianceOutputFilter") < names.index("DeepgramTTSService")
-    assert names.index("ContextStateProcessor") < names.index("AnthropicLLMService")
+    assert names.index("ConversationTurnReset") < names.index("InputGuardProcessor")
+    assert names.index("ContextTrackerProcessor") < names.index("ConversationPolicyProcessor") < names.index("ContextStateProcessor") < names.index("AnthropicLLMService")
 
 
 def test_missing_pricing_permissions_do_not_authorize_offers():

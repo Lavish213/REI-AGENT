@@ -3,18 +3,18 @@ import asyncio
 import random
 from datetime import datetime, timezone
 from loguru import logger
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 
 from backend.qa.grader import grade_call
 
 
-_client: Anthropic | None = None
+_client: AsyncAnthropic | None = None
 
 
-def _get_client() -> Anthropic:
+def _get_client() -> AsyncAnthropic:
     global _client
     if _client is None:
-        _client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        _client = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     return _client
 
 
@@ -117,96 +117,114 @@ async def run_simulation(
     profile: dict | None = None,
     prop: dict | None = None,
     max_turns: int = 12,
-    save_to_db: bool = True,
+    save_to_db: bool = False,
+    duration_seconds: int = 60,
+    client=None,
+    grade: bool = True,
 ) -> dict:
     profile = profile or random.choice(SELLER_PROFILES)
     prop = prop or SAMPLE_PROPERTY
 
     logger.info("simulation starting seller={} motivation={}", profile["name"], profile["motivation"])
 
-    client = _get_client()
+    from backend.voice.agent import _build_opener, _DEFAULT_LLM_MODEL
+    from backend.voice.conversation_policy import plan_turn, remember_assistant_turn
+    from backend.voice.emotional_state_engine import EmotionalStateEngine
+    from backend.voice.objective_engine import ObjectiveEngine
+    from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
+    from backend.voice.resistance_tracker import ResistanceTracker
+
+    if not 1 <= max_turns <= 100 or not 10 <= duration_seconds <= 600:
+        raise ValueError("Invalid simulation limits")
+    client = client if client is not None else _get_client()
+    ctx = CallContext(is_outbound=True, awaiting_owner_confirmation=True)
+    tracker = ContextTrackerProcessor(ctx)
+    emotions = EmotionalStateEngine(ctx)
+    resistance = ResistanceTracker(ctx)
     seller_messages = []
     sophia_messages = []
     full_transcript = []
-
+    turn_plans = []
+    turns = 0
+    model = os.environ.get("VOICE_LLM_MODEL", _DEFAULT_LLM_MODEL)
     sophia_system = _build_sophia_prompt(prop)
     seller_system = _build_seller_prompt(profile, prop)
-
-    sophia_messages.append({
-        "role": "assistant",
-        "content": "San Joaquin House Buyers, this is Sophia!",
-    })
-    full_transcript.append("SOPHIA: San Joaquin House Buyers, this is Sophia!")
-
-    seller_messages.append({
-        "role": "user",
-        "content": "San Joaquin House Buyers, this is Sophia!",
-    })
-
-    for turn in range(max_turns):
-        seller_response = client.messages.create(
-            model=os.environ.get("LLM_MODEL", "claude-sonnet-4-20250514"),
-            max_tokens=150,
-            system=seller_system,
-            messages=seller_messages,
-        )
+    opener = _build_opener({"is_outbound": True, "owner_first_name": profile["name"].split()[0]})
+    remember_assistant_turn(ctx, opener)
+    sophia_messages.append({"role": "assistant", "content": opener})
+    full_transcript.append("SOPHIA: " + opener)
+    seller_messages.append({"role": "user", "content": opener})
+    estimated_seconds = len(opener.split()) / 2.5
+    end_reason = "turn_limit"
+    while turns < max_turns and estimated_seconds < duration_seconds:
+        seller_response = await asyncio.wait_for(client.messages.create(
+            model=model, max_tokens=150, system=seller_system, messages=seller_messages,
+        ), timeout=30)
         seller_text = seller_response.content[0].text.strip()
         full_transcript.append(f"SELLER: {seller_text}")
-        logger.debug("turn={} SELLER: {}", turn, seller_text)
-
+        estimated_seconds += len(seller_text.split()) / 2.5 + 1
         sophia_messages.append({"role": "user", "content": seller_text})
         seller_messages.append({"role": "assistant", "content": seller_text})
-
-        sophia_response = client.messages.create(
-            model=os.environ.get("LLM_MODEL", "claude-sonnet-4-20250514"),
-            max_tokens=200,
-            system=sophia_system,
+        ctx.runtime_instruction = None
+        ctx.turn_count += 1
+        normalized = seller_text.replace("’", "'")
+        emotions._update_emotional_state(normalized)
+        resistance._update_resistance(normalized)
+        tracker._analyze(normalized)
+        ctx.objective = ObjectiveEngine().decide(ctx)
+        plan = plan_turn(ctx, seller_text)
+        ctx.response_guidance = plan.render()
+        turn_plans.append({"goal": plan.goal, "question_limit": plan.question_limit})
+        sophia_response = await asyncio.wait_for(client.messages.create(
+            model=model, max_tokens=120,
+            system=sophia_system + "\n" + ctx.build_context_prefix(),
             messages=sophia_messages,
-        )
+        ), timeout=30)
         sophia_text = sophia_response.content[0].text.strip()
         full_transcript.append(f"SOPHIA: {sophia_text}")
-        logger.debug("turn={} SOPHIA: {}", turn, sophia_text)
-
+        estimated_seconds += len(sophia_text.split()) / 2.5 + 1
+        turns += 1
+        remember_assistant_turn(ctx, sophia_text)
         sophia_messages.append({"role": "assistant", "content": sophia_text})
         seller_messages.append({"role": "user", "content": sophia_text})
-
-        end_signals = [
-            "see you then", "talk soon", "have a good", "thanks for calling",
-            "we'll be there", "look forward", "confirmed", "appointment"
-        ]
-        if any(signal in sophia_text.lower() for signal in end_signals):
-            logger.info("simulation ending early — appointment booked turn={}", turn)
+        if plan.goal in {"stop", "decline", "wrong_person", "goodbye"}:
+            end_reason = plan.goal
             break
-
-        not_interested = ["not interested", "stop calling", "take me off", "don't call"]
-        if any(signal in seller_text.lower() for signal in not_interested):
-            logger.info("simulation ending early — seller not interested turn={}", turn)
-            break
+    else:
+        if estimated_seconds >= duration_seconds:
+            end_reason = "estimated_duration_limit"
 
     transcript_str = "\n".join(full_transcript)
 
     scores = {}
     try:
-        scores = await grade_call(
-            transcript=transcript_str,
-            lead_id="simulation",
-            call_sid=f"sim_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
-        )
+        if grade:
+            scores = await grade_call(
+                transcript=transcript_str,
+                lead_id="simulation",
+                call_sid=f"sim_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+                persist=False,
+            )
     except Exception as e:
         logger.error("simulation grading failed error={}", str(e))
 
     result = {
         "seller_profile": profile["name"],
         "motivation": profile["motivation"],
-        "turns": len(full_transcript) // 2,
+        "turns": turns,
+        "requested_window_seconds": duration_seconds,
+        "estimated_speech_seconds": round(estimated_seconds, 1),
+        "duration_method": "text_word_count_at_150_words_per_minute_plus_turn_gaps",
+        "end_reason": end_reason,
+        "model": model,
+        "turn_plans": turn_plans,
+        "audio_tested": False,
+        "tool_execution_tested": False,
+        "persisted": False,
         "transcript": transcript_str,
         "scores": scores,
         "overall_score": scores.get("overall_score", 0),
-        "appointment_booked": any(
-            "see you" in line.lower() or "confirmed" in line.lower()
-            for line in full_transcript
-            if line.startswith("SOPHIA:")
-        ),
+        "appointment_booked": False,
     }
 
     logger.info(
@@ -246,5 +264,4 @@ if __name__ == "__main__":
     load_dotenv()
     results = asyncio.run(run_batch_simulations(count=3))
     for r in results:
-        print(f"\n{r['seller_profile']} — Score: {r['overall_score']}/10 — Booked: {r['appointment_booked']}")
-        print(f"Turns: {r['turns']}")
+        logger.info("seller={} score={} turns={} booked={}", r["seller_profile"], r["overall_score"], r["turns"], r["appointment_booked"])

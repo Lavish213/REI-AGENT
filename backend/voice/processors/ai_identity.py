@@ -12,7 +12,7 @@ _AI_QUESTION = re.compile(
 
 _SB1001_DISCLOSURE = (
     "I'm Sophia — an automated assistant for San Joaquin House Buyers. "
-    "Would you like to speak with someone directly?"
+    "I can try connecting you with the team if you prefer."
 )
 
 
@@ -27,7 +27,7 @@ class AIIdentityProcessor(FrameProcessor):
 
         if isinstance(frame, TranscriptionFrame) and frame.text:
             text = frame.text.strip()
-            if _AI_QUESTION.search(text) and not self._disclosed:
+            if _AI_QUESTION.search(text):
                 self._disclosed = True
                 logger.info("ai_identity SB1001 disclosure triggered")
                 if self._ctx is not None:

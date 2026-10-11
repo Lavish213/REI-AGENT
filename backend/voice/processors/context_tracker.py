@@ -80,8 +80,9 @@ _ADDRESS_PATTERN = re.compile(
 
 _TIMELINE_PATTERN = re.compile(
     r"\b("
-    r"asap|immediately|today|tomorrow|next week|"
-    r"30 days|60 days|90 days|few months|this week"
+    r"asap|immediately|today|tomorrow|next (?:week|month|year)|"
+    r"(?:in |within )?\d+ (?:days?|weeks?|months?)|few months|this (?:week|month)|"
+    r"no rush|not in a hurry|when (?:i|we)(?: am| are|\x27m|\x27re)? ready"
     r")\b",
     re.IGNORECASE,
 )
@@ -162,6 +163,11 @@ class CallContext:
     seller_energy: SellerEnergy = "calm"
     energy_history: list[str] = field(default_factory=list)
     situation_label: SituationLabel = "unknown"
+    last_question_topic: str = ""
+    condition_known: bool = False
+    response_goal: str = ""
+    response_guidance: str = ""
+    awaiting_owner_confirmation: bool = False
     property_issues: list[str] = field(default_factory=list)
     motivation_signals: list[str] = field(default_factory=list)
     objections_raised: list[str] = field(default_factory=list)
@@ -348,6 +354,8 @@ class CallContext:
             tag += f"\nFocus on: {self.bob_missing_box}"
         sections.append(tag + "\nSTYLE: short, reactive, human. 1-2 sentences. one question. react before asking.")
 
+        if self.response_guidance:
+            sections.append(self.response_guidance)
         return "\n\n".join(sections)
 
 
@@ -375,7 +383,7 @@ def _extract_price_cents(text: str) -> int | None:
         candidates.append((explicit, int(value * 100)))
     if not candidates:
         return None
-    return max(candidates, key=lambda item: item[0])[1]
+    return max(reversed(candidates), key=lambda item: item[0])[1]
 
 
 class ContextTrackerProcessor(FrameProcessor):
@@ -408,17 +416,15 @@ class ContextTrackerProcessor(FrameProcessor):
             text = frame.text.strip()
 
             if text:
-                self._ctx._opener_fired = True
                 self._ctx.turn_count += 1
                 self._analyze(text)
-                _obj = getattr(self._ctx, "objective", "")
                 _tc = self._ctx.turn_count
                 _is_ob = getattr(self._ctx, "is_outbound", False)
-                if _is_ob and _tc <= 5 and _obj in ("STAGE_1_QUALIFY", "OWNERSHIP_CONFIRM") and not getattr(self._ctx, "owner_confirmed", False):
+                if _is_ob and self._ctx.awaiting_owner_confirmation and not self._ctx.owner_confirmed:
                     import re as _re2
                     if _re2.search(r"\b(yes|yeah|yep|yup|correct|right|speaking|that's me|this is)\b", text, _re2.IGNORECASE) and not _re2.search(r"\b(never|not|no|won't|wont)\b", text, _re2.IGNORECASE):
                         self._ctx.owner_confirmed = True
-                        self._ctx.address_known = True
+                        self._ctx.awaiting_owner_confirmation = False
                         logger.info("owner_confirmed via affirmative turn={}", _tc)
                 import re as _re
                 _DNC = _re.compile(r"\b(stop calling|stop contacting(?: me)?|take me off|do not call|don.t call(?: me)?(?: again)?|remove me|lose my number|never call again|leave me alone|no me llames|no me vuelvas a llamar|qu[ií]tame de (?:tu|su) lista|deja de llamar)\b", _re.IGNORECASE)
@@ -543,12 +549,22 @@ class ContextTrackerProcessor(FrameProcessor):
         self._last_context_prefix = prefix
 
     def _analyze(self, text: str) -> None:
-        lower = text.lower()
-        if self._ctx._walkthrough_asked and re.search(r"\b(yes|yeah|sure|sounds good|works for me|let.s do it)\b", lower) and not re.search(r"\b(no|not|never)\b", lower):
+        lower = text.lower().replace("’", "'")
+        conditional_sale = re.search(r"\bnot selling\s+(?:until|before|unless|yet)\b", lower)
+        if not conditional_sale and re.search(r"\b(not selling|don't want to sell|no longer (?:selling|want to sell)|not (?:going to|trying to) sell)\b", lower):
+            self._ctx.intent_locked = False
+            self._ctx.pre_close_done = False
+        if re.search(r"\b(i own|i'm the owner|i am the owner|it's my (?:house|property)|my house)\b", lower) and not re.search(r"\b(not|don't)\b.{0,15}\bown", lower):
+            self._ctx.owner_confirmed = True
+        if re.search(r"\b(good (?:shape|condition)|no repairs|needs? (?:work|repairs)|new roof|move.in ready|as.is|fixer|roof|plumbing|foundation|renovated)\b", lower):
+            self._ctx.condition_known = True
+        if self._ctx._walkthrough_asked and re.search(r"\b(yes|yeah|sure|sounds good|works for me|let.s do it)\b", lower) and not re.search(r"\b(no|not|never|maybe|but|if|depends|possibly)\b", lower):
             self._ctx.pre_close_done = True
             self._ctx._walkthrough_asked = False
 
         price = _extract_price_cents(text)
+        if price is None and self._ctx.last_question_topic == "price" and re.fullmatch(r"\s*\d[\d,.]*\s*", text):
+            price = _extract_price_cents("Asking $" + text.strip())
         if price is not None:
             self._ctx.last_price_mentioned = price
 
@@ -557,7 +573,10 @@ class ContextTrackerProcessor(FrameProcessor):
             self._ctx.timeline_mentioned = timeline_match.group(0)
 
         for pattern, label in _ISSUE_PATTERNS:
-            if re.search(pattern, lower):
+            if re.search(r"\b(?:no|not|new|fixed|replaced|repaired)\b(?:\s+(?:problems?|issues?|with|the|a|any|my|our|need|for)){0,3}\s+" + pattern, lower) or re.search(pattern + r".{0,15}\b(?:fine|fixed|new|good|replaced)\b", lower):
+                if label in self._ctx.property_issues:
+                    self._ctx.property_issues.remove(label)
+            elif re.search(pattern, lower):
                 if label not in self._ctx.property_issues:
                     self._ctx.property_issues.append(label)
         self._ctx.property_issues = self._ctx.property_issues[-6:]
