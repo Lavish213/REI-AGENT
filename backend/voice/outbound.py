@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
@@ -104,6 +105,10 @@ def _build_signalwire_auth() -> tuple[str, str]:
     )
 
 
+class ProviderCallUncertainError(RuntimeError):
+    pass
+
+
 def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
     project_id = os.environ["SIGNALWIRE_PROJECT_ID"]
     try:
@@ -136,9 +141,14 @@ def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
     logger.info("signalwire_call_request lead_id={} to={} callback_url={}", lead_id, to_phone, callback_url)
 
     with httpx.Client() as client:
-        response = client.post(url, auth=_build_signalwire_auth(), data=payload, timeout=20, headers={"Accept": "application/json"})
+        try:
+            response = client.post(url, auth=_build_signalwire_auth(), data=payload, timeout=20, headers={"Accept": "application/json"})
+        except (httpx.TimeoutException, httpx.NetworkError) as error:
+            raise ProviderCallUncertainError("Phone provider acknowledgement unavailable") from error
+        if response.status_code >= 500:
+            raise ProviderCallUncertainError("Phone provider returned an uncertain server failure")
         response.raise_for_status()
-        logger.info("signalwire_response status={} body={}", response.status_code, response.text[:200])
+        logger.info("signalwire_response status={}", response.status_code)
         import xml.etree.ElementTree as ET
         try:
             data = response.json()
@@ -153,7 +163,9 @@ def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
                 call_sid = ""
                 status = "initiated"
 
-    return {"call_sid": call_sid, "status": status}
+    if not isinstance(call_sid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", call_sid):
+        raise ProviderCallUncertainError("Phone provider acknowledgement contains no valid call ID")
+    return {"call_sid": call_sid, "status": status if isinstance(status, str) else "initiated"}
 
 
 _MAX_CONCURRENT_CALLS = 3
@@ -223,6 +235,26 @@ def _bind_call_slot(lead_id: str, attempt_token: str, call_sid: str) -> bool:
         return False
 
 
+def _renew_call_slot(lead_id: str, call_sid: str) -> bool:
+    import time
+    client = _get_redis_client()
+    if not client or not lead_id or not call_sid:
+        return False
+    script = """
+    if redis.call('HGET', KEYS[3], ARGV[1]) ~= ARGV[2] then return 0 end
+    local expires = redis.call('ZSCORE', KEYS[1], ARGV[1])
+    if not expires or tonumber(expires) <= tonumber(ARGV[3]) then return 0 end
+    redis.call('ZADD', KEYS[1], tonumber(ARGV[3]) + 3600, ARGV[1])
+    for _, key in ipairs(KEYS) do redis.call('EXPIRE', key, 3660) end
+    return 1
+    """
+    try:
+        return bool(client.eval(script, 3, _REDIS_CONCURRENT_KEY, _REDIS_OWNERS_KEY, _REDIS_CALLS_KEY, lead_id, call_sid, time.time()))
+    except Exception as error:
+        logger.warning("renew_call_slot failed lead_id={} error={}", lead_id, str(error))
+        return False
+
+
 def _release_call_slot(lead_id: str, attempt_token: str = "", call_sid: str = "") -> bool:
     client = _get_redis_client()
     if not client:
@@ -278,8 +310,11 @@ def _check_active_call(lead_id: str) -> bool:
         return False
     try:
         import time
-        client.zremrangebyscore(_REDIS_CONCURRENT_KEY, "-inf", time.time())
-        count = client.zcard(_REDIS_CONCURRENT_KEY)
+        now = time.time()
+        expires = client.zscore(_REDIS_CONCURRENT_KEY, lead_id)
+        if expires is not None and expires > now:
+            return True
+        count = client.zcount(_REDIS_CONCURRENT_KEY, f"({now}", "+inf")
         if count >= _MAX_CONCURRENT_CALLS:
             logger.warning("active_call_detected lead_id={} count={}", lead_id, count)
             return True
@@ -395,6 +430,9 @@ def call_lead(
             "first_name": first_name,
         }
 
+    except ProviderCallUncertainError as error:
+        logger.error("provider_call_state_unknown lead_id={} error={}", lead_id, str(error))
+        return {"success": False, "reason": "provider_call_state_unknown", "requires_reconciliation": True}
     except Exception as e:
         if not provider_accepted:
             _release_call_slot(lead_id, attempt_token=attempt_token)

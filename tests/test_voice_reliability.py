@@ -267,9 +267,10 @@ async def test_live_pipeline_can_construct_without_network(monkeypatch):
     monkeypatch.setenv("VOICE_TTS_PROVIDER", "deepgram")
     ws = WebSocket({"type": "websocket", "path": "/test", "headers": []}, AsyncMock(), AsyncMock())
     runner = AsyncMock()
-    with patch.object(agent, "PipelineRunner", return_value=runner), patch.object(agent, "_handle_call_end", new_callable=AsyncMock):
+    with patch.object(agent, "WorkerRunner", return_value=runner), patch.object(agent, "_handle_call_end", new_callable=AsyncMock):
         await agent.run_sophia_agent(ws, "call", {"stream_sid": "stream"})
-    task = runner.run.call_args.args[0]
+    task = runner.add_workers.call_args.args[0]
+    assert task._processor_unusable_policy == agent.ProcessorUnusablePolicy.CANCEL
     def flatten(processor):
         children = getattr(processor, "_processors", None)
         if children:
@@ -379,10 +380,10 @@ def test_preclose_advances_only_after_real_question_and_agreement():
 
 def test_pending_callback_survives_failed_attempt():
     from backend.api.main import _run_pending_followups
-    callback = {"id": "lead", "callback_scheduled_at": "2026-10-12T18:00:00Z"}
+    callback = {"id": "lead", "callback_scheduled_at": "2026-10-12T18:00:00Z", "callback_claim_token": "token"}
     with patch("backend.lib.db.campaign_is_running", return_value=True), patch("backend.lib.db.claim_due_call_followups", return_value=[]), patch("backend.lib.db.claim_due_callbacks", return_value=[callback]), patch("backend.voice.outbound.call_lead", return_value={"success": False}), patch("backend.lib.db.finish_callback_claim") as finish:
         _run_pending_followups()
-    finish.assert_called_once_with("lead", callback["callback_scheduled_at"], False)
+    finish.assert_called_once_with("lead", callback["callback_scheduled_at"], False, "token")
 
 
 @pytest.mark.asyncio

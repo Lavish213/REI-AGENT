@@ -130,10 +130,10 @@ async def handle_outbound_status(
 
             try:
                 from backend.voice.outbound import _release_call_slot, _schedule_retry_for_disposition
-                _release_call_slot(lead_id, call_sid=call_sid)
+                await run_in_threadpool(_release_call_slot, lead_id, call_sid=call_sid)
                 if call_status in ("no-answer", "busy", "voicemail"):
                     attempt = int(form.get("attempt_count", 0) or 0)
-                    _schedule_retry_for_disposition(lead_id, call_status, attempt)
+                    await run_in_threadpool(_schedule_retry_for_disposition, lead_id, call_status, attempt)
             except Exception as slot_err:
                 logger.warning("release_slot_failed lead_id={} error={}", lead_id, str(slot_err))
 
@@ -219,6 +219,9 @@ async def outbound_voice_stream(
             app_state.call_started_at = {}
         from datetime import datetime, timezone as _tz
         app_state.call_started_at[call_sid] = datetime.now(_tz.utc).isoformat()
+        if not hasattr(app_state, "call_contexts"):
+            app_state.call_contexts = {}
+        app_state.call_contexts[call_sid] = outbound_context
         from backend.voice.agent import run_sophia_agent
         await run_sophia_agent(websocket=websocket, call_sid=call_sid, call_context=outbound_context, metrics_store=app_state.call_metrics)
         app_state.call_metrics.pop(call_sid, None)
@@ -303,8 +306,8 @@ def _build_outbound_context(
     distress = (prop.get("distress_type") or "unknown").replace("_", " ").title()
     arv = prop.get("estimated_arv")
     mao = prop.get("mao")
-    arv_str = f"${arv:,.0f}" if arv else "unknown"
-    mao_str = f"${mao:,.0f}" if mao else "unknown"
+    arv_str = f"${arv / 100:,.2f}" if type(arv) is int and arv > 0 else "unknown"
+    mao_str = f"${mao / 100:,.2f}" if type(mao) is int and mao > 0 else "unknown"
     city = prop.get("city", "Stockton")
 
     if landmark:
@@ -378,16 +381,9 @@ async def handle_recording_status(request: Request, lead_id: str) -> Response:
         )
 
         if recording_url and status == "completed":
-            from backend.lib.db import _get_client
-            try:
-                _get_client().table("calls").update({
-                    "recording_url": recording_url,
-                    "recording_sid": recording_sid,
-                    "recording_duration_seconds": recording_duration,
-                }).eq("signalwire_call_id", call_sid).execute()
-                logger.info("recording_saved call_sid={}", call_sid)
-            except Exception as db_err:
-                logger.warning("recording_save_failed call_sid={} error={}", call_sid, str(db_err))
+            from backend.lib.db import save_recording_metadata
+            await run_in_threadpool(save_recording_metadata, call_sid, recording_url, recording_sid, recording_duration)
+            logger.info("recording_saved call_sid={}", call_sid)
 
         return Response(status_code=204)
     except Exception as e:

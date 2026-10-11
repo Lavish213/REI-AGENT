@@ -959,7 +959,7 @@
     "problem": "Two hours after an appointment, the scheduler can send We came by/did we miss you based on time/reminder flags alone. The code does not check recorded operator attendance or walkthrough completion before claiming a visit.",
     "fix": "Require attendance/completion/no-show state from the operator; only send a neutral check-in when attendance is unknown.",
     "reproduction": "",
-    "repair_status": "Open; not established as repaired"
+    "repair_status": "Partial; truthful reminders and confirmed-booking filtering repaired; delivery and attendance integration remain"
   },
   {
     "id": "REI-075",
@@ -1349,7 +1349,7 @@
     "problem": "Inbound stream pops call_contexts during connection; outbound stream does not add its active context there. live API lists that map, even though call_metrics/start times are populated elsewhere. Active calls can disappear from operator monitoring.",
     "fix": "Maintain one active-session registry with lifecycle states, and distinguish pending context handoff from active sessions.",
     "reproduction": "",
-    "repair_status": "Open; not established as repaired"
+    "repair_status": "Addressed in repair branch; production verification pending"
   },
   {
     "id": "REI-105",
@@ -1388,7 +1388,7 @@
     "problem": "QA and transcript intel/workflow tasks are created without a durable job record/awaited shutdown lifecycle. A restart can lose extraction, workflow transitions, alerts and substantive memory updates after the call row is inserted.",
     "fix": "Persist post-call jobs in an outbox with idempotent consumers and retry states; test restart between transcript persistence and extraction.",
     "reproduction": "",
-    "repair_status": "Open; not established as repaired"
+    "repair_status": "Partial; post-call tasks now awaited; durable crash recovery remains"
   },
   {
     "id": "REI-108",
@@ -1557,7 +1557,7 @@
     "problem": "Qualification is filled from opener_natural, offer quality from reacted_before_asking, and appointment booking from motivation_discovered. Tone/goal completion columns are not populated. UI/metrics labels therefore misrepresent what is measured.",
     "fix": "Version the grading rubric and store each metric under its real meaning; validate ranges, required outputs and nulls.",
     "reproduction": "",
-    "repair_status": "Open; not established as repaired"
+    "repair_status": "Addressed in repair branch; production verification pending"
   },
   {
     "id": "REI-121",
@@ -1675,5 +1675,185 @@
     "fix": "Bound generation bytes/duration, flush valid incremental units and clear on cancel/error/new generation. Test missing-end and oversized-frame sequences.",
     "reproduction": "",
     "repair_status": "Addressed in repair branch; production verification pending"
+  },
+  {
+    "id": "REI-130",
+    "category": "Recovery follow-up",
+    "severity": "P1",
+    "status": "Reproduced or verified locally",
+    "title": "Expired callback workers could clear newer claims",
+    "file": "backend/lib/db.py",
+    "problem": "Completion matched job ID/state without a unique claim generation.",
+    "fix": "Unique claim tokens and compare-and-swap completion; claimless work denies.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-131",
+    "category": "Recovery follow-up",
+    "severity": "P1",
+    "status": "Reproduced or verified locally",
+    "title": "One follow-up failure abandoned the remaining claimed batch",
+    "file": "backend/api/main.py",
+    "problem": "Attempt or completion exceptions stopped the entire batch and delayed callbacks.",
+    "fix": "Isolate claim, attempt, and completion failures while processing remaining owned rows.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-132",
+    "category": "Recovery follow-up",
+    "severity": "P1",
+    "status": "Reproduced or verified locally",
+    "title": "Provider messages repeatedly inflated call attempts and rewrote newer outcomes",
+    "file": "backend/lib/db.py",
+    "problem": "Initiated and terminal callbacks incremented attempts repeatedly, without call identity or terminal ordering.",
+    "fix": "Atomic SQL provider-event ledger, lead row lock, deduplicated count, current-call filtering, terminal preservation.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-133",
+    "category": "Recovery follow-up",
+    "severity": "P1",
+    "status": "Reproduced or verified locally",
+    "title": "Live call leases had no heartbeat or bounded media lifetime",
+    "file": "backend/voice/agent.py",
+    "problem": "Expiry could drop a live session from capacity; pipeline lifetime was unbounded.",
+    "fix": "Owned renewal every 30 seconds, cancellation after three failures, maximum media duration 1200 seconds by default.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-134",
+    "category": "Recovery follow-up",
+    "severity": "P1",
+    "status": "Reproduced or verified locally",
+    "title": "Lost provider acknowledgment could free capacity and allow a duplicate dial",
+    "file": "backend/voice/outbound.py",
+    "problem": "Timeout, malformed accepted responses and server errors were treated as definite rejection.",
+    "fix": "Keep the lease and expose requires_reconciliation; durable reconciliation is still missing.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Partial; durable reconciliation remains"
+  },
+  {
+    "id": "REI-135",
+    "category": "Recovery follow-up",
+    "severity": "P2",
+    "status": "Reproduced or verified locally",
+    "title": "Active-call lookup orphaned expired ownership hashes",
+    "file": "backend/voice/outbound.py",
+    "problem": "Lookup removed sorted-set members before the atomic acquisition script could clean ownership maps.",
+    "fix": "Read-only active lookup; atomic acquisition handles expired-member cleanup.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-136",
+    "category": "Recovery follow-up",
+    "severity": "P1",
+    "status": "Reproduced or verified locally",
+    "title": "Outbound context showed cents as dollar values",
+    "file": "backend/voice/outbound_webhook.py",
+    "problem": "Price guidance made ARV and MAO one hundred times too large.",
+    "fix": "Convert verified integer cents once when formatting outbound guidance.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-137",
+    "category": "Recovery follow-up",
+    "severity": "P2",
+    "status": "Reproduced or verified locally",
+    "title": "Reminder dates were inferred from broad hour windows",
+    "file": "backend/voice/appointment_scheduler.py",
+    "problem": "Twelve-to-thirty-six-hour appointments were always called tomorrow; nearby midnight appointments were called today.",
+    "fix": "Format the actual Pacific calendar date.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-138",
+    "category": "Recovery follow-up",
+    "severity": "P1",
+    "status": "Reproduced or verified locally",
+    "title": "Reminder follow-up fabricated a completed visit",
+    "file": "backend/voice/appointment_scheduler.py",
+    "problem": "The message claimed we came by with no attendance evidence.",
+    "fix": "Describe the scheduled visit only; bound follow-up to 2\u201348 hours after it.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-139",
+    "category": "Recovery follow-up",
+    "severity": "P1",
+    "status": "Reproduced or verified locally",
+    "title": "Cancelled and rebooked appointments had stale reminder state",
+    "file": "backend/lib/db.py",
+    "problem": "Reminder selection trusted lead stage and old send flags; a cancelled reservation could still get outreach.",
+    "fix": "Require matching confirmed reservation; reset flags atomically for a new reservation.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-140",
+    "category": "Recovery follow-up",
+    "severity": "P1",
+    "status": "Reproduced or verified locally",
+    "title": "Recording persistence failures acknowledged success",
+    "file": "backend/voice/outbound_webhook.py",
+    "problem": "A database error was swallowed and the webhook returned 204, losing provider retry opportunity.",
+    "fix": "Use the DB wrapper off the event loop; return 500 if persistence fails.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-141",
+    "category": "Recovery follow-up",
+    "severity": "P2",
+    "status": "Reproduced or verified locally",
+    "title": "Malformed QA scores could pollute the dashboard",
+    "file": "backend/qa/grader.py",
+    "problem": "Wrongly named metrics, out-of-range/nonfinite values and missing evidence could be saved.",
+    "fix": "Align tool metrics with stored fields; validate numeric values and evidence; compute the mean of applicable metrics.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-142",
+    "category": "Recovery follow-up",
+    "severity": "P1",
+    "status": "Reproduced or verified locally",
+    "title": "Permanent speech provider failure defaulted to continuing the pipeline",
+    "file": "backend/voice/agent.py",
+    "problem": "The installed Pipecat worker defaults to continuing when a processor becomes unusable.",
+    "fix": "Use ProcessorUnusablePolicy.CANCEL; execute a real-runner permanent-failure test.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-143",
+    "category": "Recovery follow-up",
+    "severity": "P2",
+    "status": "Reproduced or verified locally",
+    "title": "Output and post-call network operations blocked the event loop",
+    "file": "backend/voice/agent.py",
+    "problem": "Compliance logging, owner digest and feedback DB operations synchronously occupied the event loop.",
+    "fix": "Move touched I/O to worker threads; cancellation still cannot stop an already-running synchronous request.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
+  },
+  {
+    "id": "REI-144",
+    "category": "Recovery follow-up",
+    "severity": "P2",
+    "status": "Reproduced or verified locally",
+    "title": "Regression checks had no hosted automation",
+    "file": "tests/test_recovery_contracts.py",
+    "problem": "Local fixes had no automatic backend/database/dashboard regression job.",
+    "fix": "Added least-privilege GitHub Actions workflow; hosted execution remains unverified.",
+    "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
+    "repair_status": "Addressed locally; production or hosted verification pending"
   }
 ]

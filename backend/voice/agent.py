@@ -24,8 +24,8 @@ from pipecat.frames.frames import (
     TTSTextFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.workers.runner import WorkerRunner
+from pipecat.pipeline.worker import PipelineParams, PipelineWorker, ProcessorUnusablePolicy
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
@@ -391,6 +391,28 @@ class _LoggingTwilioSerializer(TwilioFrameSerializer):
         return result
 
 
+async def _monitor_call_capacity(task, lead_id: str, call_sid: str, interval: float = 30.0) -> None:
+    from backend.voice.outbound import _renew_call_slot
+    failures = 0
+    while True:
+        await asyncio.sleep(interval)
+        if await asyncio.to_thread(_renew_call_slot, lead_id, call_sid):
+            failures = 0
+        else:
+            failures += 1
+            if failures >= 3:
+                logger.error("call_capacity_lease_lost lead_id={} call_sid={}", lead_id, call_sid)
+                await task.cancel()
+                return
+
+
+def _maximum_call_seconds() -> int:
+    value = int(os.environ.get("VOICE_MAX_CALL_SECONDS", "1200"))
+    if not 60 <= value <= 3000:
+        raise ValueError("VOICE_MAX_CALL_SECONDS must be between 60 and 3000")
+    return value
+
+
 async def run_sophia_agent(
     websocket,
     call_sid: str,
@@ -629,8 +651,9 @@ async def run_sophia_agent(
         call_ctx._opener_fired = False
         call_ctx._task_ref = None
 
-    task = PipelineTask(
+    task = PipelineWorker(
         pipeline,
+        processor_unusable_policy=ProcessorUnusablePolicy.CANCEL,
         params=PipelineParams(
             enable_metrics=True,
             enable_usage_metrics=True,
@@ -655,6 +678,8 @@ async def run_sophia_agent(
         logger.info("client connected call_sid={}", call_sid)
         from backend.karpathys import emitter
         spawn(emitter.emit_call_created(call_sid, call_context))
+        if call_context.get("is_outbound") and call_ctx.lead_id:
+            spawn(_monitor_call_capacity(task, call_ctx.lead_id, call_sid))
         if not call_context.get("is_outbound"):
             await asyncio.sleep(0.1)
             opener_text = _build_opener(call_context)
@@ -669,7 +694,7 @@ async def run_sophia_agent(
                     logger.info("outbound_opener_auto_fire call_sid={}", call_sid)
                     await task.queue_frames([TTSSpeakFrame(opener)])
             spawn(_fire_opener_after_connect())
-            logger.info("outbound_connected opener scheduled 3s call_sid={}", call_sid)
+            logger.info("outbound_connected opener scheduled 1s call_sid={}", call_sid)
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):
@@ -679,10 +704,14 @@ async def run_sophia_agent(
         spawn(emitter.emit_call_ended(call_sid))
         await task.cancel()
 
-    runner = PipelineRunner(handle_sigint=False)
+    runner = WorkerRunner(handle_sigint=False)
+    await runner.add_workers(task)
 
     try:
-        await runner.run(task)
+        await asyncio.wait_for(runner.run(), timeout=_maximum_call_seconds())
+    except asyncio.TimeoutError:
+        logger.warning("maximum_call_duration reached call_sid={}", call_sid)
+        await task.cancel()
     except asyncio.CancelledError:
         logger.warning("sophia agent cancelled call_sid={}", call_sid)
         raise
@@ -742,15 +771,15 @@ async def _handle_call_end(
                 call_context=call_context,
             )
 
-            asyncio.create_task(_run_qa_async(transcript, lead["id"], call_sid))
-            asyncio.create_task(
+            await asyncio.gather(
+                _run_qa_async(transcript, lead["id"], call_sid),
                 _run_transcript_intel_async(
                     transcript=transcript,
                     lead_id=lead["id"],
                     call_sid=call_sid,
                     call_id_db=call_id_db,
                     disposition=disposition,
-                )
+                ),
             )
 
         else:
@@ -786,7 +815,7 @@ async def _handle_call_end(
 async def _handle_orchestrator_decision(
     call_ctx: CallContext,
     orchestrator: RuntimeOrchestrator,
-    task: PipelineTask,
+    task: PipelineWorker,
 ) -> None:
     decision = orchestrator.decide(call_ctx)
 
@@ -895,9 +924,10 @@ async def _run_transcript_intel_async(
             try:
                 from backend.alerts.sms import send_owner_call_digest
                 from backend.lib.db import get_lead_with_property
-                lead_data = get_lead_with_property(lead_id)
+                lead_data = await asyncio.to_thread(get_lead_with_property, lead_id)
                 address = (lead_data.get("properties") or {}).get("address") if lead_data else None
-                send_owner_call_digest(
+                await asyncio.to_thread(
+                    send_owner_call_digest,
                     disposition=disposition,
                     call_summary=intel.get("call_summary"),
                     next_best_action=intel.get("next_best_action"),
@@ -915,7 +945,7 @@ async def _run_transcript_intel_async(
                 from backend.lib.db import write_bob_feedback_event, load_intel_packet, save_intel_packet
                 from backend.contracts.intel_packet import migrate_packet
                 now = datetime.now(timezone.utc).isoformat()
-                existing = load_intel_packet(lead_id) or {}
+                existing = await asyncio.to_thread(load_intel_packet, lead_id) or {}
                 existing = migrate_packet(existing)
                 sp = existing.get("seller_profile") or {}
                 sp["motivation_level"] = {"value": intel.get("motivation_level"), "source": "transcript_intel", "updated_at": now}
@@ -925,8 +955,9 @@ async def _run_transcript_intel_async(
                 sp["objections"] = {"value": intel.get("objections"), "source": "transcript_intel", "updated_at": now}
                 existing["seller_profile"] = sp
                 existing["lead_id"] = lead_id
-                save_intel_packet(existing)
-                write_bob_feedback_event(
+                await asyncio.to_thread(save_intel_packet, existing)
+                await asyncio.to_thread(
+                    write_bob_feedback_event,
                     lead_id=lead_id,
                     call_sid=call_sid,
                     event_type="call_completed",
@@ -948,7 +979,7 @@ async def _run_transcript_intel_async(
         if intel and lead_id:
             try:
                 from backend.voice.memory import SellerMemory
-                memory = SellerMemory.load(lead_id)
+                memory = await asyncio.to_thread(SellerMemory.load, lead_id)
                 memory.update_from_intel(intel)
                 await asyncio.to_thread(memory.save)
                 logger.info("seller_memory updated from intel lead_id={}", lead_id)

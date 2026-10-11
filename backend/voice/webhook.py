@@ -214,13 +214,16 @@ async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
                 waited += 0.05
                 store = getattr(websocket.app.state, "call_contexts", {})
             if resolved_sid in store:
-                call_context = store.pop(resolved_sid)
+                call_context = store[resolved_sid]
                 logger.info("call_context loaded waited={:.2f}s lead={}", waited, bool(call_context.get("lead")))
             else:
                 logger.warning("call_context timeout after 5s starting cold")
         except Exception:
             pass
 
+        if not hasattr(websocket.app.state, "call_contexts"):
+            websocket.app.state.call_contexts = {}
+        websocket.app.state.call_contexts[resolved_sid] = call_context
         call_context["stream_sid"] = session.stream_sid
         logger.info("inbound_stream_started call_sid={}", resolved_sid)
         app_state = websocket.app.state

@@ -337,15 +337,14 @@ def get_lead_with_property(lead_id: str) -> dict | None:
 
 
 def update_lead_call_outcome(lead_id: str, outcome: str, call_sid: str, duration: int = 0) -> None:
-    client = _get_client()
-    current = client.table("leads").select("call_attempts").eq("id", lead_id).execute()
-    attempts = (current.data[0].get("call_attempts") or 0) + 1 if current.data else 1
-    client.table("leads").update({
-        "last_called_at": datetime.now(timezone.utc).isoformat(),
-        "call_attempts": attempts,
-        "last_call_outcome": outcome,
-    }).eq("id", lead_id).execute()
-    logger.info("update_lead_call_outcome lead_id={} outcome={} sid={}", lead_id, outcome, call_sid)
+    if not call_sid:
+        raise ValueError("Provider call ID is required")
+    _get_client().rpc("record_provider_call_outcome", {
+        "p_lead_id": lead_id,
+        "p_call_sid": call_sid,
+        "p_outcome": outcome,
+        "p_duration": max(0, duration),
+    }).execute()
 
 
 def schedule_callback(lead_id: str, callback_at: str) -> None:
@@ -399,8 +398,15 @@ def get_pending_appointment_leads() -> list[dict]:
         .not_.is_("appointment_at", "null")
         .execute()
     )
-    logger.debug("get_pending_appointment_leads count={}", len(response.data))
-    return response.data
+    appointments = client.table("voice_appointments").select("lead_id,starts_at").eq("status", "confirmed").execute().data or []
+    def timestamp(value):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed.astimezone(timezone.utc) if parsed.tzinfo else None
+        except (AttributeError, TypeError, ValueError):
+            return None
+    confirmed = {(row["lead_id"], timestamp(row["starts_at"])) for row in appointments}
+    return [row for row in response.data or [] if timestamp(row.get("appointment_at")) is not None and (row["id"], timestamp(row["appointment_at"])) in confirmed and not row.get("opted_out")]
 
 
 def update_appt_reminder_flags(lead_id: str, day_before: bool | None = None, morning: bool | None = None, no_show: bool | None = None) -> None:
@@ -1322,18 +1328,41 @@ def claim_due_call_followups(limit: int = 5) -> list[dict]:
     return _get_client().rpc("claim_due_call_followups", {"p_limit": limit}).execute().data or []
 
 
-def finish_callback_claim(lead_id: str, scheduled_at: str, success: bool) -> None:
-    changes = {"callback_claimed_until": None}
+def finish_callback_claim(lead_id: str, scheduled_at: str, success: bool, claim_token: str | None = None) -> None:
+    if not claim_token:
+        raise ValueError("Callback claim ownership is required")
+    changes = {"callback_claimed_until": None, "callback_claim_token": None}
     if success:
         changes["callback_scheduled_at"] = None
-    _get_client().table("leads").update(changes).eq("id", lead_id).eq("callback_scheduled_at", scheduled_at).execute()
+    _get_client().table("leads").update(changes).eq("id", lead_id).eq("callback_scheduled_at", scheduled_at).eq("callback_claim_token", claim_token).execute()
 
 
-def finish_followup_claim(followup_id: str, success: bool) -> None:
+def finish_followup_claim(followup_id: str, success: bool, claim_token: str | None = None) -> None:
+    if not claim_token:
+        raise ValueError("Follow-up claim ownership is required")
     _get_client().table("followups").update({
         "state": "completed" if success else "pending",
         "claimed_until": None,
-    }).eq("id", followup_id).eq("state", "processing").execute()
+        "claim_token": None,
+    }).eq("id", followup_id).eq("state", "processing").eq("claim_token", claim_token).execute()
+
+
+def warm_database() -> None:
+    _get_client().table("leads").select("id").limit(1).execute()
+
+
+def save_recording_metadata(call_sid: str, recording_url: str, recording_sid: str, duration: int) -> None:
+    if not call_sid or not recording_url:
+        raise ValueError("Recording requires a provider call ID and URL")
+    _get_client().table("calls").update({
+        "recording_url": recording_url,
+        "recording_sid": recording_sid,
+        "recording_duration_seconds": max(0, duration),
+    }).eq("signalwire_call_id", call_sid).execute()
+
+
+def save_call_grade(call_sid: str, values: dict) -> None:
+    _get_client().table("calls").update(values).eq("signalwire_call_id", call_sid).execute()
 
 
 def campaign_is_running(campaign_id: str = "default") -> bool:

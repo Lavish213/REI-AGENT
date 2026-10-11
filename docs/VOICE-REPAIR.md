@@ -20,18 +20,18 @@ This branch repairs the live voice path, scheduling, dialing controls, access bo
 
 | Check | Result | What it establishes |
 |---|---|---|
-| Python suite | 983 passed; 5 deprecation warnings | Regression and focused integration behavior |
+| Python suite | 1,046 passed; 4 dependency warnings | Regression and focused integration behavior |
 | Actual pipeline construction | Passed without provider network requests | Real services and flattened processor ordering construct |
-| Interruption stress | 1,000 resets passed | No stale sentence-buffer output after interruption |
-| Dial admission stress | 100 concurrent attempts; exactly 3 admitted | Atomic limit enforcement in Redis-compatible Lua test runtime |
+| Interruption stress | 10,000 resets plus the earlier 1,000 passed | No stale sentence-buffer output after interruption |
+| Dial admission stress | 7,680 real Redis attempts; exactly 3 admitted per round | Atomic limit enforcement against a local Redis server |
 | PostgreSQL scheduling migration | Passed using PGlite | Reservation idempotency, overlaps, approved availability, due claims, task types, anonymous denial |
 | Dashboard | Build passed; lint zero errors/warnings | Next 16 compilation and static checks |
 | Dependencies | Compatible; hash lock generated | Installed Python dependency consistency |
 | Patch whitespace | Passed | Clean patch formatting |
 
-The Redis stress test uses fakeredis with Lua, not a production Redis cluster. The migration test uses a minimal baseline fixture and PGlite, not the existing Supabase database. The pipeline test does not measure real provider speech quality, remote playback, or telephone latency. Dashboard builds require configured Supabase URL/service-key values; verification used nonproduction placeholders. The updated master was merged into this repair branch; its containment rules and removal of committed seller exports are preserved. Both migrations execute together in the test fixture, and service-role update/delete on suppression evidence are denied.
+The Redis stress tests use an isolated real Redis server and fakeredis with Lua; neither is a production Redis cluster. The migration test uses a minimal baseline fixture and PGlite, not the existing Supabase database. The pipeline test does not measure real provider speech quality, remote playback, or telephone latency. Dashboard builds require configured Supabase URL/service-key values; verification used nonproduction placeholders. The updated master was merged into this repair branch; its containment rules and removal of committed seller exports are preserved. All three containment/scheduling/recovery migrations execute together in the test fixture, and service-role update/delete on suppression evidence are denied.
 
-Five warnings originate from pinned Pipecat dependencies and the deprecated PipelineTask API. See [MAX-TEST-REPORT.md](MAX-TEST-REPORT.md) for the expanded stress campaign and newly repaired defects.
+Four warnings originate from pinned dependency internals. The live pipeline now uses PipelineWorker and WorkerRunner and cancels on permanent provider failure. See [MAX-TEST-REPORT.md](MAX-TEST-REPORT.md) for the expanded stress campaign and newly repaired defects.
 
 Reproduce from the repository root:
 
@@ -49,7 +49,7 @@ npm run lint --prefix dashboard
 
 ## Deployment setup
 
-Review and apply `supabase/migrations/20260911_tenant_and_suppression.sql` before `supabase/migrations/20261011_voice_scheduling.sql` to a staging copy first, after reviewing existing table shapes, roles, and policies. This migration is additive for scheduling but deliberately revokes anonymous access across public tables. Existing clients relying on anonymous table access must be migrated. It assumes base `leads` and `followups` tables already exist; it does not complete the repository's missing clean-database bootstrap.
+Review and apply `supabase/migrations/20260911_tenant_and_suppression.sql` before `supabase/migrations/20261011_voice_scheduling.sql`, then `supabase/migrations/20261012_call_recovery.sql`, to a staging copy first, after reviewing existing table shapes, roles, and policies. This migration is additive for scheduling but deliberately revokes anonymous access across public tables. Existing clients relying on anonymous table access must be migrated. It assumes base `leads` and `followups` tables already exist; it does not complete the repository's missing clean-database bootstrap.
 
 | Component | Required configuration |
 |---|---|
@@ -66,6 +66,7 @@ Review and apply `supabase/migrations/20260911_tenant_and_suppression.sql` befor
 | Dashboard | `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD`, `BACKEND_URL`, matching `OPERATOR_API_TOKEN`, `NEXT_PUBLIC_SUPABASE_URL`, server-only `SUPABASE_SERVICE_KEY` |
 | Ingest | Matching `KARPATHYS_WEBHOOK_SECRET` in producer and dashboard |
 | CORS if needed | Exact dashboard origins in `DASHBOARD_ORIGINS` |
+| Maximum call duration | `VOICE_MAX_CALL_SECONDS=1200` by default; allowed range 60–3000 seconds |
 | Background scheduling | `ENABLE_BACKGROUND_JOBS=false` on web replicas; enable only on one designated process |
 
 Configure only one background-job process. The callbacks and followup claims have database leases, but other legacy schedules are not comprehensively distributed-job safe. Enabling background jobs on every web replica remains unsafe.
@@ -87,9 +88,9 @@ Release blockers and important residual gaps include:
 3. Make post-call grading, intel refresh, transcripts, provider status retries, and notifications durable with retryable jobs. Remove remaining blocking database/provider operations from async paths.
 4. Repair the still-open acquisition integrations: missing auto-enrichment/cash-buyer functions, partial deployed scout cycle, property-schema disagreements, residential filtering, and cache bounds.
 5. Verify intel freshness/versioning and atomic approvals against realistic records. Offer quotes and summaries now convert cents correctly, clamp to verified MAO/operator ceilings, and reject low-confidence authority. Verify all other money paths against realistic records. Regex output filters are not a complete protection against split or paraphrased prohibited speech.
-6. Finish live-call registry/event identifiers and truthful metrics. Store actual latency/interruption measurements; present explicit errors wherever APIs currently look like an empty state.
+6. Live-call registry retention and outbound registration are repaired. Finish event delivery and truthful metrics. Store actual latency/interruption measurements; present explicit errors wherever APIs currently look like an empty state.
 7. Add provider delivery reconciliation, reminder/attendance event truth, and durable opt-out recovery. Finish outgoing signed unsubscribe links, not just token verification.
-8. Attempt-owned leases now reject stale callback releases and stale provider bindings. Add heartbeat/maximum-call duration and durable reconciliation for callbacks arriving before provider binding or after worker failure. Media session tokens remain replayable inside their short validity window; bind and consume them atomically if exposure is possible.
+8. Attempt-owned leases now reject stale callback releases and stale provider bindings. Heartbeat and maximum-call duration are now implemented. Add durable reconciliation for callbacks arriving before provider binding or after worker failure. Media session tokens remain replayable inside their short validity window; bind and consume them atomically if exposure is possible.
 9. Remove discovery-stage turn-count shortcuts that can advance without required facts. Test corrections, changed appointments, cancellations, multiple properties, and repeated requests throughout long conversations.
 10. Prove performance with real Redis/PostgreSQL and recorded telephony under controlled load. The current tests do not establish sustained production throughput or acoustic conversation quality.
 
@@ -122,3 +123,8 @@ The repair follows Pipecat's turn-management and streaming service architecture 
 - [SignalWire webhook verification](https://signalwire.com/docs/server-sdks/reference/python/core/security/validate-webhook-signature)
 - [Cartesia realtime websocket speech](https://docs.cartesia.ai/api-reference/tts/websocket)
 - [LiveKit turn detection](https://docs.livekit.io/agents/build/turns/)
+
+
+## Latest recovery changes
+
+Read [RECOVERY-TEST-REPORT.md](RECOVERY-TEST-REPORT.md) for new provider fault tests, generation-owned callback claims, event deduplication, truthful reminders, actual runner tests, current coverage, and the remaining A-grade release gates. Drain running calls and claimed jobs, apply the recovery migration, and restart all designated workers together in staging. Old workers do not enforce claim generations and must not overlap new workers during this rollout. Awaiting post-call processing prevents abandoned detached tasks during ordinary disconnect, but does not create a durable job queue or recover work after process termination.

@@ -1,0 +1,61 @@
+name: Voice and workflow regression
+
+on:
+  pull_request:
+  push:
+    branches: [master, repair/voice-reliability]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voice-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      OUTBOUND_ENABLED: 'false'
+      ENABLE_BACKGROUND_JOBS: 'false'
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_SERVICE_KEY: test-only
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            dashboard/package-lock.json
+            tests/package-lock.json
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements.txt
+          python -m pip install -r requirements-test.txt
+          python -m pip check
+      - name: Backend regression, real Redis, and synthetic streaming
+        run: |
+          python -m coverage run --branch --source=backend -m pytest -q
+          python -m coverage report --fail-under=28
+          python -m compileall -q backend
+      - name: PostgreSQL migration and recovery contracts
+        run: |
+          npm ci --prefix tests
+          npm run test:database --prefix tests
+      - name: Dashboard build and HTTP fault tests
+        run: |
+          npm ci --prefix dashboard
+          npm run build --prefix dashboard
+          npm run lint --prefix dashboard
+          npm run test:dashboard --prefix tests

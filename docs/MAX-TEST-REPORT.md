@@ -6,14 +6,14 @@ This campaign expanded beyond the previous repair regression suite to adversaria
 
 | Area | Test execution | Result |
 |---|---|---|
-| Python | Full suite with original regressions and 631 added matrix cases | 983 passed; 5 pinned-dependency/API deprecation warnings |
+| Python | Full suite with original regressions and 631 added matrix cases | 1,046 passed; 4 dependency deprecation warnings |
 | Real Redis | Isolated Redis 6.2 process; 30 rounds, 256 competing requests, 64 threads | 7,680 attempts; exactly 3 admissions per round; duplicate and expired slots handled |
 | Redis-compatible engine | 20 rounds, 128 competing requests, 32 threads | 2,560 attempts; exactly 3 admissions per round |
 | Lease ownership | Old status callback, old generation release, unauthenticated release, delayed provider bind, DB failure after accepted call | New call retains its slot; accepted call stays counted when persistence fails |
 | Interrupted speech | 10,000 interruption/reset/new-response cycles, plus earlier 1,000-cycle regression | No stale sentence text emitted |
 | Large response frame | Individual 1,201/5,000/10,000/100,000-character chunks | Pending buffer stays at or below 1,200 characters; content conservation checked |
 | Calendar | 179 daily roundtrips over the booking horizon plus DST and invalid time tests | Pacific/UTC roundtrips and rejection behavior pass |
-| Database | Both committed tenant/suppression and scheduling migrations in PGlite | Overlaps, approved availability, rebooking, adjacent slots, anonymous denial and append-only evidence checks pass |
+| Database | Tenant/suppression, scheduling, and call recovery migrations in PGlite | Overlaps, approved availability, rebooking, adjacent slots, anonymous denial and append-only evidence checks pass |
 | Database stress | 100 repeated reservation requests and 100 competing callback-claim requests | Same confirmed reservation ID; no duplicate callback claims |
 | Identity binding | 1,000 randomized poisoned identity/destination sets | Model input cannot replace server-resolved seller/lead/address/email |
 | Permissions | Missing/malformed packets, unsafe flags, invalid levels, corrupt entries, expired/malformed expiry, wrong action, disabled outreach, kill switch | Deny behavior passes; read-only availability can remain readable while outbound actions are disabled |
@@ -27,14 +27,14 @@ PGlite serializes work within its embedded PostgreSQL instance. Its 100-request 
 
 ## Coverage
 
-Coverage.py measured the full backend, including unexecuted modules: **28.4% statement coverage, 19.1% branch coverage, 26.3% combined**. The report includes 145 backend files. This is deliberately measured against the whole repository, not a selected subset that would inflate the percentage.
+Coverage.py measured the full backend, including unexecuted modules: **30.6% statement coverage, 20.6% branch coverage, 28.3% combined**. The report includes 145 backend files. This is deliberately measured against the whole repository, not a selected subset that would inflate the percentage.
 
 | Module | Combined statement/branch coverage |
 |---|---|
 | Media session validation | 87.9% |
 | API authentication/signatures | 88.0% |
 | Voice tools | 50.1% |
-| Voice pipeline/agent | 43.5% |
+| Voice pipeline/agent | 47.3% |
 | CSV parser | 56.3% |
 | Comps calculator | 55.1% |
 
@@ -105,6 +105,13 @@ Passing many parametrized cases is not equivalent to complete code or behavior c
 
 The Redis namespace now uses shared cluster hash tags and owned leases. Drain existing active calls before switching versions because old capacity keys are not migrated.
 
-The lease now rejects stale releases, but it still lacks heartbeat/maximum-call-duration enforcement and durable reconciliation if provider callbacks arrive before binding, Redis fails after dialing, or a worker dies. Provider status updates also need durable event idempotency and current-call filtering so old events cannot overwrite newer database outcomes.
+The lease now has a 30-second heartbeat and the media pipeline has a bounded call duration. Three consecutive renewal failures end the media pipeline. Uncertain provider acknowledgments retain capacity and require reconciliation; there is still no durable provider reconciliation after worker death, pre-bind callbacks, or complete Redis data loss. PostgreSQL provider events now deduplicate attempt counts, preserve terminal outcomes, and reject older calls overwriting the current call. Process-crash recovery still needs staging verification.
 
 The conversation tests exercise actual processors and tools with controlled inputs; they do not include an actual speaking language model, external STT/TTS streaming, remote audible playback marks, echo cancellation, real barge-in recovery, noise/accent accuracy, or a 50-call recorded acceptance campaign. No real sellers were called or messaged, no production data was changed, and no deployment was performed. Those measurements remain essential before claiming A-grade telephone behavior.
+
+
+## Recovery follow-up, October 11
+
+The latest full run passes **1,046 tests with four dependency warnings**. Entire-backend coverage is **30.6% statements, 20.6% branches, 28.3% combined**, up from 26.3% combined. This still falls short of broad verification. The newer tests execute the real Pipecat worker/runner with synthetic speech and the telephone serializer, rather than merely constructing the pipeline. No synthetic sound is evidence of real TTS naturalness.
+
+New evidence: [database recovery](test-evidence/database-recovery.txt), [full run](test-evidence/max-pytest.txt), [coverage](test-evidence/backend-coverage.json), and [detailed recovery report](RECOVERY-TEST-REPORT.md). The GitHub Actions workflow now runs these checks automatically; its first hosted execution has not been verified here. The 28% combined coverage floor prevents regression and is not an A-grade target.

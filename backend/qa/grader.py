@@ -1,4 +1,6 @@
 import os
+import math
+import asyncio
 from loguru import logger
 from anthropic import AsyncAnthropic
 
@@ -16,23 +18,16 @@ def _get_client() -> AsyncAnthropic:
 
 
 GRADING_PROMPT = """
-You are a quality assessor for Sophia Reyes, a 25 year old AI voice agent
-for San Joaquin House Buyers. Sophia handles inbound and outbound calls from
-distressed property owners. Her goal is to qualify sellers and book walkthroughs.
-
-Grade this call transcript on exactly these 6 metrics from 0 to 10:
-
-1. QUALIFICATION (0-10)
-2. OFFER_QUALITY (0-10)
-3. OBJECTION_HANDLING (0-10)
-4. APPOINTMENT_BOOKING (0-10)
-5. TONE (0-10)
-6. GOAL_COMPLETION (0-10)
-
-Also: opener_completed, reached_discovery, reached_qualification, reached_pitch,
-appointment_offered, appointment_booked, objections_count, objections_handled_count,
-talk_ratio_sophia, phase_reached, sentiment_arc, failures, prompt_suggestions,
-call_summary, overall_score.
+You assess Sophia, an AI voice assistant for San Joaquin House Buyers.
+Evaluate only evidence in this transcript. Grade each tool metric from 0 to 10.
+Qualification measures ownership, property condition, motivation, timeline and price discovery.
+Offer quality measures verified, appropriately qualified price discussion without invented authority.
+Objection handling measures listening and direct answers without pressure.
+Appointment booking measures an explicit agreed date/time and truthful confirmation; proposing a visit is not booking.
+Tone measures warm, concise, responsive language without repetitive filler or false personal claims.
+Goal completion measures progress toward the seller's stated goal, including honoring stop requests.
+Use null for offer quality, objection handling or appointment booking when there was no relevant opportunity.
+Do not infer audible naturalness, latency or interruption quality from text alone.
 
 TRANSCRIPT:
 """
@@ -54,17 +49,17 @@ async def grade_call(transcript: str, lead_id: str, call_sid: str) -> dict:
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "opener_natural": {"type": "number", "description": "Opener sounded natural and human, not robotic. 0-10"},
-                    "reacted_before_asking": {"type": "number", "description": "Sophia reacted to seller words before asking a question. 0-10"},
-                    "one_question_per_turn": {"type": "number", "description": "Sophia asked only one question per turn. 0-10"},
-                    "motivation_discovered": {"type": "number", "description": "Sophia discovered any seller motivation signals. 0-10"},
-                    "objection_handled": {"type": "number", "description": "If seller objected, Sophia handled it correctly. 0-10"},
-                    "no_pressure": {"type": "number", "description": "Sophia avoided pressure, urgency, or salesy language. 0-10"},
+                    "qualification": {"type": "number", "minimum": 0, "maximum": 10},
+                    "offer_quality": {"type": ["number", "null"], "minimum": 0, "maximum": 10},
+                    "objection_handling": {"type": ["number", "null"], "minimum": 0, "maximum": 10},
+                    "appointment_booking": {"type": ["number", "null"], "minimum": 0, "maximum": 10},
+                    "tone": {"type": "number", "minimum": 0, "maximum": 10},
+                    "goal_completion": {"type": "number", "minimum": 0, "maximum": 10},
                     "call_summary": {"type": "string"},
-                    "overall_score": {"type": "number", "description": "Overall quality for a first-contact qualify call. 0-10"},
+                    "failures": {"type": "array", "items": {"type": "string"}},
                 },
-                "required": ["opener_natural", "reacted_before_asking", "one_question_per_turn",
-                             "motivation_discovered", "no_pressure", "call_summary", "overall_score"],
+                "required": ["qualification", "offer_quality", "objection_handling", "appointment_booking", "tone", "goal_completion", "call_summary", "failures"],
+                "additionalProperties": False,
             },
         }
 
@@ -86,25 +81,35 @@ async def grade_call(transcript: str, lead_id: str, call_sid: str) -> dict:
             logger.error("grade_call no tool_use block returned call_sid={}", call_sid)
             return {}
 
+        required = ("qualification", "offer_quality", "objection_handling", "appointment_booking", "tone", "goal_completion")
+        nullable = {"offer_quality", "objection_handling", "appointment_booking"}
+        for name in required:
+            value = scores.get(name)
+            if value is None and name in nullable and name in scores:
+                continue
+            if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 10:
+                raise ValueError(f"Invalid QA score: {name}")
+        if not isinstance(scores.get("call_summary"), str) or not isinstance(scores.get("failures"), list) or not all(isinstance(item, str) for item in scores["failures"]):
+            raise ValueError("Invalid QA evidence")
+        values = [scores[name] for name in required if scores[name] is not None]
+        overall = round(sum(values) / len(values), 2)
+        scores["overall_score"] = overall
         call_update = {
-            "score_qualification": scores.get("opener_natural"),
-            "score_offer_quality": scores.get("reacted_before_asking"),
-            "score_objection_handling": scores.get("objection_handled"),
-            "score_appointment_booking": scores.get("motivation_discovered"),
-            "score_overall": scores.get("overall_score"),
-            "summary": scores.get("call_summary", ""),
+            "score_qualification": scores["qualification"],
+            "score_offer_quality": scores["offer_quality"],
+            "score_objection_handling": scores["objection_handling"],
+            "score_appointment_booking": scores["appointment_booking"],
+            "score_overall": overall,
+            "summary": scores["call_summary"],
         }
+        from backend.lib.db import save_call_grade
+        await asyncio.to_thread(save_call_grade, call_sid, call_update)
 
-        from backend.lib.db import _get_client as get_db
-        db = get_db()
-        db.table("calls").update(call_update).eq("signalwire_call_id", call_sid).execute()
-
-        overall = scores.get("overall_score", 10)
         if overall < 6.0:
             failures = scores.get("failures", [])
             failure_preview = " | ".join(failures[:2]) if failures else "see dashboard"
             alert = f"LOW QA CALL\nScore: {overall}/10\nIssues: {failure_preview}\nCall: {call_sid}"
-            send_alert_to_owner(alert)
+            await asyncio.to_thread(send_alert_to_owner, alert)
             logger.warning("low QA score={} call_sid={}", overall, call_sid)
 
         logger.info("grade_call complete call_sid={} overall={}", call_sid, overall)

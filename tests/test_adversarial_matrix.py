@@ -349,6 +349,17 @@ def test_real_redis_contention_and_expiration(monkeypatch, tmp_path):
         assert client.zscore(outbound._REDIS_CONCURRENT_KEY, "expired") is None
         assert not outbound._acquire_call_slot("fresh")
         assert client.ttl(outbound._REDIS_CONCURRENT_KEY) > 0
+        assert outbound._release_call_slot("fresh")
+        assert outbound._acquire_call_slot("heartbeat", "generation")
+        assert outbound._bind_call_slot("heartbeat", "generation", "CA-live")
+        assert outbound._renew_call_slot("heartbeat", "CA-live")
+        assert not outbound._renew_call_slot("heartbeat", "CA-old")
+        client.zadd(outbound._REDIS_CONCURRENT_KEY, {"heartbeat": time.time() - 1})
+        assert not outbound._renew_call_slot("heartbeat", "CA-live")
+        process.terminate()
+        process.wait(timeout=5)
+        assert not outbound._renew_call_slot("heartbeat", "CA-live")
+        assert not outbound._acquire_call_slot("during-outage", "generation")
     finally:
         client.close()
         process.terminate()

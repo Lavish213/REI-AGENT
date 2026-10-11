@@ -1,6 +1,6 @@
 # Voice audit finding ledger
 
-All 129 original findings remain recorded below. Addressed means a code change or removal from the live path; it does not certify production behavior. Original evidence and remediation details are preserved in [VOICE-AUDIT-FINDINGS.json](VOICE-AUDIT-FINDINGS.json). Open and partial items are release follow-ups, not silently closed.
+All 129 original findings and 15 recovery follow-up findings remain recorded below. Addressed describes tested code changes, not production certification. Original evidence is preserved in [VOICE-AUDIT-FINDINGS.json](VOICE-AUDIT-FINDINGS.json). Open and partial items remain release blockers or follow-ups.
 
 | Finding | Severity | Repair status | Problem |
 |---|---|---|---|
@@ -77,7 +77,7 @@ All 129 original findings remain recorded below. Addressed means a code change o
 | REI-071 | P1 | Addressed in repair branch; production verification pending | Recording callback points at the wrong handler |
 | REI-072 | P2 | Addressed in repair branch; production verification pending | SMS recency uses the wrong timestamp and never refreshes it here |
 | REI-073 | P2 | Addressed in repair branch; production verification pending | Missing seller name crashes personalized SMS generation |
-| REI-074 | P2 | Open; not established as repaired | Appointment reminders assert an attendance event that was not recorded |
+| REI-074 | P2 | Partial; truthful reminders and confirmed-booking filtering repaired; delivery and attendance integration remain | Appointment reminders assert an attendance event that was not recorded |
 | REI-075 | P2 | Partial; follow-up work remains | Calling-hour defaults differ across subsystems |
 | REI-076 | P1 | Addressed in repair branch; production verification pending | CSV upload passes a stream to a path-only parser |
 | REI-077 | P1 | Addressed in repair branch; production verification pending | CSV upload expects the wrong scorer return type |
@@ -107,10 +107,10 @@ All 129 original findings remain recorded below. Addressed means a code change o
 | REI-101 | P1 | Partial; follow-up work remains | Database access policies are not represented in migrations |
 | REI-102 | P2 | Addressed in repair branch; production verification pending | Costly endpoints lack authentication and bounded budgets |
 | REI-103 | P1 | Addressed in repair branch; production verification pending | Cross-origin dashboard requests have no server CORS policy |
-| REI-104 | P2 | Open; not established as repaired | Live-call list is based on a context map emptied at stream start |
+| REI-104 | P2 | Addressed in repair branch; production verification pending | Live-call list is based on a context map emptied at stream start |
 | REI-105 | P2 | Open; not established as repaired | User-turn events use the wrong call-ID attribute |
 | REI-106 | P2 | Addressed in repair branch; production verification pending | Call metrics cleanup is not exception-safe |
-| REI-107 | P1 | Open; not established as repaired | Post-call processing is nondurable fire-and-forget work |
+| REI-107 | P1 | Partial; post-call tasks now awaited; durable crash recovery remains | Post-call processing is nondurable fire-and-forget work |
 | REI-108 | P1 | Partial; follow-up work remains | Unknown inbound callers have no equivalent durable call record |
 | REI-109 | P2 | Partial; follow-up work remains | Health responses do not prove a working voice session |
 | REI-110 | P2 | Partial; follow-up work remains | Blocking database/provider calls run in async API and call paths |
@@ -123,7 +123,7 @@ All 129 original findings remain recorded below. Addressed means a code change o
 | REI-117 | P1 | Addressed in repair branch; production verification pending | Simulator crashes when grading its first conversation |
 | REI-118 | P2 | Partial; follow-up work remains | Evaluations exercise different prompts and bypass the live system |
 | REI-119 | P2 | Addressed in repair branch; production verification pending | Legacy eval runner imports nonexistent case helpers |
-| REI-120 | P2 | Open; not established as repaired | QA metric names do not match the values stored |
+| REI-120 | P2 | Addressed in repair branch; production verification pending | QA metric names do not match the values stored |
 | REI-121 | P1 | Addressed in repair branch; production verification pending | Full regression suite cannot collect |
 | REI-122 | P2 | Addressed in repair branch; production verification pending | Tests fail to enforce actual assembled wiring |
 | REI-123 | P2 | Addressed in repair branch; production verification pending | Live-provider latency script is included in default discovery |
@@ -133,3 +133,18 @@ All 129 original findings remain recorded below. Addressed means a code change o
 | REI-127 | P2 | Open; not established as repaired | Seller named Claude triggers a fresh introduction |
 | REI-128 | P1 | Addressed in repair branch; production verification pending | Silence exit sets a flag without terminating the session |
 | REI-129 | P2 | Addressed in repair branch; production verification pending | Speech text buffers are unbounded when completion never arrives |
+| REI-130 | P1 | Addressed locally; production or hosted verification pending | Expired callback workers could clear newer claims |
+| REI-131 | P1 | Addressed locally; production or hosted verification pending | One follow-up failure abandoned the remaining claimed batch |
+| REI-132 | P1 | Addressed locally; production or hosted verification pending | Provider messages repeatedly inflated call attempts and rewrote newer outcomes |
+| REI-133 | P1 | Addressed locally; production or hosted verification pending | Live call leases had no heartbeat or bounded media lifetime |
+| REI-134 | P1 | Partial; durable reconciliation remains | Lost provider acknowledgment could free capacity and allow a duplicate dial |
+| REI-135 | P2 | Addressed locally; production or hosted verification pending | Active-call lookup orphaned expired ownership hashes |
+| REI-136 | P1 | Addressed locally; production or hosted verification pending | Outbound context showed cents as dollar values |
+| REI-137 | P2 | Addressed locally; production or hosted verification pending | Reminder dates were inferred from broad hour windows |
+| REI-138 | P1 | Addressed locally; production or hosted verification pending | Reminder follow-up fabricated a completed visit |
+| REI-139 | P1 | Addressed locally; production or hosted verification pending | Cancelled and rebooked appointments had stale reminder state |
+| REI-140 | P1 | Addressed locally; production or hosted verification pending | Recording persistence failures acknowledged success |
+| REI-141 | P2 | Addressed locally; production or hosted verification pending | Malformed QA scores could pollute the dashboard |
+| REI-142 | P1 | Addressed locally; production or hosted verification pending | Permanent speech provider failure defaulted to continuing the pipeline |
+| REI-143 | P2 | Addressed locally; production or hosted verification pending | Output and post-call network operations blocked the event loop |
+| REI-144 | P2 | Addressed locally; production or hosted verification pending | Regression checks had no hosted automation |

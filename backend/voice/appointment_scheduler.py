@@ -55,11 +55,14 @@ def _process_lead(lead: dict, now_utc: datetime, now_pt: datetime) -> None:
     if appt_dt.tzinfo is None:
         appt_dt = appt_dt.replace(tzinfo=timezone.utc)
 
+    if lead.get("opted_out") or lead.get("appointment_status") == "cancelled":
+        return
     appt_pt = appt_dt.astimezone(PACIFIC)
     first_name = _get_first_name(lead)
     prop = lead.get("properties") or {}
     address = prop.get("address", "your property")
     time_display = appt_pt.strftime("%-I:%M %p")
+    date_display = appt_pt.strftime("%A, %B %-d")
 
     day_before_sent = lead.get("appt_day_before_sent", False)
     morning_sent = lead.get("appt_morning_sent", False)
@@ -72,7 +75,7 @@ def _process_lead(lead: dict, now_utc: datetime, now_pt: datetime) -> None:
         body = (
             f"Hey {first_name}! Sophia from San Joaquin House Buyers \u2014 "
             f"just a reminder we're stopping by {address} "
-            f"tomorrow at {time_display}. "
+            f"on {date_display} at {time_display}. "
             f"If anything comes up just text me here. "
             f"Looking forward to it!"
         )
@@ -83,16 +86,16 @@ def _process_lead(lead: dict, now_utc: datetime, now_pt: datetime) -> None:
     elif not morning_sent and 0 < hours_until <= 12 and now_pt.hour >= 8:
         body = (
             f"Hey {first_name}! Sophia \u2014 we'll be at {address} "
-            f"at {time_display} today. See you soon!"
+            f"on {date_display} at {time_display}. See you soon!"
         )
         if _send_reminder(lead, body):
             update_appt_reminder_flags(lead_id, morning=True)
             logger.info("appt_morning_sent lead_id={}", lead_id)
 
-    elif not no_show_sent and hours_since >= 2:
+    elif not no_show_sent and 2 <= hours_since <= 48:
         body = (
-            f"Hey {first_name} \u2014 Sophia here. We came by "
-            f"{address} today \u2014 did we miss you? "
+            f"Hey {first_name} \u2014 Sophia here. Following up on the scheduled visit to "
+            f"{address} on {date_display} at {time_display}. "
             f"No worries at all, just want to make sure we connect. "
             f"When works for a reschedule?"
         )

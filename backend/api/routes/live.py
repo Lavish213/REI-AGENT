@@ -20,14 +20,15 @@ def _sanitize_call_context(
     started_at: str | None,
     runtime_ctx=None,
 ) -> dict:
-    prop = (ctx.get("property") or {}) if not ctx.get("boss_mode") else {}
+    lead = ctx.get("lead") or {}
+    prop = (ctx.get("property") or lead.get("properties") or {}) if not ctx.get("boss_mode") else {}
     lead = ctx.get("lead") or {}
     result = {
         "call_sid": call_sid,
         "started_at": started_at,
         "boss_mode": bool(ctx.get("boss_mode")),
         "owner_first_name": ctx.get("owner_first_name"),
-        "address": prop.get("address"),
+        "address": prop.get("address") or ctx.get("address"),
         "city": prop.get("city"),
         "lead_id": lead.get("id"),
         "lead_stage": lead.get("stage"),

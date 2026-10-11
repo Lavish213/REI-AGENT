@@ -75,18 +75,44 @@ def _run_pending_followups() -> None:
     try:
         if not campaign_is_running():
             return
-        for followup in claim_due_call_followups():
+        try:
+            followups = claim_due_call_followups()
+        except Exception as error:
+            logger.exception("followup_claim failed error={}", str(error))
+            followups = []
+        for followup in followups:
+            if not followup.get("claim_token"):
+                logger.error("followup_claim missing ownership id={}", followup.get("id"))
+                continue
             success = False
             try:
                 success = bool(call_lead(followup["lead_id"], bypass_cooldown=False).get("success"))
+            except Exception as error:
+                logger.exception("followup_attempt failed id={} error={}", followup.get("id"), str(error))
             finally:
-                finish_followup_claim(followup["id"], success)
-        for callback in claim_due_callbacks():
+                try:
+                    finish_followup_claim(followup["id"], success, followup.get("claim_token"))
+                except Exception as error:
+                    logger.exception("followup_completion failed id={} error={}", followup.get("id"), str(error))
+        try:
+            callbacks = claim_due_callbacks()
+        except Exception as error:
+            logger.exception("callback_claim failed error={}", str(error))
+            callbacks = []
+        for callback in callbacks:
+            if not callback.get("callback_claim_token"):
+                logger.error("callback_claim missing ownership id={}", callback.get("id"))
+                continue
             success = False
             try:
                 success = bool(call_lead(callback["id"], bypass_cooldown=True).get("success"))
+            except Exception as error:
+                logger.exception("callback_attempt failed id={} error={}", callback.get("id"), str(error))
             finally:
-                finish_callback_claim(callback["id"], callback["callback_scheduled_at"], success)
+                try:
+                    finish_callback_claim(callback["id"], callback["callback_scheduled_at"], success, callback.get("callback_claim_token"))
+                except Exception as error:
+                    logger.exception("callback_completion failed id={} error={}", callback.get("id"), str(error))
     except Exception as error:
         logger.exception("followup_poller error={}", str(error))
 
@@ -112,18 +138,11 @@ async def lifespan(app: FastAPI):
     start_appointment_scheduler()
 
     try:
-        from backend.lib.db import _get_client
-        _get_client().table("leads").select("id").limit(1).execute()
+        from backend.lib.db import warm_database
+        warm_database()
         logger.info("supabase_warmup complete")
-    except Exception as _we:
-        logger.warning("supabase_warmup failed error={}", str(_we))
-
-    try:
-        from backend.lib.db import _get_client
-        _get_client().table("leads").select("id").limit(1).execute()
-        logger.info("supabase_warmup complete")
-    except Exception as _we:
-        logger.warning("supabase_warmup failed error={}", str(_we))
+    except Exception as error:
+        logger.warning("supabase_warmup failed error={}", str(error))
 
     outbound_scheduler = BackgroundScheduler(
         timezone="America/Los_Angeles"
