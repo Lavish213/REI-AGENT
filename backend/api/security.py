@@ -30,6 +30,12 @@ def valid_signalwire_signature(key: str, signature: str, url: str, body: bytes) 
 class OperatorAuthentication(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
+        if path == "/api/ingest/bob/brief-created":
+            secret = os.environ.get("KARPATHYS_WEBHOOK_SECRET", "")
+            supplied = request.headers.get("x-karpathys-secret", "")
+            if not secret or not supplied or not hmac.compare_digest(secret.encode(), supplied.encode()):
+                return JSONResponse({"detail": "Service authentication required"}, status_code=401)
+            return await call_next(request)
         if path.startswith("/api/voice/") or path.startswith("/api/sms/inbound"):
             public = os.environ.get("PUBLIC_URL", "").rstrip("/")
             url = public + path + ("?" + request.url.query if request.url.query else "")

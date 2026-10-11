@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import asyncio
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Literal
 
 from loguru import logger
@@ -413,10 +414,6 @@ class ContextTrackerProcessor(FrameProcessor):
     def _task_ref(self):
         return getattr(self._ctx, "_task_ref", None)
 
-    @property
-    def _task_ref(self):
-        return getattr(self._ctx, "_task_ref", None)
-
     def set_objective_engine(self, engine) -> None:
         self._objective_engine = engine
 
@@ -438,9 +435,10 @@ class ContextTrackerProcessor(FrameProcessor):
                 _is_ob = getattr(self._ctx, "is_outbound", False)
                 if not self._ctx.transcript_uncertain and _is_ob and self._ctx.awaiting_owner_confirmation and not self._ctx.owner_confirmed:
                     import re as _re2
-                    if _re2.search(r"\b(yes|yeah|yep|yup|correct|right|speaking|that's me|this is)\b", text, _re2.IGNORECASE) and not _re2.search(r"\b(never|not|no|won't|wont)\b", text, _re2.IGNORECASE):
+                    if _re2.search(r"^\s*(?:(?:yes|yeah|yep|yup|correct|right)(?:[,. ]+speaking)?|speaking|that's me)\s*[.!]?\s*$", text, _re2.IGNORECASE) and not _re2.search(r"\b(never|not|no|won't|wont)\b", text, _re2.IGNORECASE):
                         self._ctx.owner_confirmed = True
                         self._ctx.awaiting_owner_confirmation = False
+                        self._ctx.bob_verified_facts["right_person"] = {"confirmed": True, "source": "transcript_verified", "verified_at": datetime.now(timezone.utc).isoformat(), "call_sid": self._ctx._call_sid}
                         logger.info("owner_confirmed via affirmative turn={}", _tc)
                 import re as _re
                 _DNC = _re.compile(r"\b(stop calling|stop contacting(?: me)?|take me off|do not call|don.t call(?: me)?(?: again)?|remove me|lose my number|never call again|leave me alone|no me llames|no me vuelvas a llamar|qu[ií]tame de (?:tu|su) lista|deja de llamar)\b", _re.IGNORECASE)
@@ -567,9 +565,10 @@ class ContextTrackerProcessor(FrameProcessor):
     def _analyze(self, text: str) -> None:
         if self._ctx.transcript_uncertain:
             return
-        from datetime import datetime, timezone
         verified_at = datetime.now(timezone.utc).isoformat()
         def remember_fact(box, confirmed=True):
+            if confirmed and ("?" in text or re.search(r"\b(?:if|maybe|might|suppose|hypothetically|my neighbor|my friend)\b", text, re.I)):
+                return
             self._ctx.bob_verified_facts[box] = {"confirmed": confirmed, "source": "transcript_verified", "verified_at": verified_at, "call_sid": self._ctx._call_sid}
         lower = text.lower().replace("’", "'")
         conditional_sale = re.search(r"\bnot selling\s+(?:until|before|unless|yet)\b", lower)
@@ -586,6 +585,7 @@ class ContextTrackerProcessor(FrameProcessor):
         if not denied_ownership and re.search(r"\b(i own|i'm the owner|i am the owner|it's my (?:house|property)|my house)\b", lower) and not re.search(r"\b(not|don't)\b.{0,15}\bown", lower):
             self._ctx.owner_confirmed = True
             self._ctx.ownership_denied = False
+            remember_fact("right_person")
         if re.search(r"\b(good (?:shape|condition)|no repairs|needs? (?:work|repairs)|new roof|move.in ready|as.is|fixer|roof|plumbing|foundation|renovated)\b", lower):
             self._ctx.condition_known = True
             remember_fact("condition")
@@ -621,14 +621,16 @@ class ContextTrackerProcessor(FrameProcessor):
         if re.search(r"\b(?:keeping (?:the|my|our) (?:rental|house|property)|decided not to sell)\b", lower):
             self._ctx.intent_locked = False
             self._ctx.pre_close_done = False
+        observed_motivation = False
         for pattern, label in _MOTIVATION_PATTERNS:
             if label == "relocation" and negated_relocation:
                 continue
             if re.search(pattern, lower):
+                observed_motivation = True
                 if label not in self._ctx.motivation_signals:
                     self._ctx.motivation_signals.append(label)
         self._ctx.motivation_signals = self._ctx.motivation_signals[-6:]
-        if self._ctx.motivation_signals:
+        if observed_motivation and re.search(r"\b(?:i|we|my|our|i.m|we.re)\b", lower):
             remember_fact("motivation")
         elif negated_relocation:
             remember_fact("motivation", False)
@@ -643,14 +645,10 @@ class ContextTrackerProcessor(FrameProcessor):
             self._ctx.intent_locked = True
             logger.info("seller intent locked")
 
-        if self._ctx.owner_confirmed and not self._ctx.ownership_denied:
-            remember_fact("right_person")
         if re.search(r"\b(?:the (?:house|property) is (?:vacant|occupied|rented)|i live there|tenants live there)\b", lower):
             remember_fact("occupancy")
         elif re.search(r"\b(?:not|no longer|isn't)\s+(?:vacant|occupied|rented)\b", lower):
             remember_fact("occupancy", False)
-        if self._ctx.appointment_set or self._ctx.callback_set:
-            remember_fact("next_step")
         address = _ADDRESS_PATTERN.search(text)
         if address:
             expected = re.sub(r"\W+", "", self._ctx.property_address.lower())
@@ -658,7 +656,8 @@ class ContextTrackerProcessor(FrameProcessor):
             if expected and expected == spoken:
                 remember_fact("property_confirmed")
             self._ctx.address_known = True
-            self._ctx.property_address = address.group(0)
+            if not self._ctx.property_address:
+                self._ctx.property_address = address.group(0)
             logger.info("property address detected")
 
         if re.search(r"\b(no agent|not (?:using|working with) (?:an? )?agent|don.t have (?:an? )?agent)\b", lower):

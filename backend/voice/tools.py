@@ -650,6 +650,7 @@ def _book_appointment(inp: dict, call_ctx=None) -> str:
     if call_ctx is not None:
         call_ctx.appointment_set = True
         call_ctx.pre_close_done = True
+        _remember_next_step(call_ctx)
     display = slot.strftime("%A %B %d, %Y at %I:%M %p %Z")
     phone = inp.get("seller_phone", "")
     sms_sent = send_sms(to=phone, body=f"Walkthrough confirmed: {display}, {address}.", lead_id=lead_id) if phone else False
@@ -789,7 +790,19 @@ def _schedule_callback(inp, call_ctx=None):
         return "Callback not scheduled. Please confirm a future calendar date and local time, or an explicit delay."
     if call_ctx is not None:
         call_ctx.callback_set = True
+        _remember_next_step(call_ctx)
     return "Callback saved for " + slot.strftime("%A %B %d, %Y at %I:%M %p %Z") + "."
+
+
+def _remember_next_step(call_ctx):
+    facts = getattr(call_ctx, "bob_verified_facts", None)
+    if isinstance(facts, dict):
+        facts["next_step"] = {"confirmed": True, "source": "transcript_verified", "verified_at": datetime.now(timezone.utc).isoformat(), "call_sid": getattr(call_ctx, "_call_sid", "")}
+        try:
+            from backend.lib.db import stage_bob_call_facts
+            stage_bob_call_facts(call_ctx.lead_id, call_ctx._call_sid, facts)
+        except Exception as error:
+            logger.error("bob_next_step_not_journaled type={}", type(error).__name__)
 
 
 def _ask_operator(inp, call_ctx=None):

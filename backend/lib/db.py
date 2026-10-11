@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from loguru import logger
-from supabase import create_client, Client
+from supabase import create_client, Client, ClientOptions
 
 _client: Client | None = None
 
@@ -12,7 +12,7 @@ def _get_client() -> Client:
     if _client is None:
         url = os.environ["SUPABASE_URL"]
         key = os.environ["SUPABASE_SERVICE_KEY"]
-        _client = create_client(url, key)
+        _client = create_client(url, key, options=ClientOptions(postgrest_client_timeout=10))
         logger.info("Supabase client initialized")
     return _client
 
@@ -1510,3 +1510,128 @@ def record_bob_call_facts(lead_id, call_sid, facts):
     if response.data is not True:
         raise RuntimeError("Bob call facts were not persisted")
     return True
+
+
+def _bob_fact_outbox():
+    import sqlite3
+    from pathlib import Path
+    path = Path(os.environ.get("VOICE_FACT_OUTBOX_PATH", "/data/sophia/bob-facts.sqlite3"))
+    if path.is_symlink():
+        raise RuntimeError("Fact journal cannot be a symlink")
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor = os.open(str(path), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    os.close(descriptor)
+    connection = sqlite3.connect(str(path), timeout=2)
+    os.chmod(path, 0o600)
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA synchronous=FULL")
+    connection.execute("CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, lead_id TEXT NOT NULL, call_sid TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, due REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, leased_until REAL, state TEXT NOT NULL DEFAULT 'pending', error TEXT)")
+    return connection
+
+
+def stage_bob_call_facts(lead_id, call_sid, facts):
+    import json
+    import time
+    from uuid import UUID, uuid5, NAMESPACE_URL
+    if not lead_id or not call_sid or not isinstance(facts, dict) or not facts:
+        return None
+    UUID(lead_id)
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    UUID(tenant)
+    if not isinstance(call_sid, str) or not 1 <= len(call_sid) <= 200:
+        raise ValueError("Invalid call binding")
+    if len(facts) > 7:
+        raise ValueError("Too many checklist facts")
+    now = datetime.now(timezone.utc)
+    for box, fact in facts.items():
+        if box not in {"right_person", "property_confirmed", "occupancy", "condition", "timeline", "motivation", "next_step"} or not isinstance(fact, dict) or type(fact.get("confirmed")) is not bool or fact.get("source") != "transcript_verified" or fact.get("call_sid") != call_sid:
+            raise ValueError("Invalid fact provenance")
+        observed = datetime.fromisoformat(fact["verified_at"].replace("Z", "+00:00"))
+        if observed.tzinfo is None or not -60 <= (now - observed).total_seconds() <= 86400:
+            raise ValueError("Invalid fact timestamp")
+    payload = json.dumps(facts, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    if len(payload) > 8192:
+        raise ValueError("Fact payload too large")
+    event_id = str(uuid5(NAMESPACE_URL, tenant + ":" + lead_id + ":" + call_sid + ":" + payload))
+    connection = _bob_fact_outbox()
+    try:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if connection.execute("SELECT 1 FROM facts WHERE id=?", (event_id,)).fetchone():
+                return event_id
+            if connection.execute("SELECT count(*) FROM facts").fetchone()[0] >= 10000:
+                raise RuntimeError("Fact journal full; operator recovery required")
+            connection.execute("INSERT INTO facts(id,tenant_id,lead_id,call_sid,payload,created,due) VALUES(?,?,?,?,?,?,?)", (event_id, tenant, lead_id, call_sid, payload, time.time(), time.time()))
+    finally:
+        connection.close()
+    return event_id
+
+
+def flush_bob_call_fact_outbox(limit=20):
+    import json
+    import time
+    from uuid import uuid4
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("Invalid fact flush limit")
+    result = {"delivered": 0, "failed": 0, "expired": 0}
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    for _ in range(limit):
+        connection = _bob_fact_outbox()
+        try:
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute("SELECT id,lead_id,call_sid,payload,attempts FROM facts WHERE tenant_id=? AND state='pending' AND due<=? AND (leased_until IS NULL OR leased_until<=?) ORDER BY created,id LIMIT 1", (tenant, time.time(), time.time())).fetchone()
+                if row is None:
+                    break
+                event_id, lead_id, call_sid, payload, attempts = row
+                lease = str(uuid4())
+                connection.execute("UPDATE facts SET lease=?,leased_until=?,attempts=attempts+1 WHERE id=?", (lease, time.time()+120, event_id))
+            facts = json.loads(payload)
+            expired = any((datetime.now(timezone.utc)-datetime.fromisoformat(fact["verified_at"].replace("Z", "+00:00"))).total_seconds() > 86400 for fact in facts.values())
+            try:
+                if expired:
+                    raise ValueError("fact_expired_before_delivery")
+                response = _get_client().rpc("bob_accept_call_facts", {"p_tenant_id": tenant, "p_lead_id": lead_id, "p_call_sid": call_sid, "p_event_id": event_id, "p_facts": facts}).execute()
+                if response.data is not True:
+                    raise RuntimeError("fact_receipt_not_confirmed")
+            except Exception as error:
+                with connection:
+                    connection.execute("UPDATE facts SET state=?,due=?,lease=NULL,leased_until=NULL,error=? WHERE id=? AND lease=?", ("dead" if expired else "pending", time.time()+min(300, 2**min(attempts+1,8)), type(error).__name__, event_id, lease))
+                result["expired" if expired else "failed"] += 1
+                logger.warning("bob_fact_delivery_failed event_id={} type={}", event_id, type(error).__name__)
+            else:
+                with connection:
+                    deleted = connection.execute("DELETE FROM facts WHERE id=? AND lease=?", (event_id, lease)).rowcount
+                if deleted:
+                    result["delivered"] += 1
+        finally:
+            connection.close()
+    return result
+
+
+def bob_fact_journal_health():
+    import time
+    connection = _bob_fact_outbox()
+    try:
+        tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+        rows = connection.execute("SELECT state,count(*),min(created) FROM facts WHERE tenant_id=? GROUP BY state", (tenant,)).fetchall()
+        result = {"pending": 0, "dead": 0, "oldest_pending_seconds": 0}
+        for state, count, created in rows:
+            result[state] = count
+            if state == "pending":
+                result["oldest_pending_seconds"] = max(0, time.time()-created)
+        return result
+    finally:
+        connection.close()
+
+
+def bob_integration_health():
+    response = _get_client().rpc("bob_integration_health", {"p_tenant_id": os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")}).execute()
+    if not isinstance(response.data, dict) or response.data.get("contract_version") != "2.1" or response.data.get("backend") != "REI-AGENT":
+        raise RuntimeError("Bob schema contract missing or incompatible")
+    return response.data
+
+
+def accept_bob_brief_event(event_id, payload):
+    response = _get_client().rpc("bob_accept_brief_event", {"p_tenant_id": os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001"), "p_event_id": event_id, "p_payload": payload}).execute()
+    return response.data is True

@@ -49,6 +49,7 @@ from backend.voice.momentum_tracker import MomentumTracker
 from backend.voice.objective_engine import ObjectiveEngine
 from backend.voice.processors.analysis_callbacks import AnalysisCallbackProcessor
 from backend.voice.call_brief_loader import load_brief_into_ctx
+from backend.voice.processors.bob_fact_journal import BobFactJournalProcessor
 from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor, ContextStateProcessor
 from backend.voice.resistance_tracker import ResistanceTracker
 from backend.voice.runtime_orchestrator import RuntimeOrchestrator
@@ -637,6 +638,7 @@ async def run_sophia_agent(
             seller_profile_engine,
             microstate_engine,
             context_tracker,
+            BobFactJournalProcessor(call_ctx),
             analysis_callbacks,
             ConversationPolicyProcessor(call_ctx),
             context_aggregator.user(),
@@ -764,8 +766,9 @@ async def _handle_call_end(
         lead = call_context.get("lead")
         if lead and call_ctx and getattr(call_ctx, "bob_verified_facts", None):
             try:
-                from backend.lib.db import record_bob_call_facts
-                await asyncio.to_thread(record_bob_call_facts, lead["id"], call_sid, call_ctx.bob_verified_facts)
+                from backend.lib.db import stage_bob_call_facts, flush_bob_call_fact_outbox
+                await asyncio.to_thread(stage_bob_call_facts, lead["id"], call_sid, call_ctx.bob_verified_facts)
+                await asyncio.to_thread(flush_bob_call_fact_outbox, 1)
             except Exception as error:
                 logger.warning("bob_call_facts_not_saved call_sid={} type={}", call_sid, type(error).__name__)
         call_id_db = None

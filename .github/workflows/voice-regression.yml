@@ -49,10 +49,17 @@ jobs:
           python -m coverage run --branch --source=backend -m pytest -q
           python -m coverage report --fail-under=28
           python -m compileall -q backend
+      - name: Checkout coordinated Bob producer
+        uses: actions/checkout@v7
+        with:
+          repository: Lavish213/Bob-Intelligence-
+          ref: repair/bob-integration
+          path: _bob-contract
       - name: PostgreSQL migration and recovery contracts
         run: |
           npm ci --prefix tests
           npm run test:database --prefix tests
+          BOB_REPO="$GITHUB_WORKSPACE/_bob-contract" node tests/bob_roundtrip.cjs
       - name: Dashboard build and HTTP fault tests
         run: |
           npm ci --prefix dashboard

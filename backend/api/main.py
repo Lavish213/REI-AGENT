@@ -117,8 +117,18 @@ def _run_pending_followups() -> None:
         logger.exception("followup_poller error={}", str(error))
 
 
+def _flush_bob_facts():
+    try:
+        from backend.lib.db import flush_bob_call_fact_outbox
+        result = flush_bob_call_fact_outbox()
+        if result["failed"] or result["expired"]:
+            logger.warning("bob_fact_recovery results={}", result)
+    except Exception as error:
+        logger.error("bob_fact_recovery_failed type={}", type(error).__name__)
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _application_lifespan(app: FastAPI):
     logger.info("REI Agent API starting")
     if os.environ.get("ENABLE_BACKGROUND_JOBS", "false").lower() != "true":
         yield
@@ -231,6 +241,26 @@ async def lifespan(app: FastAPI):
         logger.warning("scheduler_shutdown_failed error={}", str(e))
 
 
+async def _bob_fact_recovery_loop():
+    import asyncio
+    while True:
+        await asyncio.to_thread(_flush_bob_facts)
+        await asyncio.sleep(30)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import asyncio
+    recovery = asyncio.create_task(_bob_fact_recovery_loop()) if os.environ.get("VOICE_FACT_OUTBOX_PATH") else None
+    try:
+        async with _application_lifespan(app):
+            yield
+    finally:
+        if recovery:
+            recovery.cancel()
+            await asyncio.gather(recovery, return_exceptions=True)
+
+
 app = FastAPI(
     title="REI Agent API",
     description="San Joaquin House Buyers Voice Agent Platform",
@@ -271,3 +301,6 @@ async def health_check():
 
 from backend.api.routes.appointments import router as appointments_router
 app.include_router(appointments_router, prefix="/api")
+
+from backend.api.routes.bob import router as bob_router
+app.include_router(bob_router, prefix="/api")
