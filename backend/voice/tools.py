@@ -366,33 +366,6 @@ def _preflight_gate(tool_name: str, resolved, call_ctx) -> dict:
     return {"blocked": False, "level": level}
 
 
-def _resolve_approval(approval_id: str, answer: str, call_ctx) -> None:
-    from backend.lib.db import resolve_approval_request, _get_client
-    approved = answer.strip().lower() in ("yes", "approved", "ok", "go ahead", "y", "approve")
-    status = "approved" if approved else "rejected"
-    resolve_approval_request(approval_id, "operator", status, answer)
-    if call_ctx is None:
-        return
-    call_ctx.approval_pending = None
-    if approved:
-        try:
-            client = _get_client()
-            req = client.table("approval_requests").select("requested_action").eq("id", approval_id).limit(1).execute()
-            if req.data:
-                action = req.data[0].get("requested_action", "")
-                perms = call_ctx.action_permissions or {}
-                perms[action] = {"level": {"book_appointment": "book_appointment", "schedule_callback": "book_appointment", "schedule_followup": "book_appointment", "send_followup_sms": "send_summary", "transfer_call": "transfer_call", "ask_operator": "ask_operator", "get_offer_range": "quote_range"}.get(action, "send_summary"), "scope": "call", "granted_by": "operator"}
-                call_ctx.action_permissions = perms
-                if call_ctx.intel_packet:
-                    call_ctx.intel_packet["action_permissions"] = perms
-        except Exception:
-            pass
-        call_ctx.runtime_instruction = f"[Operator approved. You may proceed with: {answer}]"
-        call_ctx.packet_state = "approved"
-    else:
-        call_ctx.runtime_instruction = "[Operator declined. Use safe fallback language and offer to schedule a callback.]"
-
-
 def execute_tool(
     tool_name: str,
     tool_input: dict,
@@ -425,7 +398,7 @@ def execute_tool(
             logger.warning(
                 "tool_denied_after_stop tool={} call_sid={}", tool_name, resolved.call_sid
             )
-            return "You're already removed from our list. Take care."
+            return "Your stop request is acknowledged. This call is ending. Take care."
 
         gate = _preflight_gate(tool_name, resolved, call_ctx)
         if gate["blocked"]:
@@ -526,7 +499,7 @@ def _honor_stop_request(inp: dict, resolved, call_ctx=None) -> str:
             call_ctx.stop_requested = True
             call_ctx.call_should_end = True
             call_ctx.runtime_instruction = None
-        return "Understood — you're removed from our list and you won't hear from us again. Sorry to have bothered you."
+        return "Understood. I am ending this call. I could not confirm that your number was removed from the contact list."
 
     results = {
         "evidence": db.try_write(
@@ -561,7 +534,7 @@ def _honor_stop_request(inp: dict, resolved, call_ctx=None) -> str:
     if not wrote:
         logger.critical(
             "STOP_REQUEST_UNPERSISTED lead_id={} call_sid={} phone_suffix={} "
-            "seller was told they are removed and NOTHING was written — "
+            "stop request acknowledged but NOTHING was written — "
             "suppress this contact manually before any further outreach",
             resolved.lead_id, resolved.call_sid, resolved.seller_phone[-4:],
         )
@@ -571,7 +544,9 @@ def _honor_stop_request(inp: dict, resolved, call_ctx=None) -> str:
         logger.info("stop_request_honored lead_id={} call_sid={} channel={}",
                     resolved.lead_id, resolved.call_sid, channel)
 
-    return "Understood — you're removed from our list and you won't hear from us again. Sorry to have bothered you."
+    if not results["dnc"] or not results["lead_flag"]:
+        return "Understood. I am ending this call. I could not confirm that your number was removed from the contact list."
+    return "Understood — your number has been removed from our contact list. Take care."
 
 
 def _verified_offer_range(lead_id: str, call_ctx=None) -> tuple[int, int] | None:
@@ -775,9 +750,10 @@ def _end_call(inp: dict) -> str:
             update_lead_stage(lead_id, stage)
         except Exception as stage_err:
             logger.warning("update_lead_stage failed error={}", str(stage_err))
+            return "Call ended. Saving the lead stage failed; no stage update is confirmed."
 
     logger.info("end_call reason={} stage={} lead_id={}", reason, stage, lead_id)
-    return f"Call ended. Lead stage updated to {stage}."
+    return "Call ended. No lead stage update was requested." if not lead_id else f"Call ended. Lead stage updated to {stage}."
 
 
 def _transfer_call(inp: dict, call_ctx=None) -> str:
@@ -818,48 +794,39 @@ def _schedule_callback(inp, call_ctx=None):
 
 def _ask_operator(inp, call_ctx=None):
     import time
+    from backend.lib.db import create_operator_query, get_operator_answer, close_operator_query
+    from backend.alerts.sms import send_sms
     question = inp.get("question", "").strip()
     context = inp.get("context", "").strip()
     lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
     owner_phone = os.environ.get("OWNER_PHONE", "")
-    if not owner_phone:
-        return "Operator unreachable. Using best judgment."
-    query_id = f"op_{int(time.time())}"
+    denied = "Action not approved. Offer a human follow-up; do not promise it has been scheduled."
+    if not owner_phone or not question:
+        return "Operator unreachable. " + denied
     try:
-        from backend.lib.db import _get_client
-        _get_client().table("operator_queries").insert({"id": query_id, "lead_id": lead_id or None, "question": question, "context": context, "status": "pending"}).execute()
-    except Exception:
-        pass
+        query_id = create_operator_query(lead_id, question, context)
+    except Exception as error:
+        logger.warning("operator_query_not_saved error={}", str(error))
+        return "Operator request could not be saved. " + denied
     try:
-        from backend.alerts.sms import send_sms
-        send_sms(to=owner_phone, body=f"Sophia needs input\n{context or 'Active call'}\nQ: {question}\nReply to answer.", bypass_hours=True)
-    except Exception:
-        return "Couldn't reach operator. Continuing."
-    import asyncio as _asyncio
-    deadline = time.time() + 30
-    while time.time() < deadline:
+        sent = send_sms(to=owner_phone, body=f"Sophia needs input\n{context or 'Active call'}\nQ: {question}\nReply with {query_id} followed by your answer.", bypass_hours=True)
+    except Exception as error:
+        logger.warning("operator_delivery_failed error={}", str(error))
+        sent = False
+    if not sent:
+        return "Operator request was not accepted for delivery. " + denied
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        time.sleep(2)
         try:
-            loop = _asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                    ex.submit(time.sleep, 2).result(timeout=3)
-            else:
-                time.sleep(2)
-        except Exception:
-            time.sleep(2)
-        try:
-            from backend.lib.db import _get_client
-            row = _get_client().table("operator_queries").select("status,answer").eq("id", query_id).single().execute()
-            if row.data and row.data.get("status") == "answered":
-                try:
-                    _get_client().table("operator_queries").update({"status": "closed"}).eq("id", query_id).execute()
-                except Exception:
-                    pass
-                return f"Operator says: {row.data.get('answer', '')}"
-        except Exception:
-            pass
-    return "No operator response in 30s. Using best judgment."
+            answer = get_operator_answer(query_id)
+            if answer:
+                close_operator_query(query_id)
+                return f"Operator says: {answer}. This reply does not itself authorize a restricted tool; verified action permission is still required."
+        except Exception as error:
+            logger.warning("operator_answer_unavailable error={}", str(error))
+            return "Operator response could not be verified. " + denied
+    return "No operator response in 30 seconds. " + denied
 
 
 def _send_followup_email(inp, call_ctx=None):

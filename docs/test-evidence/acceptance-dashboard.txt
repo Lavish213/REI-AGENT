@@ -1,0 +1,10 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> test:dashboard
+> node dashboard_http_stress.cjs
+
+{
+  "checks": 30,
+  "passed": 30,
+  "failures": []
+}

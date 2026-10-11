@@ -124,7 +124,7 @@
     "title": "Artificial think delays accumulate per chunk",
     "file": "backend/voice/processors/humanized_latency.py",
     "line": 59,
-    "problem": "The processor sleeps before every text frame. Calm speech adds 50–120ms per chunk: twelve chunks add 0.6–1.44 seconds of scheduled delay alone. These are code-derived bounds, not measured end-to-end call latency.",
+    "problem": "The processor sleeps before every text frame. Calm speech adds 50\u2013120ms per chunk: twelve chunks add 0.6\u20131.44 seconds of scheduled delay alone. These are code-derived bounds, not measured end-to-end call latency.",
     "fix": "Remove delays while establishing latency baseline. If retained, apply a bounded turn-level cadence policy measured against audio playback.",
     "reproduction": "",
     "repair_status": "Addressed in repair branch; production verification pending"
@@ -553,7 +553,7 @@
     "title": "Missing price becomes an invented email offer",
     "file": "backend/voice/tools.py",
     "line": 495,
-    "problem": "_collect_and_send_email supplies $150,000–$175,000 defaults when approved prices are missing. The number is not derived from property data or authority. This can turn a request for written information into an unsupported financial offer.",
+    "problem": "_collect_and_send_email supplies $150,000\u2013$175,000 defaults when approved prices are missing. The number is not derived from property data or authority. This can turn a request for written information into an unsupported financial offer.",
     "fix": "Never default an offer price. Require a signed/approved offer record and immutable monetary units before transmitting it.",
     "reproduction": "fabricated_email_offer",
     "repair_status": "Addressed in repair branch; production verification pending"
@@ -621,7 +621,7 @@
     "problem": "_resolve_approval mutates packet_state and a permission but leaves conflict_active/fallback_mode intact. The earlier gate branches can still block an approved action. API-resolved approvals are not automatically consumed by the live context refresh path.",
     "fix": "Implement one approval state transition that resolves the conflict condition, records authority and notifies the active call. Test approval through API/SMS to actual retried tool.",
     "reproduction": "",
-    "repair_status": "Addressed in repair branch; production verification pending"
+    "repair_status": "Partial; unsafe unused helper removed; live approval consumption remains unconnected"
   },
   {
     "id": "REI-049",
@@ -1780,7 +1780,7 @@
     "title": "Reminder follow-up fabricated a completed visit",
     "file": "backend/voice/appointment_scheduler.py",
     "problem": "The message claimed we came by with no attendance evidence.",
-    "fix": "Describe the scheduled visit only; bound follow-up to 2–48 hours after it.",
+    "fix": "Describe the scheduled visit only; bound follow-up to 2\u201348 hours after it.",
     "reproduction": "tests/test_provider_recovery.py, tests/test_recovery_contracts.py, tests/test_streaming_pipeline.py, tests/voice_scheduling_db.cjs",
     "repair_status": "Addressed locally; production or hosted verification pending"
   },
@@ -2219,5 +2219,93 @@
     "fix": "Collect representative human phone audio and compare false starts, missed starts and transcript fallback before changing thresholds. Do not infer ASR accuracy from VAD activity.",
     "reproduction": "tests/test_speech_accessibility.py and backend/voice/acoustic_stress.py",
     "repair_status": "Open; real-phone VAD calibration required"
+  },
+  {
+    "id": "REI-173",
+    "category": "Acceptance and workflow truthfulness",
+    "severity": "P1",
+    "status": "Reproduced locally",
+    "title": "Call ending falsely confirmed lead updates",
+    "file": "backend/voice/tools.py",
+    "problem": "A failed write or missing lead still returned a completed stage update.",
+    "fix": "Verify a changed row and report failure/no update truthfully.",
+    "repair_status": "Addressed locally; provider and production verification pending"
+  },
+  {
+    "id": "REI-174",
+    "category": "Acceptance and workflow truthfulness",
+    "severity": "P1",
+    "status": "Reproduced locally",
+    "title": "Operator failure language implied discretionary authority",
+    "file": "backend/voice/tools.py",
+    "problem": "Missing owner, failed SMS acceptance and timeout invited best judgment; query insert failure was ignored.",
+    "fix": "Persist before sending; reject failed delivery and timeout; restricted actions remain denied.",
+    "repair_status": "Addressed locally; provider and production verification pending"
+  },
+  {
+    "id": "REI-175",
+    "category": "Acceptance and workflow truthfulness",
+    "severity": "P1",
+    "status": "Reproduced locally",
+    "title": "Operator replies could attach to the wrong call",
+    "file": "backend/voice/webhook.py",
+    "problem": "Second-based IDs collide and replies update the latest pending query globally.",
+    "fix": "Use UUIDs and exact request IDs; condition replies on pending status and a 30-second window.",
+    "repair_status": "Addressed locally; provider and production verification pending"
+  },
+  {
+    "id": "REI-176",
+    "category": "Acceptance and workflow truthfulness",
+    "severity": "P1",
+    "status": "Reproduced locally",
+    "title": "Approval creation could report unsaved requests",
+    "file": "backend/lib/db.py",
+    "problem": "Insert failure returned an approval ID; duplicate resolved or expired requests were accepted as pending.",
+    "fix": "Raise on failed/unconfirmed insert and verify current duplicate requests.",
+    "repair_status": "Addressed locally; provider and production verification pending"
+  },
+  {
+    "id": "REI-177",
+    "category": "Acceptance and workflow truthfulness",
+    "severity": "P1",
+    "status": "Reproduced locally",
+    "title": "Approval endpoint silently approved and falsely reported success",
+    "file": "backend/api/routes/intel.py",
+    "problem": "Empty requests defaulted to approval, actor attribution was client-supplied and failed writes were ignored.",
+    "fix": "Require explicit decisions and server actor; conditional pending/unexpired update; return conflict or persistence failure.",
+    "repair_status": "Addressed locally; provider and production verification pending"
+  },
+  {
+    "id": "REI-178",
+    "category": "Acceptance and workflow truthfulness",
+    "severity": "P1",
+    "status": "Reproduced locally",
+    "title": "STOP falsely guaranteed durable removal after failed writes",
+    "file": "backend/voice/tools.py",
+    "problem": "Missing number or failed suppression writes still promised removal and no future contact.",
+    "fix": "End call and block actions immediately; distinguish acknowledgment from verified suppression; durable retry remains open.",
+    "repair_status": "Partial; response repaired, durable suppression retry remains open"
+  },
+  {
+    "id": "REI-179",
+    "category": "Acceptance and workflow truthfulness",
+    "severity": "P1",
+    "status": "Code inspection",
+    "title": "Scenario prompts contradicted hearing and scheduling capability",
+    "file": "backend/voice/prompts/sophia_scenarios.md",
+    "problem": "Examples promised higher volume and rescheduling despite no corresponding implemented action.",
+    "fix": "Replace unsupported claims with clear repetition and honest human handling.",
+    "repair_status": "Addressed locally; provider and production verification pending"
+  },
+  {
+    "id": "REI-180",
+    "category": "Acceptance and workflow truthfulness",
+    "severity": "P1",
+    "status": "Code inspection",
+    "title": "Voice appointment cancellation and rescheduling are unavailable",
+    "file": "backend/voice/tools.py",
+    "problem": "The live tool registry has no cancellation/rescheduling tools; direct SQL reminder tests do not establish a caller workflow.",
+    "fix": "Implement bound authorized lifecycle tools and reminder integration, then test actual transactions.",
+    "repair_status": "Open; no live lifecycle tool implemented"
   }
 ]

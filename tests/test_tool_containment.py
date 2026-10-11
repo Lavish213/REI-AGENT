@@ -424,13 +424,13 @@ class TestStopRequest:
         tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
         for name in sorted(execution_context.SIDE_EFFECT_TOOLS):
             result = tools.execute_tool(name, {"message": "hi"}, call_ctx=ctx)
-            assert "already removed" in result.lower(), f"{name} ran after STOP"
+            assert "stop request is acknowledged" in result.lower(), f"{name} ran after STOP"
 
     def test_referral_ask_cannot_run_after_stop(self, monkeypatch):
         _capture_suppression(monkeypatch)
         ctx = FakeCtx()
         tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
-        assert "already removed" in tools.execute_tool(
+        assert "stop request is acknowledged" in tools.execute_tool(
             "send_followup_sms", {"message": "know anyone selling?"}, call_ctx=ctx
         ).lower()
 
@@ -467,9 +467,9 @@ class TestReplayAndDegradedOperation:
         _capture_suppression(monkeypatch)
         ctx = FakeCtx()
         payload = {"message": "hi"}
-        assert "already removed" not in tools.execute_tool("send_followup_sms", payload, call_ctx=ctx).lower()
+        assert "stop request is acknowledged" not in tools.execute_tool("send_followup_sms", payload, call_ctx=ctx).lower()
         tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
-        assert "already removed" in tools.execute_tool("send_followup_sms", payload, call_ctx=ctx).lower()
+        assert "stop request is acknowledged" in tools.execute_tool("send_followup_sms", payload, call_ctx=ctx).lower()
 
     def test_degraded_context_never_widens_authority(self, monkeypatch):
         ctx = FakeCtx(packet={})

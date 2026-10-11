@@ -1,0 +1,48 @@
+...................FF                                                    [100%]
+=================================== FAILURES ===================================
+_____________ test_stop_failure_is_truthful_and_still_ends_call[] ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7ff668c3b390>
+phone = ''
+
+    @pytest.mark.parametrize('phone', ['', '+12095550123'])
+    def test_stop_failure_is_truthful_and_still_ends_call(monkeypatch, phone):
+        monkeypatch.setattr(db, 'try_write', MagicMock(return_value=False))
+        resolved = SimpleNamespace(seller_phone=phone, lead_id='lead', call_sid='call', tenant_id='tenant')
+        ctx = SimpleNamespace(stop_requested=False, call_should_end=False, runtime_instruction='old')
+        result = tools._honor_stop_request({'verbatim': 'stop'}, resolved, ctx)
+>       assert "you're removed" not in result.lower()
+E       assert "you're removed" not in 'understood ...othered you.'
+E         
+E         "you're removed" is contained here:
+E           understood — you're removed from our list and you won't hear from us again. sorry to have bothered you.
+E         ?              ++++++++++++++
+
+tests/test_acceptance_failures.py:142: AssertionError
+----------------------------- Captured stderr call -----------------------------
+2026-10-11 13:36:12.089 | CRITICAL | backend.voice.tools:_honor_stop_request:492 - STOP_REQUEST_NO_CONTACT_POINT lead_id=lead call_sid=call seller asked to stop and no phone could be resolved — locate this call in provider logs and suppress manually
+_______ test_stop_failure_is_truthful_and_still_ends_call[+12095550123] ________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7ff668da7790>
+phone = '+12095550123'
+
+    @pytest.mark.parametrize('phone', ['', '+12095550123'])
+    def test_stop_failure_is_truthful_and_still_ends_call(monkeypatch, phone):
+        monkeypatch.setattr(db, 'try_write', MagicMock(return_value=False))
+        resolved = SimpleNamespace(seller_phone=phone, lead_id='lead', call_sid='call', tenant_id='tenant')
+        ctx = SimpleNamespace(stop_requested=False, call_should_end=False, runtime_instruction='old')
+        result = tools._honor_stop_request({'verbatim': 'stop'}, resolved, ctx)
+>       assert "you're removed" not in result.lower()
+E       assert "you're removed" not in 'understood ...othered you.'
+E         
+E         "you're removed" is contained here:
+E           understood — you're removed from our list and you won't hear from us again. sorry to have bothered you.
+E         ?              ++++++++++++++
+
+tests/test_acceptance_failures.py:142: AssertionError
+----------------------------- Captured stderr call -----------------------------
+2026-10-11 13:36:12.131 | CRITICAL | backend.voice.tools:_honor_stop_request:535 - STOP_REQUEST_UNPERSISTED lead_id=lead call_sid=call phone_suffix=0123 seller was told they are removed and NOTHING was written — suppress this contact manually before any further outreach
+=========================== short test summary info ============================
+FAILED tests/test_acceptance_failures.py::test_stop_failure_is_truthful_and_still_ends_call[]
+FAILED tests/test_acceptance_failures.py::test_stop_failure_is_truthful_and_still_ends_call[+12095550123]
+2 failed, 19 passed in 0.65s

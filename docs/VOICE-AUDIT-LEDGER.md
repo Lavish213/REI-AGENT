@@ -1,6 +1,6 @@
 # Voice audit finding ledger
 
-All 129 original findings, 15 recovery findings 16 conversation findings and 12 speech/accessibility findings remain recorded below. Addressed describes tested code changes, not production certification. Original evidence is preserved in [VOICE-AUDIT-FINDINGS.json](VOICE-AUDIT-FINDINGS.json). Open and partial items remain release blockers or follow-ups.
+All 180 findings remain recorded below, including eight additional acceptance/workflow findings. Addressed describes tested code changes, not production certification. Original evidence is preserved in [VOICE-AUDIT-FINDINGS.json](VOICE-AUDIT-FINDINGS.json). Open and partial items remain release blockers or follow-ups.
 
 | Finding | Severity | Repair status | Problem |
 |---|---|---|---|
@@ -51,7 +51,7 @@ All 129 original findings, 15 recovery findings 16 conversation findings and 12 
 | REI-045 | P1 | Addressed in repair branch; production verification pending | Model-supplied lead IDs and destinations are not bound to the call |
 | REI-046 | P1 | Addressed in repair branch; production verification pending | Missing intel packet opens gated tools by default |
 | REI-047 | P1 | Addressed in repair branch; production verification pending | Permission levels are not strongly tied to each authorized action |
-| REI-048 | P1 | Addressed in repair branch; production verification pending | Operator approval does not clear the state that keeps blocking |
+| REI-048 | P1 | Partial; unsafe helper removed; live consumption remains disconnected | Operator approval does not clear the state that keeps blocking |
 | REI-049 | P2 | Open; not established as repaired | Operator queries and approval requests are separate disconnected flows |
 | REI-050 | P1 | Addressed in repair branch; production verification pending | Dollar/cents mismatch creates false intel conflicts |
 | REI-051 | P2 | Open; not established as repaired | Packet freshness is rewritten without proof of fresh evidence |
@@ -176,3 +176,11 @@ All 129 original findings, 15 recovery findings 16 conversation findings and 12 
 | REI-170 | P1 | Addressed locally; live speech and production verification pending | Explicit wait requests still received early silence prompts |
 | REI-171 | P1 | Addressed locally; live speech and production verification pending | Analysis callbacks confused identity with transfer |
 | REI-172 | P1 | Open; real-phone VAD calibration required | Sharp telephone-band filtering defeated synthetic VAD |
+| REI-173 | P1 | Addressed locally; provider and production verification pending | Call ending falsely confirmed lead updates |
+| REI-174 | P1 | Addressed locally; provider and production verification pending | Operator failure language implied discretionary authority |
+| REI-175 | P1 | Addressed locally; provider and production verification pending | Operator replies could attach to the wrong call |
+| REI-176 | P1 | Addressed locally; provider and production verification pending | Approval creation could report unsaved requests |
+| REI-177 | P1 | Addressed locally; provider and production verification pending | Approval endpoint silently approved and falsely reported success |
+| REI-178 | P1 | Partial; response repaired, durable suppression retry remains open | STOP falsely guaranteed durable removal after failed writes |
+| REI-179 | P1 | Addressed locally; provider and production verification pending | Scenario prompts contradicted hearing and scheduling capability |
+| REI-180 | P1 | Open; no live lifecycle tool implemented | Voice appointment cancellation and rescheduling are unavailable |

@@ -87,7 +87,9 @@ def get_lead_by_property(property_id: str) -> dict | None:
 
 def update_lead_stage(lead_id: str, stage: str) -> None:
     client = _get_client()
-    client.table("leads").update({"stage": stage, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", lead_id).execute()
+    response = client.table("leads").update({"stage": stage, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", lead_id).execute()
+    if not response.data:
+        raise ValueError("Lead stage update was not confirmed")
     logger.info("update_lead_stage lead_id={} stage={}", lead_id, stage)
 
 
@@ -1208,7 +1210,7 @@ def create_approval_request(lead_id, call_sid, approval_type, requested_action, 
     ikey = _idem_key(lead_id, call_sid or "", approval_type, requested_action)
     expires_at = (datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)).isoformat()
     try:
-        client.table("approval_requests").insert({
+        response = client.table("approval_requests").insert({
             "id": ikey,
             "lead_id": lead_id,
             "call_sid": call_sid,
@@ -1221,9 +1223,15 @@ def create_approval_request(lead_id, call_sid, approval_type, requested_action, 
             "priority": priority,
             "expires_reason": "call_timeout",
         }).execute()
+        if not response.data:
+            raise RuntimeError("Approval request persistence was not confirmed")
     except Exception as e:
         if "duplicate" not in str(e).lower() and "unique" not in str(e).lower():
             logger.warning("create_approval_request failed error={}", str(e))
+            raise
+        response = client.table("approval_requests").select("id").eq("id", ikey).eq("status", "pending").gt("expires_at", datetime.now(timezone.utc).isoformat()).execute()
+        if not response.data:
+            raise ValueError("No current pending approval request exists") from e
     return ikey
 
 
@@ -1251,16 +1259,48 @@ def get_pending_approval(lead_id: str, call_sid: str) -> dict | None:
 
 def resolve_approval_request(approval_id, approved_by, status, answer=""):
     from datetime import datetime, timezone
-    client = _get_client()
-    try:
-        client.table("approval_requests").update({
-            "status": status,
-            "approved_by": approved_by,
-            "resolved_at": datetime.now(timezone.utc).isoformat(),
-            "context_snapshot": {"answer": answer},
-        }).eq("id", approval_id).execute()
-    except Exception as e:
-        logger.warning("resolve_approval_request failed id={} error={}", approval_id, str(e))
+    if status not in {"approved", "rejected"}:
+        raise ValueError("An explicit approved or rejected decision is required")
+    now = datetime.now(timezone.utc).isoformat()
+    response = _get_client().table("approval_requests").update({
+        "status": status,
+        "approved_by": approved_by,
+        "resolved_at": now,
+        "context_snapshot": {"answer": answer},
+    }).eq("id", approval_id).eq("status", "pending").gt("expires_at", now).execute()
+    if not response.data:
+        raise ValueError("Approval is missing, expired, or already resolved")
+    return response.data[0]
+
+
+def create_operator_query(lead_id, question, context):
+    from uuid import uuid4
+    query_id = "op_" + uuid4().hex
+    response = _get_client().table("operator_queries").insert({"id": query_id, "lead_id": lead_id or None, "question": question, "context": context, "status": "pending"}).execute()
+    if not response.data:
+        raise RuntimeError("Operator request persistence was not confirmed")
+    return query_id
+
+
+def get_operator_answer(query_id):
+    response = _get_client().table("operator_queries").select("status,answer").eq("id", query_id).limit(1).execute()
+    row = response.data[0] if response.data else {}
+    return row.get("answer") if row.get("status") == "answered" else None
+
+
+def close_operator_query(query_id):
+    _get_client().table("operator_queries").update({"status": "closed"}).eq("id", query_id).eq("status", "answered").execute()
+
+
+def record_operator_reply(body):
+    from datetime import datetime, timezone, timedelta
+    import re
+    match = re.fullmatch(r"(op_[0-9a-f]{32})\s+(.+)", body.strip(), re.DOTALL)
+    if not match:
+        return False
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+    response = _get_client().table("operator_queries").update({"answer": match.group(2).strip(), "status": "answered"}).eq("id", match.group(1)).eq("status", "pending").gt("created_at", cutoff).execute()
+    return bool(response.data)
 
 
 def write_bob_feedback_event(lead_id, call_sid, event_type, payload):
