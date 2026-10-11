@@ -490,3 +490,76 @@ def _capture_suppression(monkeypatch):
     monkeypatch.setattr(db, "add_to_dnc", lambda *a, **k: calls["dnc"].append(a), raising=False)
     monkeypatch.setattr(db, "mark_lead_opted_out", lambda lid: calls["flags"].append(lid), raising=False)
     return calls
+
+
+class TestStopSurvivesDegradation:
+    def test_stop_works_with_tenant_unconfigured(self, monkeypatch):
+        monkeypatch.delenv("TENANT_ID", raising=False)
+        calls = _capture_suppression(monkeypatch)
+        result = tools.execute_tool("honor_stop_request", {"verbatim": "stop calling me"}, call_ctx=FakeCtx())
+        assert "removed" in result.lower(), "STOP denied when TENANT_ID unset"
+        assert calls["events"], "no suppression recorded"
+        assert calls["events"][0]["contact_point"] == REAL_PHONE
+
+    def test_stop_works_when_lead_has_no_tenant(self, monkeypatch):
+        monkeypatch.setattr(
+            db, "get_lead_with_property",
+            lambda lead_id: {"id": lead_id, "owner_phone": REAL_PHONE, "properties": {}},
+            raising=False,
+        )
+        calls = _capture_suppression(monkeypatch)
+        result = tools.execute_tool("honor_stop_request", {"verbatim": "take me off"}, call_ctx=FakeCtx())
+        assert "removed" in result.lower()
+        assert calls["events"]
+
+    def test_stop_works_when_lead_row_missing(self, monkeypatch):
+        monkeypatch.setattr(db, "get_lead_with_property", lambda lead_id: None, raising=False)
+        calls = _capture_suppression(monkeypatch)
+        result = tools.execute_tool("honor_stop_request", {"verbatim": "do not call"}, call_ctx=FakeCtx())
+        assert "removed" in result.lower()
+        assert calls["events"][0]["contact_point"] == REAL_PHONE
+
+    def test_stop_works_when_lead_lookup_raises(self, monkeypatch):
+        def boom(lead_id):
+            raise RuntimeError("supabase down")
+        monkeypatch.setattr(db, "get_lead_with_property", boom, raising=False)
+        calls = _capture_suppression(monkeypatch)
+        result = tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=FakeCtx())
+        assert "removed" in result.lower()
+        assert calls["events"]
+
+    def test_stop_works_with_no_call_sid(self, monkeypatch):
+        calls = _capture_suppression(monkeypatch)
+        ctx = FakeCtx()
+        ctx._call_sid = ""
+        result = tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
+        assert "removed" in result.lower()
+        assert calls["events"]
+
+    def test_stop_ends_call_even_with_no_contact_point(self, monkeypatch):
+        monkeypatch.setattr(db, "get_lead_with_property", lambda lead_id: None, raising=False)
+        calls = _capture_suppression(monkeypatch)
+        ctx = FakeCtx()
+        ctx.seller_phone = ""
+        result = tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=ctx)
+        assert "removed" in result.lower()
+        assert ctx.call_should_end is True
+        assert ctx.stop_requested is True
+        assert not calls["events"]
+
+    def test_stop_never_returns_a_deferral(self, monkeypatch):
+        _capture_suppression(monkeypatch)
+        monkeypatch.delenv("TENANT_ID", raising=False)
+        for breaker in (
+            lambda: monkeypatch.setattr(db, "get_lead_with_property", lambda i: None, raising=False),
+            lambda: monkeypatch.setenv("OUTBOUND_ENABLED", "false"),
+        ):
+            breaker()
+            result = tools.execute_tool("honor_stop_request", {"verbatim": "stop"}, call_ctx=FakeCtx())
+            assert "follow up" not in result.lower(), "STOP deferred instead of honored"
+            assert "removed" in result.lower()
+
+    def test_other_tools_still_deny_when_degraded(self, monkeypatch):
+        monkeypatch.delenv("TENANT_ID", raising=False)
+        for name in ("send_followup_sms", "book_appointment", "get_offer_range", "set_disposition"):
+            assert execute_denied(FakeCtx(), name), f"{name} ran with no tenant configured"

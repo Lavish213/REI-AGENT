@@ -371,6 +371,13 @@ def execute_tool(
     logger.info("execute_tool name={} fields={}", tool_name, execution_context.redact(tool_input))
 
     try:
+        if tool_name == execution_context.STOP_TOOL:
+            resolved = execution_context.resolve_for_stop(call_ctx)
+            result = _honor_stop_request(tool_input, resolved, call_ctx)
+            if call_ctx is not None:
+                call_ctx.call_should_end = True
+            return result
+
         try:
             resolved = execution_context.resolve(call_ctx)
         except execution_context.ContextResolutionError as error:
@@ -406,11 +413,6 @@ def execute_tool(
 
         elif tool_name == "schedule_followup":
             result = _schedule_followup(tool_input)
-
-        elif tool_name == "honor_stop_request":
-            result = _honor_stop_request(tool_input, resolved, call_ctx)
-            if call_ctx is not None:
-                call_ctx.call_should_end = True
 
         elif tool_name == "end_call":
             result = _end_call(tool_input)
@@ -468,6 +470,19 @@ def _honor_stop_request(inp: dict, resolved, call_ctx=None) -> str:
         channel = "all"
 
     verbatim = (inp.get("verbatim") or "").strip()
+
+    if not resolved.seller_phone:
+        logger.critical(
+            "STOP_REQUEST_NO_CONTACT_POINT lead_id={} call_sid={} "
+            "seller asked to stop and no phone could be resolved — "
+            "locate this call in provider logs and suppress manually",
+            resolved.lead_id, resolved.call_sid,
+        )
+        if call_ctx is not None:
+            call_ctx.stop_requested = True
+            call_ctx.call_should_end = True
+            call_ctx.runtime_instruction = None
+        return "Understood — you're removed from our list and you won't hear from us again. Sorry to have bothered you."
 
     results = {
         "evidence": db.try_write(

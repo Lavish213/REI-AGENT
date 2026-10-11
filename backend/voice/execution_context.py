@@ -139,6 +139,37 @@ def resolve(call_ctx) -> ResolvedContext:
     )
 
 
+def resolve_for_stop(call_ctx) -> ResolvedContext:
+    try:
+        return resolve(call_ctx)
+    except ContextResolutionError as error:
+        logger.warning("stop_context_degraded reason={} proceeding_best_effort", str(error))
+    except Exception as error:
+        logger.exception("stop_context_resolution_crashed error={} proceeding_best_effort", str(error))
+
+    lead_id = (getattr(call_ctx, "lead_id", "") or "").strip()
+    call_sid = (getattr(call_ctx, "_call_sid", "") or "").strip()
+    phone = _normalize_phone(getattr(call_ctx, "seller_phone", "")) or ""
+
+    if not phone and lead_id:
+        try:
+            from backend.lib import db
+
+            lead = db.get_lead_with_property(lead_id) or {}
+            phone = _normalize_phone(lead.get("owner_phone")) or ""
+        except Exception as error:
+            logger.exception("stop_phone_lookup_failed lead_id={} error={}", lead_id, str(error))
+
+    return ResolvedContext(
+        lead_id=lead_id,
+        call_sid=call_sid,
+        tenant_id=configured_tenant() or "unresolved",
+        seller_phone=phone,
+        seller_email="",
+        address="",
+    )
+
+
 def sanitize(tool_name: str, tool_input: dict | None, resolved: ResolvedContext) -> dict:
     supplied = dict(tool_input or {})
     server = resolved.server_values()

@@ -140,7 +140,7 @@ via `redact()`. The Langfuse trace call was changed the same way.
 
 ## 5. Tests
 
-`tests/test_tool_containment.py` — **40 tests, all passing.**
+`tests/test_tool_containment.py` — **66 tests, all passing.**
 
 | Class | Proves |
 |---|---|
@@ -212,3 +212,48 @@ The sequence stands: **emergency four → Gate 1A tests → authenticated ingres
 permission ledger → reproducible schema → durable job execution.**
 
 `OUTBOUND_ENABLED` stays `false`.
+
+---
+
+## 8. Follow-up fix — STOP survived nothing
+
+A defect introduced by this patch, found before merge and fixed in the same
+branch.
+
+`execute_tool` resolved the execution context **first**, before any tool-specific
+branch. So any resolution failure — unconfigured `TENANT_ID`, a lead with no
+tenant, a missing lead row, Supabase down — denied `honor_stop_request` and
+returned *"Let me have someone follow up on that."*
+
+A seller said "stop calling me" and got a deferral. The containment made the
+suppression path **more** fragile than the thing it was protecting, which is the
+exact inversion the review warned about.
+
+It would have fired on merge, because `TENANT_ID` is not yet set in Railway.
+
+### The fix
+
+`execution_context.resolve_for_stop()` never raises:
+
+1. Try the full `resolve()`.
+2. On `ContextResolutionError` **or any other exception**, fall back to a
+   best-effort context from `call_ctx` — lead id, call sid, normalised phone,
+   with a lead lookup if the phone is absent.
+3. `execute_tool` branches to the STOP tool **before** strict resolution, so
+   nothing upstream can deny it.
+4. If even the phone cannot be resolved, the call still ends and
+   `logger.critical("STOP_REQUEST_NO_CONTACT_POINT")` names the call for manual
+   suppression from provider logs.
+
+### The invariant, now tested
+
+> `honor_stop_request` never returns a deferral. Eight tests cover tenant
+> unconfigured, lead without tenant, lead row missing, lead lookup raising,
+> no call sid, no contact point, and outbound disabled — while confirming every
+> other tool still denies under the same conditions.
+
+**Two deliberate blind exception handlers** remain in `resolve_for_stop`. They
+are the one place in this codebase where catching `Exception` is unambiguously
+correct: the suppression path must not fail for any reason. The no-comment rule
+prevents a `# noqa`, so they are recorded here instead.
+
