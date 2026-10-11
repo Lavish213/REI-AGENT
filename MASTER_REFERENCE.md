@@ -10,7 +10,7 @@ recalled. Claims I could not verify are marked `[UNVERIFIED]`.
 
 ## 0. Read this first
 
-### The six documents
+### The documents
 
 | Document | Answers | Status |
 |---|---|---|
@@ -18,7 +18,10 @@ recalled. Claims I could not verify are marked `[UNVERIFIED]`.
 | **`REAL_ESTATE_AI_OPERATING_SYSTEM_V2.md`** | What the system *should* be | Proposed, unratified |
 | **`REBUILD_MAP.md`** | Which file goes where, in what order | Proposed, depends on the above |
 | **`AUDIT_AND_GRADE.md`** | Grade, 30 defects, regulatory research, what to do next | Current |
-| **`SECOND_AUDIT_VERIFICATION.md`** | Independent verification of a second review; 68 consolidated findings; corrections to my own work | Current |
+| **`SECOND_AUDIT_VERIFICATION.md`** | Independent verification of a second review; corrections to my own work | Current |
+| **`PROJECT_GRADE.md`** | Per-system and per-file grade, end to end; 81-finding register | Current |
+| **`ROADMAP.md`** | Everything left, Gate 1A through Gate 7 | Current |
+| **`EMERGENCY_CONTAINMENT.md`** | What the containment patch changed | Current |
 | **`Sophia-Agent/PROJECT.md`** | How the V1 system works end to end | Accurate for V1 only |
 
 Plus `AGENTS.md` (hard rules) and 16 `SOPHIA_*.md` behaviour specs.
