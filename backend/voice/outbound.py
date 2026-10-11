@@ -157,7 +157,9 @@ def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
 
 
 _MAX_CONCURRENT_CALLS = 3
-_REDIS_CONCURRENT_KEY = "rei_agent:concurrent_calls"
+_REDIS_CONCURRENT_KEY = "rei_agent:{calls}:concurrent"
+_REDIS_OWNERS_KEY = "rei_agent:{calls}:owners"
+_REDIS_CALLS_KEY = "rei_agent:{calls}:provider_ids"
 
 
 def _get_redis_client():
@@ -173,36 +175,74 @@ def _get_redis_client():
 
 _ACQUIRE_SLOT_LUA = """
 local now = tonumber(ARGV[1])
+local expired = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', now)
+for _, lead in ipairs(expired) do
+  redis.call('HDEL', KEYS[2], lead)
+  redis.call('HDEL', KEYS[3], lead)
+end
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
 if redis.call('ZSCORE', KEYS[1], ARGV[2]) then return 0 end
 if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then return 0 end
 redis.call('ZADD', KEYS[1], now + tonumber(ARGV[4]), ARGV[2])
-redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]) + 60)
+redis.call('HSET', KEYS[2], ARGV[2], ARGV[5])
+redis.call('HDEL', KEYS[3], ARGV[2])
+for _, key in ipairs(KEYS) do redis.call('EXPIRE', key, tonumber(ARGV[4]) + 60) end
 return 1
 """
 
 
-def _acquire_call_slot(lead_id: str) -> bool:
+def _acquire_call_slot(lead_id: str, attempt_token: str = "") -> bool:
     import time
     client = _get_redis_client()
     if not client:
         logger.error("call_capacity_unavailable")
         return False
     try:
-        return bool(client.eval(_ACQUIRE_SLOT_LUA, 1, _REDIS_CONCURRENT_KEY, time.time(), lead_id, _MAX_CONCURRENT_CALLS, 3600))
+        return bool(client.eval(_ACQUIRE_SLOT_LUA, 3, _REDIS_CONCURRENT_KEY, _REDIS_OWNERS_KEY, _REDIS_CALLS_KEY, time.time(), lead_id, _MAX_CONCURRENT_CALLS, 3600, attempt_token))
     except Exception as error:
         logger.warning("acquire_call_slot failed error={}", str(error))
         return False
 
 
-def _release_call_slot(lead_id: str) -> None:
+def _bind_call_slot(lead_id: str, attempt_token: str, call_sid: str) -> bool:
+    client = _get_redis_client()
+    if not client or not attempt_token or not call_sid:
+        return False
+    script = """
+    if redis.call('HGET', KEYS[2], ARGV[1]) ~= ARGV[2] then return 0 end
+    if not redis.call('ZSCORE', KEYS[1], ARGV[1]) then return 0 end
+    redis.call('HSET', KEYS[3], ARGV[1], ARGV[3])
+    local ttl = redis.call('TTL', KEYS[1])
+    if ttl > 0 then redis.call('EXPIRE', KEYS[3], ttl) end
+    return 1
+    """
+    try:
+        return bool(client.eval(script, 3, _REDIS_CONCURRENT_KEY, _REDIS_OWNERS_KEY, _REDIS_CALLS_KEY, lead_id, attempt_token, call_sid))
+    except Exception as error:
+        logger.warning("bind_call_slot failed error={}", str(error))
+        return False
+
+
+def _release_call_slot(lead_id: str, attempt_token: str = "", call_sid: str = "") -> bool:
     client = _get_redis_client()
     if not client:
-        return
+        return False
+    script = """
+    local owner = redis.call('HGET', KEYS[2], ARGV[1])
+    local provider = redis.call('HGET', KEYS[3], ARGV[1])
+    if ARGV[3] ~= '' then
+      if provider ~= ARGV[3] then return 0 end
+    elseif owner and owner ~= ARGV[2] then return 0 end
+    redis.call('ZREM', KEYS[1], ARGV[1])
+    redis.call('HDEL', KEYS[2], ARGV[1])
+    redis.call('HDEL', KEYS[3], ARGV[1])
+    return 1
+    """
     try:
-        client.zrem(_REDIS_CONCURRENT_KEY, lead_id)
-    except Exception:
-        pass
+        return bool(client.eval(script, 3, _REDIS_CONCURRENT_KEY, _REDIS_OWNERS_KEY, _REDIS_CALLS_KEY, lead_id, attempt_token, call_sid))
+    except Exception as error:
+        logger.warning("release_call_slot failed error={}", str(error))
+        return False
 
 
 def _schedule_retry_for_disposition(lead_id: str, disposition: str, attempt_count: int) -> None:
@@ -253,6 +293,9 @@ def call_lead(
     lead_id: str,
     bypass_cooldown: bool = False,
 ) -> dict[str, Any]:
+    import uuid
+    attempt_token = uuid.uuid4().hex
+    provider_accepted = False
     from backend.voice.execution_context import outbound_enabled
     if not outbound_enabled():
         return {"success": False, "reason": "outbound_disabled"}
@@ -321,7 +364,7 @@ def call_lead(
         if _check_active_call(lead_id):
             return {"success": False, "reason": "call_in_progress"}
 
-        if not _acquire_call_slot(lead_id):
+        if not _acquire_call_slot(lead_id, attempt_token):
             return {"success": False, "reason": "at_capacity"}
 
         first_name = _get_first_name(lead, prop)
@@ -333,7 +376,13 @@ def call_lead(
 
         if not result["call_sid"]:
             raise RuntimeError("Phone provider did not return a call ID")
-        update_lead_call_outcome(lead_id, "initiated", result["call_sid"])
+        provider_accepted = True
+        if not _bind_call_slot(lead_id, attempt_token, result["call_sid"]):
+            logger.error("provider_call_slot_unbound lead_id={} call_sid={}", lead_id, result["call_sid"])
+        try:
+            update_lead_call_outcome(lead_id, "initiated", result["call_sid"])
+        except Exception as error:
+            logger.error("initiated_call_not_persisted lead_id={} error={}", lead_id, str(error))
 
         logger.info("call_lead_success lead_id={} call_sid={}", lead_id, result["call_sid"])
 
@@ -347,7 +396,8 @@ def call_lead(
         }
 
     except Exception as e:
-        _release_call_slot(lead_id)
+        if not provider_accepted:
+            _release_call_slot(lead_id, attempt_token=attempt_token)
         logger.exception("call_lead_failed lead_id={} error={}", lead_id, str(e))
 
         try:

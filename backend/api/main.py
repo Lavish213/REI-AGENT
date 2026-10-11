@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 import os
 from contextlib import asynccontextmanager
 
-from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from loguru import logger
 

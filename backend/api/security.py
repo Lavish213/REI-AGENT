@@ -12,7 +12,7 @@ from starlette.responses import JSONResponse
 
 
 def valid_signalwire_signature(key: str, signature: str, url: str, body: bytes) -> bool:
-    if not key or not signature:
+    if not key or not signature or not signature.isascii():
         return False
     raw = url.encode() + body
     raw_signature = hmac.new(key.encode(), raw, hashlib.sha1).hexdigest()
@@ -44,7 +44,9 @@ class OperatorAuthentication(BaseHTTPMiddleware):
         supplied = request.headers.get("authorization", "")
         token = supplied.removeprefix("Bearer ") if supplied.startswith("Bearer ") else ""
         admin_token = os.environ.get("OPERATOR_API_TOKEN", "")
-        if token and admin_token and hmac.compare_digest(token, admin_token):
+        if token and not token.isascii():
+            return JSONResponse({"detail": "Operator authentication required"}, status_code=401)
+        if token and admin_token and hmac.compare_digest(token.encode(), admin_token.encode()):
             return await call_next(request)
         if token:
             try:

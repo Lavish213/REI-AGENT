@@ -15,22 +15,31 @@ async def read_media_session(websocket, expected_call_sid: str | None = None, au
     async def read_start():
         for _ in range(8):
             payload = json.loads(await websocket.receive_text())
+            if not isinstance(payload, dict):
+                raise ValueError("Media event must be an object")
             event = payload.get("event")
             if event == "connected":
                 continue
             if event != "start":
                 raise ValueError("Expected a media start event")
             start = payload.get("start", {})
+            if not isinstance(start, dict):
+                raise ValueError("Media start must be an object")
             call_sid = start.get("callSid") or payload.get("callSid")
             stream_sid = start.get("streamSid") or payload.get("streamSid")
-            if not call_sid or not stream_sid:
+            if not isinstance(call_sid, str) or not isinstance(stream_sid, str) or not call_sid.strip() or not stream_sid.strip():
                 raise ValueError("Media start is missing callSid or streamSid")
             if expected_call_sid and call_sid != expected_call_sid:
                 raise ValueError("Media call ID does not match the authorized call")
-            if authorized_scope and not validate_stream_token((start.get("customParameters") or {}).get("authorization", ""), authorized_scope):
+            parameters = start.get("customParameters") or {}
+            if not isinstance(parameters, dict):
+                raise ValueError("Invalid stream authorization parameters")
+            if authorized_scope and not validate_stream_token(parameters.get("authorization", ""), authorized_scope):
                 raise ValueError("Unauthorized media stream")
             media = start.get("mediaFormat", {})
-            if media and (media.get("encoding") != "audio/x-mulaw" or int(media.get("sampleRate", 0)) != 8000 or int(media.get("channels", 0)) != 1):
+            if not isinstance(media, dict):
+                raise ValueError("Invalid media format")
+            if media and (media.get("encoding") != "audio/x-mulaw" or type(media.get("sampleRate")) is not int or media.get("sampleRate") != 8000 or type(media.get("channels")) is not int or media.get("channels") != 1):
                 raise ValueError("This transport requires mono PCMU at 8000 Hz")
             return MediaSession(call_sid=call_sid, stream_sid=stream_sid)
         raise ValueError("Media start event missing")

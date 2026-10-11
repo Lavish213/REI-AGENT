@@ -9,7 +9,7 @@ router = APIRouter()
 @router.post("/intel/packets/{lead_id}")
 async def bob_write_packet(lead_id: str, payload: dict):
     from backend.lib.db import load_intel_packet, save_intel_packet, write_packet_event
-    from backend.contracts.intel_packet import migrate_packet, PACKET_SCHEMA_VERSION
+    from backend.contracts.intel_packet import PACKET_SCHEMA_VERSION
     payload["lead_id"] = lead_id
     payload["schema_version"] = PACKET_SCHEMA_VERSION
     if "packet_state" not in payload:

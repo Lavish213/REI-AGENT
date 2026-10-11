@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import patch, MagicMock, call as mock_call
 
 
@@ -88,7 +89,8 @@ class TestAllEventConstants:
 class TestWorkflowTrigger:
     def _trigger(self, disposition, intel, mock_transition, mock_followup):
         from backend.workflows.engine import trigger_from_call_outcome
-        with patch("backend.lib.db.insert_call_event"), \
+        with patch("backend.lib.db.get_lead_with_property", return_value=None), \
+             patch("backend.lib.db.insert_call_event"), \
              patch("backend.lib.db.insert_workflow_transition", mock_transition), \
              patch("backend.lib.db.create_followup", mock_followup):
             return trigger_from_call_outcome("call-1", "lead-1", disposition, intel)
@@ -397,3 +399,8 @@ class TestPipelineMovement:
             trigger_from_call_outcome("call-1", "lead-1", "WARM", {})
         event_types = [e["event_type"] for e in emitted]
         assert "workflow_updated" in event_types
+
+
+@pytest.fixture(autouse=True)
+def isolate_workflow_lead_reads(monkeypatch):
+    monkeypatch.setattr("backend.lib.db.get_lead_with_property", lambda *args, **kwargs: None)

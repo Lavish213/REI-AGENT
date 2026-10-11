@@ -87,7 +87,7 @@ _TIMELINE_PATTERN = re.compile(
 )
 
 _PRICE_PATTERN = re.compile(
-    r"(?:\$?\s*(\d{2,3}(?:,\d{3})+|\d{2,6})\s*(k|thousand|grand)?)",
+    r"(?<![\w.-])(?:\$\s*)?(\d{1,3}(?:,\d{3})+|\d{1,7})(?:\.(\d{1,2}))?\s*(k|thousand|grand)?(?![\w.])",
     re.IGNORECASE,
 )
 
@@ -352,29 +352,30 @@ class CallContext:
 
 
 def _extract_price_cents(text: str) -> int | None:
-    matches = list(_PRICE_PATTERN.finditer(text))
-    if not matches:
-        return None
-
-    for match in matches:
-        if "$" not in match.group(0) and not match.group(2) and not re.search(r"\b(asking|offer|price|want|worth|looking for|would take)\b", text, re.I):
+    from decimal import Decimal
+    candidates = []
+    for match in _PRICE_PATTERN.finditer(text):
+        before = text[max(0, match.start() - 45):match.start()].lower()
+        after = text[match.end():match.end() + 25].lower()
+        before = re.split(r"[,;!?]", before)[-1]
+        explicit = bool(re.search(r"\b(asking|offer|price|want|worth|looking for|would take|precio|pido)\b", before))
+        debt = bool(re.search(r"\b(mortgage|owe|loan|balance|debt|hipoteca|debo)\b", before + " " + after))
+        if debt and not explicit:
             continue
-        raw = match.group(1).replace(",", "")
-        suffix = (match.group(2) or "").lower()
-
-        try:
-            value = int(raw)
-        except ValueError:
+        suffix = (match.group(3) or "").lower()
+        if "$" not in match.group(0) and not suffix and not explicit:
             continue
-
-        if suffix in {"k", "thousand", "grand"}:
+        if re.search(r"\$\s*-\s*$", before):
+            continue
+        value = Decimal(match.group(1).replace(",", "") + ("." + match.group(2) if match.group(2) else ""))
+        if suffix:
             value *= 1000
-        elif value < 1000 and "$" not in match.group(0):
+        if value <= 0 or (value < 1000 and "$" not in match.group(0) and not suffix):
             continue
-
-        return value * 100
-
-    return None
+        candidates.append((explicit, int(value * 100)))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
 
 
 class ContextTrackerProcessor(FrameProcessor):
@@ -420,7 +421,7 @@ class ContextTrackerProcessor(FrameProcessor):
                         self._ctx.address_known = True
                         logger.info("owner_confirmed via affirmative turn={}", _tc)
                 import re as _re
-                _DNC = _re.compile(r"\b(stop calling|take me off|do not call|remove me|never call again|leave me alone|no me llames|deja de llamar)\b", _re.IGNORECASE)
+                _DNC = _re.compile(r"\b(stop calling|stop contacting(?: me)?|take me off|do not call|don.t call(?: me)?(?: again)?|remove me|lose my number|never call again|leave me alone|no me llames|no me vuelvas a llamar|qu[ií]tame de (?:tu|su) lista|deja de llamar)\b", _re.IGNORECASE)
                 if _DNC.search(text) and not getattr(self._ctx, "_dnc_flagged", False):
                     self._ctx._dnc_flagged = True
                     self._ctx.runtime_instruction = None
@@ -589,14 +590,14 @@ class ContextTrackerProcessor(FrameProcessor):
             self._ctx.has_agent = True
             logger.info("agent detected")
 
-        if self._ctx.mortgage_status == "unknown":
-            if _FREE_CLEAR_PATTERN.search(text):
-                self._ctx.free_and_clear = True
-                self._ctx.mortgage_status = "clear"
-                logger.info("free and clear detected")
-            elif _MORTGAGE_HIGH_PATTERN.search(text):
-                self._ctx.mortgage_status = "has_mortgage"
-                logger.info("mortgage detected")
+        clear_match = _FREE_CLEAR_PATTERN.search(text)
+        negated_clear = clear_match and re.search(r"\b(not|never|don.t|isn.t|aren.t)\b.{0,25}$", text[max(0, clear_match.start() - 35):clear_match.start()], re.I)
+        if clear_match and not negated_clear:
+            self._ctx.free_and_clear = True
+            self._ctx.mortgage_status = "clear"
+        elif negated_clear or _MORTGAGE_HIGH_PATTERN.search(text):
+            self._ctx.free_and_clear = False
+            self._ctx.mortgage_status = "has_mortgage"
 
         self._update_seller_energy(text)
         self._update_situation_label(text)

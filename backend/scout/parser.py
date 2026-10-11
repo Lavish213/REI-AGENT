@@ -1,4 +1,6 @@
 import csv
+import math
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from contextlib import nullcontext
 import os
 from typing import Any
@@ -50,7 +52,7 @@ def _parse_int(val: str | None) -> int | None:
     cleaned = val.replace(",", "").replace("$", "").replace("%", "").strip()
     try:
         return int(float(cleaned))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError):
         return None
 
 
@@ -59,8 +61,9 @@ def _parse_float(val: str | None) -> float | None:
         return None
     cleaned = val.replace(",", "").replace("$", "").replace("%", "").strip()
     try:
-        return float(cleaned)
-    except (ValueError, TypeError):
+        result = float(cleaned)
+        return result if math.isfinite(result) else None
+    except (ValueError, TypeError, OverflowError):
         return None
 
 
@@ -97,10 +100,15 @@ def _normalize_distress_type(raw: str | None) -> str:
 
 
 def _to_cents(val: str | None) -> int | None:
-    parsed = _parse_float(val)
-    if parsed is None:
+    if val is None:
         return None
-    return int(parsed * 100)
+    try:
+        amount = Decimal(val.replace(",", "").replace("$", "").strip())
+        if not amount.is_finite():
+            return None
+        return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
 
 
 def parse_csv(file_path: str) -> list[dict[str, Any]]:

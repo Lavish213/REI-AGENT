@@ -14,9 +14,11 @@ create table if not exists public.voice_appointments (
     address text not null,
     status text not null default 'confirmed' check (status in ('confirmed', 'cancelled')),
     created_at timestamptz not null default now(),
-    unique (lead_id, starts_at),
     exclude using gist (tstzrange(starts_at, ends_at, '[)') with &&) where (status = 'confirmed')
 );
+
+alter table public.voice_appointments drop constraint if exists voice_appointments_lead_id_starts_at_key;
+create unique index if not exists voice_appointments_confirmed_lead_slot on public.voice_appointments(lead_id, starts_at) where status = 'confirmed';
 
 alter table public.walkthrough_availability enable row level security;
 alter table public.voice_appointments enable row level security;
@@ -43,6 +45,11 @@ begin
     where starts_at = p_starts_at for update;
     if slot_end is null then
         raise exception 'No approved availability for this time';
+    end if;
+    select id into reservation from voice_appointments
+    where lead_id = p_lead_id and starts_at = p_starts_at and status = 'confirmed';
+    if reservation is not null then
+        return reservation;
     end if;
     insert into voice_appointments(lead_id, starts_at, ends_at, address)
     values (p_lead_id, p_starts_at, slot_end, p_address) returning id into reservation;

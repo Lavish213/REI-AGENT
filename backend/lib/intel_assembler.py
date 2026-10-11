@@ -1,6 +1,5 @@
 from __future__ import annotations
-import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from loguru import logger
 
 _STALE_HOURS = 24
@@ -34,7 +33,7 @@ def _detect_conflicts(bob_max_offer: int | None, comp_arv: int | None, seller_pr
 def assemble_intel_packet(lead_id: str) -> dict:
     from backend.lib.db import load_intel_packet, save_intel_packet, write_packet_event, _get_client
     from backend.contracts.intel_packet import (
-        PACKET_SCHEMA_VERSION, DEFAULT_DENY_PERMISSIONS, migrate_packet, PACKET_STATES
+        PACKET_SCHEMA_VERSION, DEFAULT_DENY_PERMISSIONS, migrate_packet
     )
 
     now = datetime.now(timezone.utc).isoformat()

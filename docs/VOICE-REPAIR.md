@@ -20,7 +20,7 @@ This branch repairs the live voice path, scheduling, dialing controls, access bo
 
 | Check | Result | What it establishes |
 |---|---|---|
-| Python suite | 352 passed; 7 deprecation warnings | Regression and focused integration behavior |
+| Python suite | 983 passed; 5 deprecation warnings | Regression and focused integration behavior |
 | Actual pipeline construction | Passed without provider network requests | Real services and flattened processor ordering construct |
 | Interruption stress | 1,000 resets passed | No stale sentence-buffer output after interruption |
 | Dial admission stress | 100 concurrent attempts; exactly 3 admitted | Atomic limit enforcement in Redis-compatible Lua test runtime |
@@ -31,7 +31,7 @@ This branch repairs the live voice path, scheduling, dialing controls, access bo
 
 The Redis stress test uses fakeredis with Lua, not a production Redis cluster. The migration test uses a minimal baseline fixture and PGlite, not the existing Supabase database. The pipeline test does not measure real provider speech quality, remote playback, or telephone latency. Dashboard builds require configured Supabase URL/service-key values; verification used nonproduction placeholders. The updated master was merged into this repair branch; its containment rules and removal of committed seller exports are preserved. Both migrations execute together in the test fixture, and service-role update/delete on suppression evidence are denied.
 
-Seven warnings originate from pinned Pipecat/Supabase dependencies and the deprecated PipelineTask API.
+Five warnings originate from pinned Pipecat dependencies and the deprecated PipelineTask API. See [MAX-TEST-REPORT.md](MAX-TEST-REPORT.md) for the expanded stress campaign and newly repaired defects.
 
 Reproduce from the repository root:
 
@@ -86,10 +86,10 @@ Release blockers and important residual gaps include:
 2. Finish the human operator query/approval/reply path with durable requests, action-scoped approvals, expiry, idempotency, and verified delivery. A 30-second wait on a disconnected reply flow is not a working escalation system.
 3. Make post-call grading, intel refresh, transcripts, provider status retries, and notifications durable with retryable jobs. Remove remaining blocking database/provider operations from async paths.
 4. Repair the still-open acquisition integrations: missing auto-enrichment/cash-buyer functions, partial deployed scout cycle, property-schema disagreements, residential filtering, and cache bounds.
-5. Verify intel freshness/safe-for-live-call/versioning, atomic approvals, offer ceilings and dollar/cents contracts against realistic records. Regex output filters are not a complete protection against split or paraphrased prohibited speech.
+5. Verify intel freshness/versioning and atomic approvals against realistic records. Offer quotes and summaries now convert cents correctly, clamp to verified MAO/operator ceilings, and reject low-confidence authority. Verify all other money paths against realistic records. Regex output filters are not a complete protection against split or paraphrased prohibited speech.
 6. Finish live-call registry/event identifiers and truthful metrics. Store actual latency/interruption measurements; present explicit errors wherever APIs currently look like an empty state.
 7. Add provider delivery reconciliation, reminder/attendance event truth, and durable opt-out recovery. Finish outgoing signed unsubscribe links, not just token verification.
-8. Protect concurrency leases from stale status callbacks releasing a newer attempt; implement owned leases and heartbeat/maximum-call duration. Media session tokens remain replayable inside their short validity window; bind and consume them atomically if exposure is possible.
+8. Attempt-owned leases now reject stale callback releases and stale provider bindings. Add heartbeat/maximum-call duration and durable reconciliation for callbacks arriving before provider binding or after worker failure. Media session tokens remain replayable inside their short validity window; bind and consume them atomically if exposure is possible.
 9. Remove discovery-stage turn-count shortcuts that can advance without required facts. Test corrections, changed appointments, cancellations, multiple properties, and repeated requests throughout long conversations.
 10. Prove performance with real Redis/PostgreSQL and recorded telephony under controlled load. The current tests do not establish sustained production throughput or acoustic conversation quality.
 

@@ -275,6 +275,9 @@ def _preflight_gate(tool_name: str, resolved, call_ctx) -> dict:
     if tool_name in ALWAYS_ALLOWED_TOOLS:
         return {"blocked": False, "level": "allowed"}
 
+    if getattr(call_ctx, "kill_switch_active", False) and tool_name in execution_context.SIDE_EFFECT_TOOLS:
+        return {"blocked": True, "message": "Human review is required before this action."}
+
     if tool_name not in GATED_TOOLS:
         write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "unknown_tool", "not_in_capability_registry", packet_version)
         return {"blocked": True, "message": "I'm not able to do that — let me have someone follow up."}
@@ -306,13 +309,17 @@ def _preflight_gate(tool_name: str, resolved, call_ctx) -> dict:
         write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "no_intel_packet", "deny_default", packet_version)
         return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "Let me have someone follow up on that.")}
 
-    if not intel_packet.get("safe_for_live_call", False):
+    if intel_packet.get("safe_for_live_call") is not True:
         write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "packet_not_safe_for_live_call", "deny_default", packet_version)
         return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "Let me have someone follow up on that.")}
 
     level = get_permission_level(intel_packet, tool_name)
     perms = intel_packet.get("action_permissions") or {}
+    if not isinstance(perms, dict):
+        return {"blocked": True, "message": "Verified action permissions are unavailable."}
     perm = perms.get(tool_name) or {}
+    if not isinstance(perm, dict):
+        return {"blocked": True, "message": "Verified action permission is invalid."}
 
     if is_permission_expired(perm):
         write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "permission_expired", "expires_at reached", packet_version)
@@ -330,15 +337,19 @@ def _preflight_gate(tool_name: str, resolved, call_ctx) -> dict:
         write_tool_gate_log(lead_id, call_sid, tool_name, "ask_only", "ask_only_mode", "", packet_version)
         return {"blocked": True, "message": _ASK_ONLY_RESPONSES.get(tool_name, "I can discuss that conceptually — let me have Alanzo follow up with specifics.")}
 
-    expected_level = {"get_available_appointments": "read_availability", "book_appointment": "book_appointment", "schedule_callback": "book_appointment", "schedule_followup": "book_appointment", "send_followup_sms": "send_summary", "transfer_call": "transfer_call", "ask_operator": "ask_operator", "get_offer_range": "quote_range", "send_offer_summary": "send_summary", "send_followup_email": "send_summary", "collect_and_send_email": "send_summary"}.get(tool_name)
+    expected_level = {"set_disposition": "send_summary", "drop_voicemail": "send_summary", "get_available_appointments": "read_availability", "book_appointment": "book_appointment", "schedule_callback": "book_appointment", "schedule_followup": "book_appointment", "send_followup_sms": "send_summary", "transfer_call": "transfer_call", "ask_operator": "ask_operator", "get_offer_range": "quote_range", "send_offer_summary": "send_summary", "send_followup_email": "send_summary", "collect_and_send_email": "send_summary"}.get(tool_name)
     if expected_level and level != expected_level:
         return {"blocked": True, "message": "This action needs specific operator permission."}
 
     compliance = intel_packet.get("compliance_context") or {}
+    if not isinstance(compliance, dict):
+        return {"blocked": True, "message": "Verified compliance permissions are unavailable."}
     threshold = compliance.get("requires_human_approval_above")
+    if threshold is not None and (type(threshold) is not int or threshold <= 0):
+        return {"blocked": True, "message": "Verified approval threshold is invalid."}
     if threshold and call_ctx:
         price = getattr(call_ctx, "last_price_mentioned", None)
-        if price and price > threshold * 100:
+        if price and price > threshold:
             approval_id = create_approval_request(
                 lead_id=lead_id, call_sid=call_sid,
                 approval_type="price_threshold", requested_action=tool_name,
@@ -460,7 +471,7 @@ def execute_tool(
             result = _send_followup_email(tool_input, call_ctx)
 
         elif tool_name == "get_offer_range":
-            result = _get_offer_range(tool_input)
+            result = _get_offer_range(tool_input, call_ctx)
 
         elif tool_name == "send_offer_summary":
             result = _send_offer_summary(tool_input, call_ctx)
@@ -557,6 +568,30 @@ def _honor_stop_request(inp: dict, resolved, call_ctx=None) -> str:
     return "Understood — you're removed from our list and you won't hear from us again. Sorry to have bothered you."
 
 
+def _verified_offer_range(lead_id: str, call_ctx=None) -> tuple[int, int] | None:
+    from backend.lib.db import get_lead_with_property
+    try:
+        lead = get_lead_with_property(lead_id) or {}
+        prop = lead.get("properties") or {}
+        if isinstance(prop, list):
+            prop = prop[0] if prop else {}
+        ceiling = prop.get("mao")
+        if type(ceiling) is not int or ceiling <= 0 or prop.get("arv_confidence") not in {"medium", "high"}:
+            return None
+        packet = getattr(call_ctx, "intel_packet", None) or {}
+        strategy = packet.get("strategy_context") or {}
+        approved_max = strategy.get("max_offer")
+        if approved_max is not None:
+            if type(approved_max) is not int or approved_max <= 0:
+                return None
+            ceiling = min(ceiling, approved_max)
+        low, high = ceiling * 95 // 100 // 100, ceiling // 100
+        return (low, high) if 0 < low <= high else None
+    except Exception as error:
+        logger.warning("offer_authority_unavailable error={}", str(error))
+        return None
+
+
 def _send_offer_summary(inp: dict, call_ctx=None) -> str:
     seller_phone = inp.get("seller_phone", "").strip()
     offer_low = int(inp.get("offer_low") or 0)
@@ -567,19 +602,10 @@ def _send_offer_summary(inp: dict, call_ctx=None) -> str:
         seller_phone = getattr(call_ctx, "seller_phone", "")
     if not seller_phone:
         return "What is the best number to text that to?"
-    if not offer_low or not offer_high:
-        try:
-            from backend.lib.db import get_lead_with_property
-            lead = get_lead_with_property(lead_id)
-            prop = (lead.get("properties") or {}) if lead else {}
-            mao = prop.get("mao")
-            if mao:
-                offer_low = int(int(mao) * 0.95 / 100)
-                offer_high = int(int(mao) * 1.05 / 100)
-        except Exception:
-            pass
-    if not offer_low:
-        return "Let me have Alanzo follow up with the exact number — he handles the final offers."
+    verified = _verified_offer_range(lead_id, call_ctx)
+    if not verified:
+        return "No verified offer is available. Have Alanzo approve pricing first."
+    offer_low, offer_high = verified
     body = (
         f"Hey — Sophia from San Joaquin House Buyers. "
         f"Cash offer range for {address or 'your property'}: "
@@ -592,7 +618,7 @@ def _send_offer_summary(inp: dict, call_ctx=None) -> str:
         if not send_sms(to=seller_phone, body=body, lead_id=lead_id):
             return "Text delivery could not be confirmed. Offer a human follow-up."
         logger.info("send_offer_summary sent lead_id={}", lead_id)
-        return f"Sent! Check your texts — offer range is ${offer_low:,} to ${offer_high:,}."
+        return f"Text accepted for delivery — offer range is ${offer_low:,} to ${offer_high:,}."
     except Exception as e:
         logger.exception("send_offer_summary failed error={}", str(e))
         return "Had trouble sending that. Let me have Alanzo follow up directly."
@@ -603,14 +629,10 @@ def _collect_and_send_email(inp: dict, call_ctx=None) -> str:
     lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
     if not email:
         return "What email address should I send that to?"
-    if lead_id and email:
-        try:
-            from backend.lib.db import _get_client
-            _get_client().table("leads").update({"owner_email": email}).eq("id", lead_id).execute()
-        except Exception:
-            pass
-    offer_low = int(inp.get("offer_low") or 0)
-    offer_high = int(inp.get("offer_high") or 0)
+    verified = _verified_offer_range(lead_id, call_ctx)
+    if not verified:
+        return "No verified offer is available. Ask the owner to approve pricing first."
+    offer_low, offer_high = verified
     address = inp.get("address", "").strip()
     first_name = getattr(call_ctx, "seller_name", "") or "there"
     if offer_low <= 0 or offer_high < offer_low:
@@ -836,79 +858,27 @@ def _ask_operator(inp, call_ctx=None):
 
 def _send_followup_email(inp, call_ctx=None):
     to = inp.get("to", "").strip()
-    first_name = inp.get("first_name", "").strip() or (getattr(call_ctx, "seller_name", "") or "there").split()[0]
+    lead_id = inp.get("lead_id", "")
+    first_name = inp.get("first_name", "").strip() or "there"
     address = inp.get("address", "").strip()
-    offer_low = int(inp.get("offer_low") or 0)
-    offer_high = int(inp.get("offer_high") or 0)
-    lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
     if not to:
-        try:
-            from backend.lib.db import get_lead_with_property
-            lead = get_lead_with_property(lead_id)
-            to = (lead or {}).get("owner_email", "")
-        except Exception:
-            pass
-    if not to:
-        return "What is the best email address to send that to?"
-    if lead_id and to:
-        try:
-            from backend.lib.db import _get_client
-            _get_client().table("leads").update({"owner_email": to}).eq("id", lead_id).execute()
-        except Exception:
-            pass
-    if offer_low <= 0 or offer_high < offer_low:
-        return "No verified offer is available. Ask the team to approve pricing first."
+        return "No verified seller email is available. Ask for a human follow-up."
+    verified = _verified_offer_range(lead_id, call_ctx)
+    if not verified:
+        return "No verified offer is available. Ask the owner to approve pricing first."
+    offer_low, offer_high = verified
     try:
         from backend.alerts.email import send_offer_summary_email
         sent = send_offer_summary_email(to=to, first_name=first_name, address=address, offer_low=offer_low, offer_high=offer_high, lead_id=lead_id)
-        return "Sent! Check your inbox." if sent else "Had trouble sending that email."
-    except Exception as e:
-        logger.exception("send_followup_email failed error={}", str(e))
-        return "Had trouble with that. Can I text you instead?"
+        return "Email accepted for delivery." if sent else "Had trouble sending that email."
+    except Exception as error:
+        logger.warning("send_followup_email failed error={}", str(error))
+        return "Had trouble sending that email."
 
 
-def _get_offer_range(inp: dict) -> str:
-    address = inp.get("address", "").strip()
-    lead_id = inp.get("lead_id", "")
-
-    if not address:
-        return "I need to walk through the property first to give you a real number."
-
-    try:
-        from backend.lib.db import get_lead_with_property
-        lead = get_lead_with_property(lead_id) if lead_id else None
-        prop = (lead.get("properties") or {}) if lead else {}
-
-        arv_cents = prop.get("estimated_arv")
-        mao_cents = prop.get("mao")
-        confidence = prop.get("arv_confidence", "low")
-
-        if arv_cents and mao_cents:
-            mao_raw = int(mao_cents)
-            mao = mao_raw if mao_raw > 10000 else mao_raw * 100
-            low = int(mao * 0.95)
-            high = int(mao * 1.05)
-
-            confidence_phrase = {
-                "high": "Based on several recent sales in your area",
-                "medium": "Based on what I'm seeing in your area",
-                "low": "Comps are a little thin out there, but roughly",
-            }.get(confidence, "Based on what I'm seeing")
-
-            return (
-                f"{confidence_phrase}, we'd probably be looking "
-                f"somewhere in the ${low:,} to ${high:,} range. "
-                f"That's before we take a look inside — "
-                f"once we walk through the number gets more precise. "
-                f"Does that ballpark work for your situation?"
-            )
-
-    except Exception as e:
-        logger.warning("get_offer_range db lookup failed error={}", str(e))
-
-    return (
-        "So I want to give you a real number, not just throw something out. "
-        "Based on what I'm seeing for your area we're probably in a reasonable range — "
-        "but honestly the number gets more precise once we actually walk through. "
-        "Would that work?"
-    )
+def _get_offer_range(inp: dict, call_ctx=None) -> str:
+    verified = _verified_offer_range(inp.get("lead_id", ""), call_ctx)
+    if not verified:
+        return "I don't have a verified offer yet. Let me have Alanzo review the property and follow up."
+    low, high = verified
+    return f"The verified preliminary range is ${low:,} to ${high:,}, subject to a walkthrough. Does that work for your situation?"

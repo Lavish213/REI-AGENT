@@ -16,7 +16,7 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
-_BOUNDARY = re.compile(r"[.!?](?=\s|$)(?!\d)")
+_BOUNDARY = re.compile(r"(?<!\d)[.!?](?=\s|$)|(?<=\d)[.!?](?=\s)")
 _MAX_BUFFER = 1200
 
 
@@ -39,7 +39,7 @@ class SentenceStreamProcessor(FrameProcessor):
                 boundary = match.end()
                 await self._flush(self._buffer[:boundary], direction)
                 self._buffer = self._buffer[boundary:]
-            if len(self._buffer) > _MAX_BUFFER:
+            while len(self._buffer) > _MAX_BUFFER:
                 boundary = self._buffer.rfind(" ", 0, _MAX_BUFFER)
                 boundary = boundary if boundary > 0 else _MAX_BUFFER
                 await self._flush(self._buffer[:boundary], direction)

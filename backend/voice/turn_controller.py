@@ -4,7 +4,7 @@ import re
 
 from loguru import logger
 
-from pipecat.frames.frames import Frame, TranscriptionFrame, TTSSpeakFrame
+from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 

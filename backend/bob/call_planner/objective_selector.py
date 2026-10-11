@@ -1,5 +1,5 @@
 from __future__ import annotations
-from backend.contracts.call_brief import Phase, MissingBox
+from backend.contracts.call_brief import Phase
 
 _BOX_TO_PHASE: dict[str, Phase] = {
     "identity": "VERIFY",

@@ -1,10 +1,7 @@
 import os
-import json
-from datetime import datetime, timezone
 from loguru import logger
 from anthropic import AsyncAnthropic
 
-from backend.lib.db import insert_call
 from backend.alerts.sms import send_alert_to_owner
 
 

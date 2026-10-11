@@ -11,7 +11,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       body,
       headers: { 'Content-Type': request.headers.get('content-type') || 'application/json' },
     })
-    return new NextResponse(await response.arrayBuffer(), {
+    const responseBody = [204, 205, 304].includes(response.status) ? null : await response.arrayBuffer()
+    return new NextResponse(responseBody, {
       status: response.status,
       headers: { 'Content-Type': response.headers.get('content-type') || 'application/json' },
     })

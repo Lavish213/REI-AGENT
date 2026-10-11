@@ -130,7 +130,7 @@ async def handle_outbound_status(
 
             try:
                 from backend.voice.outbound import _release_call_slot, _schedule_retry_for_disposition
-                _release_call_slot(lead_id)
+                _release_call_slot(lead_id, call_sid=call_sid)
                 if call_status in ("no-answer", "busy", "voicemail"):
                     attempt = int(form.get("attempt_count", 0) or 0)
                     _schedule_retry_for_disposition(lead_id, call_status, attempt)
