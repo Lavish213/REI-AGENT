@@ -2,6 +2,8 @@ import os
 from datetime import datetime, timezone
 
 import pytz
+
+from backend.voice import execution_context
 from loguru import logger
 
 from backend.lib.db import (
@@ -32,13 +34,10 @@ SOPHIA_TOOLS = [
             "properties": {
                 "date": {"type": "string", "description": "Date in YYYY-MM-DD format"},
                 "time": {"type": "string", "description": "Time in HH:MM 24hr format"},
-                "address": {"type": "string", "description": "Property address"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
-                "seller_phone": {"type": "string", "description": "Seller phone number"},
                 "seller_name": {"type": "string", "description": "Seller first name"},
                 "confirmed": {"type": "boolean", "description": "Seller explicitly confirmed date, time, timezone, and address"},
             },
-            "required": ["date", "time", "address", "lead_id", "seller_phone", "confirmed"],
+            "required": ["date", "time", "confirmed"],
         },
     },
     {
@@ -50,11 +49,9 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "to": {"type": "string", "description": "Seller phone number"},
                 "message": {"type": "string", "description": "SMS under 160 characters"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": ["to", "message", "lead_id"],
+            "required": ["message"],
         },
     },
     {
@@ -89,12 +86,23 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "lead_id": {"type": "string", "description": "Lead ID"},
                 "priority": {"type": "string", "enum": ["high", "medium", "low"], "description": "Follow-up priority"},
                 "notes": {"type": "string", "description": "Callback notes"},
                 "callback_time": {"type": "string", "description": "Seller-confirmed ISO 8601 timestamp with timezone offset; ask for an exact date and time first"},
             },
-            "required": ["lead_id", "priority", "notes"],
+            "required": ["priority", "notes"],
+        },
+    },
+    {
+        "name": "honor_stop_request",
+        "description": "Call this the moment the seller asks not to be contacted again — stop, remove me, take me off your list, do not call, quit calling, or any clear refusal of further contact. Suppresses all future contact for this person, records the request, and ends the call. Never ask a follow-up question, never ask for a referral, and never try to keep them talking after calling this.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "verbatim": {"type": "string", "description": "What the seller actually said, word for word"},
+                "channel": {"type": "string", "enum": ["all", "call", "sms", "email"], "description": "Scope of the request. Use all unless the seller was explicit about one channel."},
+            },
+            "required": ["verbatim"],
         },
     },
     {
@@ -108,9 +116,8 @@ SOPHIA_TOOLS = [
                     "description": "appointment_booked, not_interested, callback_scheduled, wrong_number, other",
                 },
                 "summary": {"type": "string", "description": "Short call summary"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": ["reason", "summary", "lead_id"],
+            "required": ["reason", "summary"],
         },
     },
     {
@@ -124,9 +131,8 @@ SOPHIA_TOOLS = [
             "type": "object",
             "properties": {
                 "reason": {"type": "string", "description": "Why transfer is needed"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": ["reason", "lead_id"],
+            "required": ["reason"],
         },
     },
     {
@@ -140,9 +146,8 @@ SOPHIA_TOOLS = [
                 "delay_hours": {"type": "number", "description": "Only an explicitly requested relative delay"},
                 "day_of_week": {"type": "string"},
                 "notes": {"type": "string"},
-                "lead_id": {"type": "string"},
             },
-            "required": ["lead_id", "notes"],
+            "required": ["notes"],
         },
     },
     {
@@ -153,9 +158,8 @@ SOPHIA_TOOLS = [
             "properties": {
                 "question": {"type": "string"},
                 "context": {"type": "string"},
-                "lead_id": {"type": "string"},
             },
-            "required": ["question", "lead_id"],
+            "required": ["question"],
         },
     },
     {
@@ -164,14 +168,11 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "to": {"type": "string", "description": "Seller email address"},
                 "first_name": {"type": "string"},
-                "address": {"type": "string"},
                 "offer_low": {"type": "integer"},
                 "offer_high": {"type": "integer"},
-                "lead_id": {"type": "string"},
             },
-            "required": ["to", "lead_id"],
+            "required": [],
         },
     },
     {
@@ -184,10 +185,8 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "address": {"type": "string", "description": "Property address"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": ["address", "lead_id"],
+            "required": [],
         },
     },
     {
@@ -196,13 +195,10 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "seller_phone": {"type": "string", "description": "Seller phone number"},
                 "offer_low": {"type": "integer", "description": "Low end of offer range in dollars"},
                 "offer_high": {"type": "integer", "description": "High end of offer range in dollars"},
-                "address": {"type": "string", "description": "Property address"},
-                "lead_id": {"type": "string", "description": "Lead ID"},
             },
-            "required": ["seller_phone", "lead_id"],
+            "required": [],
         },
     },
     {
@@ -211,13 +207,10 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "email": {"type": "string", "description": "Seller email address"},
-                "address": {"type": "string", "description": "Property address"},
                 "offer_low": {"type": "integer"},
                 "offer_high": {"type": "integer"},
-                "lead_id": {"type": "string"},
             },
-            "required": ["lead_id"],
+            "required": [],
         },
     },
     {
@@ -226,10 +219,9 @@ SOPHIA_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "lead_id": {"type": "string"},
                 "script": {"type": "string", "description": "Voicemail script to use: standard, callback, or urgent"},
             },
-            "required": ["lead_id"],
+            "required": [],
         },
     },
 ]
@@ -270,26 +262,29 @@ def write_tool_gate_log(*args, **kwargs):
         return None
 
 
-def _preflight_gate(tool_name: str, tool_input: dict, call_ctx) -> dict:
+def _preflight_gate(tool_name: str, resolved, call_ctx) -> dict:
     from backend.contracts.intel_packet import (
         ALWAYS_ALLOWED_TOOLS, GATED_TOOLS, get_permission_level, is_permission_expired
     )
     from backend.lib.db import create_approval_request
 
-    lead_id = (tool_input.get("lead_id") or "") if tool_input else ""
-    if not lead_id and call_ctx is not None:
-        lead_id = getattr(call_ctx, "lead_id", "")
-    call_sid = getattr(call_ctx, "_call_sid", "") if call_ctx else ""
+    lead_id = resolved.lead_id
+    call_sid = resolved.call_sid
     packet_version = getattr(call_ctx, "packet_version", 0) if call_ctx else 0
 
     if tool_name in ALWAYS_ALLOWED_TOOLS:
         return {"blocked": False, "level": "allowed"}
 
     if tool_name not in GATED_TOOLS:
-        return {"blocked": False, "level": "allowed"}
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "unknown_tool", "not_in_capability_registry", packet_version)
+        return {"blocked": True, "message": "I'm not able to do that — let me have someone follow up."}
+
+    if tool_name in execution_context.SIDE_EFFECT_TOOLS and not execution_context.outbound_enabled():
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "outbound_disabled", "OUTBOUND_ENABLED_not_true", packet_version)
+        return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "Let me have someone follow up on that.")}
 
     fallback_mode = getattr(call_ctx, "fallback_mode", False) if call_ctx else False
-    if fallback_mode and tool_name in _RISKY_TOOLS_MAP and tool_name != "book_appointment":
+    if fallback_mode and tool_name in _RISKY_TOOLS_MAP:
         write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "fallback_blocked", "system_degraded", packet_version)
         return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "System unavailable right now.")}
 
@@ -307,10 +302,13 @@ def _preflight_gate(tool_name: str, tool_input: dict, call_ctx) -> dict:
         return {"blocked": True, "message": "Let me check with my team real quick — there's something I want to verify first."}
 
     intel_packet = getattr(call_ctx, "intel_packet", None) if call_ctx else None
-    if not intel_packet:
-        if tool_name == "book_appointment":
-            return {"blocked": False, "level": "book_appointment"}
-        return {"blocked": True, "message": "No verified permissions are available. Let the team approve this action first."}
+    if not isinstance(intel_packet, dict) or not intel_packet:
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "no_intel_packet", "deny_default", packet_version)
+        return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "Let me have someone follow up on that.")}
+
+    if not intel_packet.get("safe_for_live_call", False):
+        write_tool_gate_log(lead_id, call_sid, tool_name, "blocked", "packet_not_safe_for_live_call", "deny_default", packet_version)
+        return {"blocked": True, "message": _BLOCKED_RESPONSES.get(tool_name, "Let me have someone follow up on that.")}
 
     level = get_permission_level(intel_packet, tool_name)
     perms = intel_packet.get("action_permissions") or {}
@@ -332,7 +330,7 @@ def _preflight_gate(tool_name: str, tool_input: dict, call_ctx) -> dict:
         write_tool_gate_log(lead_id, call_sid, tool_name, "ask_only", "ask_only_mode", "", packet_version)
         return {"blocked": True, "message": _ASK_ONLY_RESPONSES.get(tool_name, "I can discuss that conceptually — let me have Alanzo follow up with specifics.")}
 
-    expected_level = {"book_appointment": "book_appointment", "get_offer_range": "quote_range", "send_offer_summary": "send_summary", "send_followup_email": "send_summary", "collect_and_send_email": "send_summary"}.get(tool_name)
+    expected_level = {"get_available_appointments": "read_availability", "book_appointment": "book_appointment", "schedule_callback": "book_appointment", "schedule_followup": "book_appointment", "send_followup_sms": "send_summary", "transfer_call": "transfer_call", "ask_operator": "ask_operator", "get_offer_range": "quote_range", "send_offer_summary": "send_summary", "send_followup_email": "send_summary", "collect_and_send_email": "send_summary"}.get(tool_name)
     if expected_level and level != expected_level:
         return {"blocked": True, "message": "This action needs specific operator permission."}
 
@@ -372,7 +370,7 @@ def _resolve_approval(approval_id: str, answer: str, call_ctx) -> None:
             if req.data:
                 action = req.data[0].get("requested_action", "")
                 perms = call_ctx.action_permissions or {}
-                perms[action] = {"level": {"book_appointment": "book_appointment", "get_offer_range": "quote_range"}.get(action, "send_summary"), "scope": "call", "granted_by": "operator"}
+                perms[action] = {"level": {"book_appointment": "book_appointment", "schedule_callback": "book_appointment", "schedule_followup": "book_appointment", "send_followup_sms": "send_summary", "transfer_call": "transfer_call", "ask_operator": "ask_operator", "get_offer_range": "quote_range"}.get(action, "send_summary"), "scope": "call", "granted_by": "operator"}
                 call_ctx.action_permissions = perms
                 if call_ctx.intel_packet:
                     call_ctx.intel_packet["action_permissions"] = perms
@@ -390,29 +388,39 @@ def execute_tool(
     call_ctx=None,
     lf_trace=None,
 ) -> str:
-    logger.info("execute_tool name={}", tool_name)
-    tool_input = dict(tool_input)
-    if call_ctx is not None:
-        bound_lead = getattr(call_ctx, "lead_id", "")
-        requested_lead = tool_input.get("lead_id", "")
-        if requested_lead and requested_lead != bound_lead:
-            return "Action refused: the lead does not match this call."
-        if bound_lead:
-            tool_input["lead_id"] = bound_lead
-        bound_phone = getattr(call_ctx, "seller_phone", "")
-        phone_fields = ("to", "seller_phone") if tool_name == "send_followup_sms" else ("seller_phone",)
-        for field in phone_fields:
-            if field in tool_input:
-                if not bound_phone:
-                    return "Action refused: this call has no verified seller phone."
-                tool_input[field] = bound_phone
-        if getattr(call_ctx, "kill_switch_active", False) and tool_name not in ("end_call", "set_disposition", "transfer_call"):
-            return "Action refused: human review is required."
+    logger.info("execute_tool name={} fields={}", tool_name, execution_context.redact(tool_input))
 
     try:
-        gate = _preflight_gate(tool_name, tool_input, call_ctx)
+        if tool_name == execution_context.STOP_TOOL:
+            resolved = execution_context.resolve_for_stop(call_ctx)
+            result = _honor_stop_request(tool_input, resolved, call_ctx)
+            if call_ctx is not None:
+                call_ctx.call_should_end = True
+            return result
+
+        try:
+            resolved = execution_context.resolve(call_ctx)
+        except execution_context.ContextResolutionError as error:
+            logger.warning("tool_denied_unresolved_context tool={} reason={}", tool_name, str(error))
+            return "Let me have someone follow up on that."
+
+        if getattr(call_ctx, "stop_requested", False) and tool_name != "end_call":
+            logger.warning(
+                "tool_denied_after_stop tool={} call_sid={}", tool_name, resolved.call_sid
+            )
+            return "You're already removed from our list. Take care."
+
+        gate = _preflight_gate(tool_name, resolved, call_ctx)
         if gate["blocked"]:
             return gate["message"]
+
+        tool_input = execution_context.sanitize(tool_name, tool_input, resolved)
+
+        if tool_name in execution_context.SIDE_EFFECT_TOOLS:
+            recheck = _preflight_gate(tool_name, resolved, call_ctx)
+            if recheck["blocked"]:
+                logger.warning("tool_denied_on_recheck tool={} call_sid={}", tool_name, resolved.call_sid)
+                return recheck["message"]
 
         if tool_name == "get_available_appointments":
             from backend.lib.db import list_walkthrough_availability
@@ -465,11 +473,11 @@ def execute_tool(
 
         else:
             logger.warning("unknown tool called name={}", tool_name)
-            result = "Tool not found."
+            result = "I'm not able to do that — let me have someone follow up."
 
         try:
             from backend.observability import trace_tool_call
-            trace_tool_call(lf_trace, tool_name, tool_input, result)
+            trace_tool_call(lf_trace, tool_name, {"fields": execution_context.redact(tool_input)}, result)
         except Exception:
             pass
 
@@ -479,6 +487,74 @@ def execute_tool(
         logger.exception("tool execution failed tool={} error={}", tool_name, str(e))
         return "Tool execution failed."
 
+
+
+def _honor_stop_request(inp: dict, resolved, call_ctx=None) -> str:
+    from backend.lib import db
+
+    channel = (inp.get("channel") or "all").strip().lower()
+    if channel not in ("all", "call", "sms", "email"):
+        channel = "all"
+
+    verbatim = (inp.get("verbatim") or "").strip()
+
+    if not resolved.seller_phone:
+        logger.critical(
+            "STOP_REQUEST_NO_CONTACT_POINT lead_id={} call_sid={} "
+            "seller asked to stop and no phone could be resolved — "
+            "locate this call in provider logs and suppress manually",
+            resolved.lead_id, resolved.call_sid,
+        )
+        if call_ctx is not None:
+            call_ctx.stop_requested = True
+            call_ctx.call_should_end = True
+            call_ctx.runtime_instruction = None
+        return "Understood — you're removed from our list and you won't hear from us again. Sorry to have bothered you."
+
+    results = {
+        "evidence": db.try_write(
+            "stop_evidence",
+            db.record_suppression_event,
+            tenant_id=resolved.tenant_id,
+            lead_id=resolved.lead_id,
+            contact_point=resolved.seller_phone,
+            contact_type="phone",
+            channel=channel,
+            method="verbal_stop_request",
+            source="live_call",
+            reason="seller_requested_no_contact",
+            call_sid=resolved.call_sid,
+            verbatim=verbatim,
+            actor="sophia",
+        ),
+        "dnc": db.try_write(
+            "stop_dnc", db.add_to_dnc, resolved.tenant_id, resolved.seller_phone, reason="seller_request"
+        ),
+        "lead_flag": db.try_write("stop_lead_flag", db.mark_lead_opted_out, resolved.lead_id),
+    }
+
+    if call_ctx is not None:
+        call_ctx.stop_requested = True
+        call_ctx.call_should_end = True
+        call_ctx.runtime_instruction = None
+
+    wrote = [k for k, ok in results.items() if ok]
+    missed = [k for k, ok in results.items() if not ok]
+
+    if not wrote:
+        logger.critical(
+            "STOP_REQUEST_UNPERSISTED lead_id={} call_sid={} phone_suffix={} "
+            "seller was told they are removed and NOTHING was written — "
+            "suppress this contact manually before any further outreach",
+            resolved.lead_id, resolved.call_sid, resolved.seller_phone[-4:],
+        )
+    elif missed:
+        logger.error("stop_request_partial lead_id={} wrote={} failed={}", resolved.lead_id, wrote, missed)
+    else:
+        logger.info("stop_request_honored lead_id={} call_sid={} channel={}",
+                    resolved.lead_id, resolved.call_sid, channel)
+
+    return "Understood — you're removed from our list and you won't hear from us again. Sorry to have bothered you."
 
 
 def _send_offer_summary(inp: dict, call_ctx=None) -> str:

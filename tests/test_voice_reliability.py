@@ -158,9 +158,9 @@ async def test_first_outbound_opt_out_is_persisted_and_ends():
     ctx = CallContext(is_outbound=True, seller_phone="+15555550100", lead_id="lead", _task_ref=task)
     tracker = ContextTrackerProcessor(ctx)
     tracker.push_frame = AsyncMock()
-    with patch("backend.lib.db.record_do_not_call") as persist:
+    with patch("backend.voice.tools.execute_tool") as persist:
         await tracker.process_frame(TranscriptionFrame("Stop calling me", "seller", "now"), D)
-    persist.assert_called_once_with("lead", "+15555550100")
+    persist.assert_called_once_with("honor_stop_request", {"verbatim": "Stop calling me"}, ctx)
     assert ctx.call_should_end
     assert isinstance(task.queue_frames.call_args.args[0][-1], EndFrame)
     tracker.push_frame.assert_not_awaited()
@@ -245,7 +245,7 @@ def test_tool_cannot_modify_another_lead():
     from backend.voice.tools import execute_tool
     ctx = CallContext(lead_id="bound")
     with patch("backend.voice.tools._preflight_gate") as gate:
-        assert "does not match" in execute_tool("set_disposition", {"lead_id": "other", "disposition": "HOT"}, ctx)
+        assert "follow up" in execute_tool("set_disposition", {"lead_id": "other", "disposition": "HOT"}, ctx)
     gate.assert_not_called()
 
 
@@ -287,8 +287,8 @@ async def test_live_pipeline_can_construct_without_network(monkeypatch):
 def test_missing_pricing_permissions_do_not_authorize_offers():
     from backend.voice.tools import _preflight_gate
     ctx = CallContext(lead_id="lead")
-    assert _preflight_gate("send_offer_summary", {}, ctx)["blocked"]
-    assert _preflight_gate("get_offer_range", {}, ctx)["blocked"]
+    assert _preflight_gate("send_offer_summary", SimpleNamespace(lead_id="lead", call_sid="call"), ctx)["blocked"]
+    assert _preflight_gate("get_offer_range", SimpleNamespace(lead_id="lead", call_sid="call"), ctx)["blocked"]
 
 
 @pytest.mark.asyncio
@@ -416,3 +416,17 @@ def test_followup_requires_exact_time_and_saved_row():
     with patch("backend.voice.tools.create_followup", return_value="saved") as save:
         assert "scheduled" in _schedule_followup({"lead_id": "lead", "callback_time": when})
         assert save.call_args.kwargs["scheduled_at"] == when
+
+
+@pytest.fixture(autouse=True)
+def isolate_voice_audit_writes(monkeypatch):
+    monkeypatch.setattr("backend.lib.db.write_tool_gate_log", lambda *args, **kwargs: None)
+
+
+def test_outbound_disabled_prevents_provider_and_database_access(monkeypatch):
+    from backend.voice.outbound import call_lead
+
+    monkeypatch.setenv("OUTBOUND_ENABLED", "false")
+    with patch("backend.voice.outbound.get_lead_with_property") as load:
+        assert call_lead("lead")["reason"] == "outbound_disabled"
+    load.assert_not_called()

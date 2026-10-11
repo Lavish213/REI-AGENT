@@ -104,6 +104,8 @@ create table if not exists public.dnc_list (
     phone text not null unique,
     created_at timestamptz not null default now()
 );
+alter table public.dnc_list add column if not exists tenant_id uuid not null default '00000000-0000-0000-0000-000000000001' references public.tenants(id);
+alter table public.dnc_list add column if not exists reason text;
 alter table public.dnc_list enable row level security;
 
 create table if not exists public.campaigns (
@@ -120,7 +122,12 @@ begin
     for relation in select tablename from pg_tables where schemaname = 'public' loop
         execute format('alter table public.%I enable row level security', relation.tablename);
         execute format('revoke all on public.%I from anon', relation.tablename);
-        execute format('grant select, insert, update, delete on public.%I to service_role', relation.tablename);
+        if relation.tablename = 'suppression_events' then
+            execute 'grant select, insert on public.suppression_events to service_role';
+            execute 'revoke update, delete on public.suppression_events from service_role';
+        else
+            execute format('grant select, insert, update, delete on public.%I to service_role', relation.tablename);
+        end if;
     end loop;
 end;
 $$;

@@ -208,6 +208,7 @@ class CallContext:
     seller_sophistication: str = "AVERAGE"
     consecutive_silences: int = 0
     call_should_end: bool = False
+    stop_requested: bool = False
     seller_phone: str = ""
     lead_id: str = ""
     _opener_text: str = ""
@@ -422,13 +423,10 @@ class ContextTrackerProcessor(FrameProcessor):
                 _DNC = _re.compile(r"\b(stop calling|take me off|do not call|remove me|never call again|leave me alone|no me llames|deja de llamar)\b", _re.IGNORECASE)
                 if _DNC.search(text) and not getattr(self._ctx, "_dnc_flagged", False):
                     self._ctx._dnc_flagged = True
-                    self._ctx.runtime_instruction = "[DNC: call set_disposition(disposition=DEAD) then end_call immediately.]"
+                    self._ctx.runtime_instruction = None
                     logger.warning("dnc_signal_detected")
-                    from backend.lib.db import record_do_not_call
-                    try:
-                        await asyncio.to_thread(record_do_not_call, self._ctx.lead_id, self._ctx.seller_phone)
-                    except Exception as error:
-                        logger.error("dnc_persistence_failed error={}", str(error))
+                    from backend.voice.tools import execute_tool
+                    await asyncio.to_thread(execute_tool, "honor_stop_request", {"verbatim": text}, self._ctx)
                     self._ctx.call_should_end = True
                     if self._ctx._task_ref:
                         await self._ctx._task_ref.queue_frames([TTSSpeakFrame("Understood. We'll stop contacting you. Goodbye."), EndFrame()])

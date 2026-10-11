@@ -9,7 +9,7 @@ This branch repairs the live voice path, scheduling, dialing controls, access bo
 - Silero VAD and local Smart Turn detect turn completion. Short meaningful replies remain usable. Spanish STT settings reach Deepgram. Cartesia selection reaches the real TTS service; Deepgram remains an explicit fallback.
 - The seller's first statement, property details, seller memory, and current call state reach the model. A separate transcript journal preserves conversation instead of reconstructing it from an altered LLM context.
 - Natural, concise, truthful automated-agent instructions replace contradictory identity and filler guidance. HOT/WARM dispositions no longer automatically wrap a call before an appointment or callback is saved.
-- Tools bind to the authenticated call's seller and lead. Missing pricing intel blocks pricing actions. Permission levels apply to specific actions. Failed sends, invalid appointments, unavailable voicemail actions, and failed saves cannot be announced as successful.
+- Tools bind to the authenticated call's seller and lead. Missing or unsafe intel and missing action permissions block side effects. Permission levels apply to specific actions. Failed sends, invalid appointments, unavailable voicemail actions, and failed saves cannot be announced as successful.
 - Appointments require seller confirmation, future valid local times, and owner-approved availability. PostgreSQL reservations reject overlaps and are idempotent. Callback tools persist exact timezone-aware due times; vague times require clarification.
 - Redis atomically limits outbound concurrency and duplicate leads, failing closed if unavailable. Closed leads, future callbacks, paused campaigns, DNC checks, retries, and due-task claims now govern dialing.
 - Admin APIs and dashboard routes require authentication. Provider webhooks require signatures. Dashboard ingestion requires its own secret. Browser clients no longer receive the Supabase service key or backend operator token.
@@ -20,7 +20,7 @@ This branch repairs the live voice path, scheduling, dialing controls, access bo
 
 | Check | Result | What it establishes |
 |---|---|---|
-| Python suite | 283 passed; 5 deprecation warnings | Regression and focused integration behavior |
+| Python suite | 352 passed; 7 deprecation warnings | Regression and focused integration behavior |
 | Actual pipeline construction | Passed without provider network requests | Real services and flattened processor ordering construct |
 | Interruption stress | 1,000 resets passed | No stale sentence-buffer output after interruption |
 | Dial admission stress | 100 concurrent attempts; exactly 3 admitted | Atomic limit enforcement in Redis-compatible Lua test runtime |
@@ -29,7 +29,9 @@ This branch repairs the live voice path, scheduling, dialing controls, access bo
 | Dependencies | Compatible; hash lock generated | Installed Python dependency consistency |
 | Patch whitespace | Passed | Clean patch formatting |
 
-The Redis stress test uses fakeredis with Lua, not a production Redis cluster. The migration test uses a minimal baseline fixture and PGlite, not the existing Supabase database. The pipeline test does not measure real provider speech quality, remote playback, or telephone latency. Dashboard builds require configured Supabase URL/service-key values; verification used nonproduction placeholders. Five warnings originate from pinned Pipecat dependencies and its deprecated PipelineTask API.
+The Redis stress test uses fakeredis with Lua, not a production Redis cluster. The migration test uses a minimal baseline fixture and PGlite, not the existing Supabase database. The pipeline test does not measure real provider speech quality, remote playback, or telephone latency. Dashboard builds require configured Supabase URL/service-key values; verification used nonproduction placeholders. The updated master was merged into this repair branch; its containment rules and removal of committed seller exports are preserved. Both migrations execute together in the test fixture, and service-role update/delete on suppression evidence are denied.
+
+Seven warnings originate from pinned Pipecat/Supabase dependencies and the deprecated PipelineTask API.
 
 Reproduce from the repository root:
 
@@ -47,7 +49,7 @@ npm run lint --prefix dashboard
 
 ## Deployment setup
 
-Apply `supabase/migrations/20261011_voice_scheduling.sql` to a staging copy first, after reviewing existing table shapes, roles, and policies. This migration is additive for scheduling but deliberately revokes anonymous access across public tables. Existing clients relying on anonymous table access must be migrated. It assumes base `leads` and `followups` tables already exist; it does not complete the repository's missing clean-database bootstrap.
+Review and apply `supabase/migrations/20260911_tenant_and_suppression.sql` before `supabase/migrations/20261011_voice_scheduling.sql` to a staging copy first, after reviewing existing table shapes, roles, and policies. This migration is additive for scheduling but deliberately revokes anonymous access across public tables. Existing clients relying on anonymous table access must be migrated. It assumes base `leads` and `followups` tables already exist; it does not complete the repository's missing clean-database bootstrap.
 
 | Component | Required configuration |
 |---|---|
@@ -58,7 +60,8 @@ Apply `supabase/migrations/20261011_voice_scheduling.sql` to a staging copy firs
 | Language model | `ANTHROPIC_API_KEY`; optional `VOICE_LLM_MODEL` |
 | Cartesia speech | `VOICE_TTS_PROVIDER=cartesia`, `CARTESIA_API_KEY`, actual `CARTESIA_VOICE_ID`; optional `CARTESIA_MODEL` |
 | Deepgram speech fallback | `VOICE_TTS_PROVIDER=deepgram`; optional `DEEPGRAM_TTS_MODEL` |
-| Dial admission | `REDIS_URL` shared by all callers |
+| Dial admission | `REDIS_URL` shared by all callers; `OUTBOUND_ENABLED=false` until release approval |
+| Tenant ownership | `TENANT_ID` must match the persisted lead tenant; apply the tenant/suppression migration before scheduling migration |
 | Operator backend access | Strong server-only `OPERATOR_API_TOKEN`, or verified Supabase operator/admin app metadata |
 | Dashboard | `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD`, `BACKEND_URL`, matching `OPERATOR_API_TOKEN`, `NEXT_PUBLIC_SUPABASE_URL`, server-only `SUPABASE_SERVICE_KEY` |
 | Ingest | Matching `KARPATHYS_WEBHOOK_SECRET` in producer and dashboard |
@@ -66,6 +69,8 @@ Apply `supabase/migrations/20261011_voice_scheduling.sql` to a staging copy firs
 | Background scheduling | `ENABLE_BACKGROUND_JOBS=false` on web replicas; enable only on one designated process |
 
 Configure only one background-job process. The callbacks and followup claims have database leases, but other legacy schedules are not comprehensively distributed-job safe. Enabling background jobs on every web replica remains unsafe.
+
+The current master containment rules are preserved: missing tenant, missing/unsafe packet, missing or expired action permission, and disabled outbound execution deny side effects. The packet permission registry now includes callback and availability tools. Approved packets need `read_availability` for `get_available_appointments`, `book_appointment` for appointment/callback/followup actions, and the exact corresponding send/transfer/operator permission for those actions. Do not automatically grant every action to make calls pass.
 
 Add owner-approved walkthrough availability through authenticated `POST /api/appointments/availability` with offset-aware `starts_at` and `ends_at` timestamps. Slots must be future dates lasting 15 minutes to three hours. Without approved slots, the agent must offer a callback or operator assistance rather than invent availability. The new table is an internal availability calendar; Google/Outlook calendar sync is not implemented.
 

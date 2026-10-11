@@ -378,9 +378,14 @@ class TestScheduleFollowupTool:
         from backend.voice.tools import SOPHIA_TOOLS
         tool = next(t for t in SOPHIA_TOOLS if t["name"] == "schedule_followup")
         props = tool["input_schema"]["properties"]
-        assert "lead_id" in props
         assert "priority" in props
         assert "notes" in props
+
+    def test_tool_does_not_ask_model_for_lead_id(self):
+        from backend.voice.tools import SOPHIA_TOOLS
+        tool = next(t for t in SOPHIA_TOOLS if t["name"] == "schedule_followup")
+        props = tool["input_schema"]["properties"]
+        assert "lead_id" not in props
 
     def test_priority_enum_values(self):
         from backend.voice.tools import SOPHIA_TOOLS

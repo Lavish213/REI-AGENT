@@ -23,7 +23,12 @@ async function main() {
       );
       insert into leads(id) values ('00000000-0000-0000-0000-000000000001'), ('00000000-0000-0000-0000-000000000002');
     `)
+    await db.exec(fs.readFileSync(path.join(__dirname, '../supabase/migrations/20260911_tenant_and_suppression.sql'), 'utf8'))
     await db.exec(fs.readFileSync(path.join(__dirname, '../supabase/migrations/20261011_voice_scheduling.sql'), 'utf8'))
+    await db.query("insert into dnc_list(tenant_id, phone, reason) values ($1, '+15555550100', 'seller_request')", ['00000000-0000-0000-0000-000000000001'])
+    const evidencePermissions = await db.query("select has_table_privilege('service_role', 'suppression_events', 'UPDATE') as update, has_table_privilege('service_role', 'suppression_events', 'DELETE') as delete")
+    assert.equal(evidencePermissions.rows[0].update, false)
+    assert.equal(evidencePermissions.rows[0].delete, false)
     await db.exec("insert into walkthrough_availability values ('2030-10-12T17:00:00Z', '2030-10-12T18:00:00Z')")
     const book = id => db.query("select reserve_voice_appointment($1, '2030-10-12T17:00:00Z', '123 Main St') as id", [id])
     const first = await book('00000000-0000-0000-0000-000000000001')

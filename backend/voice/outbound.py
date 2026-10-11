@@ -253,6 +253,9 @@ def call_lead(
     lead_id: str,
     bypass_cooldown: bool = False,
 ) -> dict[str, Any]:
+    from backend.voice.execution_context import outbound_enabled
+    if not outbound_enabled():
+        return {"success": False, "reason": "outbound_disabled"}
     try:
         from backend.lib.db import campaign_is_running
         if not campaign_is_running():
