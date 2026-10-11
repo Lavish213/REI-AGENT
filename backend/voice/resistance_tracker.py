@@ -60,7 +60,7 @@ def _downgrade_level(level: str) -> str:
 
 class ResistanceTracker(FrameProcessor):
     def __init__(self, call_ctx):
-        super().__init__()
+        super().__init__(enable_direct_mode=True)
         self._ctx = call_ctx
         self._score: float = 0.0
         self._objection_types: list[str] = []
@@ -70,7 +70,7 @@ class ResistanceTracker(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, TranscriptionFrame) and frame.text:
+        if not getattr(self._ctx, "transcript_uncertain", False) and isinstance(frame, TranscriptionFrame) and frame.text:
             text = frame.text.strip()
             if text:
                 self._update_resistance(text)

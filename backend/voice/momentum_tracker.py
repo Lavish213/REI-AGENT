@@ -37,7 +37,7 @@ _DECAY_PER_NEUTRAL_TURN = 0.1
 
 class MomentumTracker(FrameProcessor):
     def __init__(self, call_ctx):
-        super().__init__()
+        super().__init__(enable_direct_mode=True)
         self._ctx = call_ctx
         self._score: float = _START_SCORE
         self._prev_score: float = _START_SCORE
@@ -48,7 +48,7 @@ class MomentumTracker(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, TranscriptionFrame) and frame.text:
+        if not getattr(self._ctx, "transcript_uncertain", False) and isinstance(frame, TranscriptionFrame) and frame.text:
             text = frame.text.strip()
             if text:
                 self._update_momentum(text)

@@ -64,7 +64,7 @@ _BREVITY_PENALTY_THRESHOLD = 4
 
 class EmotionalStateEngine(FrameProcessor):
     def __init__(self, call_ctx):
-        super().__init__()
+        super().__init__(enable_direct_mode=True)
         self._ctx = call_ctx
         self._prev_emotion: str = "NEUTRAL"
         self._prev_intensity: float = 0.0
@@ -72,7 +72,7 @@ class EmotionalStateEngine(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, TranscriptionFrame) and frame.text:
+        if not getattr(self._ctx, "transcript_uncertain", False) and isinstance(frame, TranscriptionFrame) and frame.text:
             text = frame.text.strip()
             if text:
                 self._update_emotional_state(text)

@@ -63,6 +63,7 @@ from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 from backend.voice.processors.speech_output import SpeechOutputProcessor
 
 from backend.voice.trust_tracker import TrustTracker
+from backend.voice.processors.speech_understanding import SpeechUnderstandingProcessor
 from backend.voice.conversation_policy import ConversationTurnReset, ConversationPolicyProcessor, remember_assistant_turn
 
 _MD_STRIP_PATTERN = re.compile(r"^#{1,3}\s+|[*`]|^---+$", re.MULTILINE)
@@ -305,7 +306,7 @@ class TTSFrameProbe(FrameProcessor):
 
 class TranscriptJournal(FrameProcessor):
     def __init__(self, call_ctx, speaker):
-        super().__init__()
+        super().__init__(enable_direct_mode=True)
         self._ctx = call_ctx
         self._speaker = speaker
         self._spoken_text = ""
@@ -623,6 +624,7 @@ async def run_sophia_agent(
             transport.input(),
             stt,
             ConversationTurnReset(call_ctx),
+            SpeechUnderstandingProcessor(call_ctx),
             input_guard,
             TranscriptJournal(call_ctx, "user"),
             ai_identity,

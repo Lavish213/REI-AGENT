@@ -18,7 +18,7 @@ _SB1001_DISCLOSURE = (
 
 class AIIdentityProcessor(FrameProcessor):
     def __init__(self, call_ctx=None):
-        super().__init__()
+        super().__init__(enable_direct_mode=True)
         self._ctx = call_ctx
         self._disclosed = False
 

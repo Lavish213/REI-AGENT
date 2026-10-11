@@ -34,6 +34,7 @@ _MIN_WORDS_FOR_PROCESSING = 2
 
 class InputGuardProcessor(FrameProcessor):
     def __init__(self, call_ctx=None, **kwargs):
+        kwargs.setdefault("enable_direct_mode", True)
         super().__init__(**kwargs)
         self._ctx = call_ctx
 

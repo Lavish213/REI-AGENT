@@ -282,7 +282,7 @@ async def test_live_pipeline_can_construct_without_network(monkeypatch):
     assert "BotSpeakingSTTMuteProcessor" not in names
     assert "PhoneEQProcessor" not in names
     assert names.index("SentenceStreamProcessor") < names.index("ComplianceOutputFilter") < names.index("DeepgramTTSService")
-    assert names.index("ConversationTurnReset") < names.index("InputGuardProcessor")
+    assert names.index("ConversationTurnReset") < names.index("SpeechUnderstandingProcessor") < names.index("InputGuardProcessor")
     assert names.index("ContextTrackerProcessor") < names.index("ConversationPolicyProcessor") < names.index("ContextStateProcessor") < names.index("AnthropicLLMService")
 
 

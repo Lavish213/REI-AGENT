@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "format": 3,
+    "version": "7.16.2",
+    "timestamp": "2026-10-11T09:57:03.200793",
+    "branch_coverage": true,
+    "show_contexts": false
+  },
+  "totals": {
+    "covered_lines": 3774,
+    "num_statements": 11299,
+    "percent_covered": 31.59620244518817,
+    "percent_covered_display": "32",
+    "missing_lines": 7525,
+    "excluded_lines": 0,
+    "percent_statements_covered": 33.40118594565891,
+    "percent_statements_covered_display": "33",
+    "num_branches": 3342,
+    "num_partial_branches": 278,
+    "covered_branches": 852,
+    "missing_branches": 2490,
+    "percent_branches_covered": 25.493716337522443,
+    "percent_branches_covered_display": "25"
+  },
+  "scope": "all backend files; standalone acoustic campaign is outside this coverage run"
+}

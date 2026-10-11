@@ -81,7 +81,7 @@ _ADDRESS_PATTERN = re.compile(
 _TIMELINE_PATTERN = re.compile(
     r"\b("
     r"asap|immediately|today|tomorrow|next (?:week|month|year)|"
-    r"(?:in |within )?\d+ (?:days?|weeks?|months?)|few months|this (?:week|month)|"
+    r"(?:in |within )?(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|a few|a couple of) (?:days?|weeks?|months?)|few months|this (?:week|month)|"
     r"no rush|not in a hurry|when (?:i|we)(?: am| are|\x27m|\x27re)? ready"
     r")\b",
     re.IGNORECASE,
@@ -165,6 +165,10 @@ class CallContext:
     situation_label: SituationLabel = "unknown"
     last_question_topic: str = ""
     condition_known: bool = False
+    transcript_confidence: float | None = None
+    transcript_uncertain: bool = False
+    clarification_failures: int = 0
+    requested_pause_seconds: float = 60.0
     response_goal: str = ""
     response_guidance: str = ""
     awaiting_owner_confirmation: bool = False
@@ -176,6 +180,7 @@ class CallContext:
     disposition: str | None = None
     turn_count: int = 0
     owner_confirmed: bool = False
+    ownership_denied: bool = False
     pre_close_done: bool = False
     _walkthrough_asked: bool = False
     property_address: str = ""
@@ -388,7 +393,7 @@ def _extract_price_cents(text: str) -> int | None:
 
 class ContextTrackerProcessor(FrameProcessor):
     def __init__(self, call_ctx: CallContext, llm_context=None):
-        super().__init__()
+        super().__init__(enable_direct_mode=True)
         self._ctx = call_ctx
         self._llm_context = llm_context
         self._last_context_prefix: str | None = None
@@ -417,10 +422,11 @@ class ContextTrackerProcessor(FrameProcessor):
 
             if text:
                 self._ctx.turn_count += 1
-                self._analyze(text)
+                if not self._ctx.transcript_uncertain:
+                    self._analyze(text)
                 _tc = self._ctx.turn_count
                 _is_ob = getattr(self._ctx, "is_outbound", False)
-                if _is_ob and self._ctx.awaiting_owner_confirmation and not self._ctx.owner_confirmed:
+                if not self._ctx.transcript_uncertain and _is_ob and self._ctx.awaiting_owner_confirmation and not self._ctx.owner_confirmed:
                     import re as _re2
                     if _re2.search(r"\b(yes|yeah|yep|yup|correct|right|speaking|that's me|this is)\b", text, _re2.IGNORECASE) and not _re2.search(r"\b(never|not|no|won't|wont)\b", text, _re2.IGNORECASE):
                         self._ctx.owner_confirmed = True
@@ -549,13 +555,22 @@ class ContextTrackerProcessor(FrameProcessor):
         self._last_context_prefix = prefix
 
     def _analyze(self, text: str) -> None:
+        if self._ctx.transcript_uncertain:
+            return
         lower = text.lower().replace("’", "'")
         conditional_sale = re.search(r"\bnot selling\s+(?:until|before|unless|yet)\b", lower)
         if not conditional_sale and re.search(r"\b(not selling|don't want to sell|no longer (?:selling|want to sell)|not (?:going to|trying to) sell)\b", lower):
             self._ctx.intent_locked = False
             self._ctx.pre_close_done = False
-        if re.search(r"\b(i own|i'm the owner|i am the owner|it's my (?:house|property)|my house)\b", lower) and not re.search(r"\b(not|don't)\b.{0,15}\bown", lower):
+        denied_ownership = bool(re.search(r"\b(?:i (?:don't|do not|never did) own|i'm not the owner|i am not the owner|not my (?:house|property))\b", lower))
+        if denied_ownership:
+            self._ctx.owner_confirmed = False
+            self._ctx.ownership_denied = True
+            self._ctx.awaiting_owner_confirmation = False
+            self._ctx.pre_close_done = False
+        if not denied_ownership and re.search(r"\b(i own|i'm the owner|i am the owner|it's my (?:house|property)|my house)\b", lower) and not re.search(r"\b(not|don't)\b.{0,15}\bown", lower):
             self._ctx.owner_confirmed = True
+            self._ctx.ownership_denied = False
         if re.search(r"\b(good (?:shape|condition)|no repairs|needs? (?:work|repairs)|new roof|move.in ready|as.is|fixer|roof|plumbing|foundation|renovated)\b", lower):
             self._ctx.condition_known = True
         if self._ctx._walkthrough_asked and re.search(r"\b(yes|yeah|sure|sounds good|works for me|let.s do it)\b", lower) and not re.search(r"\b(no|not|never|maybe|but|if|depends|possibly)\b", lower):
@@ -568,7 +583,9 @@ class ContextTrackerProcessor(FrameProcessor):
         if price is not None:
             self._ctx.last_price_mentioned = price
 
-        timeline_match = _TIMELINE_PATTERN.search(lower)
+        corrected_timing = lower.split("instead of", 1)[0]
+        timeline_matches = list(_TIMELINE_PATTERN.finditer(corrected_timing))
+        timeline_match = timeline_matches[-1] if timeline_matches else None
         if timeline_match:
             self._ctx.timeline_mentioned = timeline_match.group(0)
 
@@ -581,7 +598,15 @@ class ContextTrackerProcessor(FrameProcessor):
                     self._ctx.property_issues.append(label)
         self._ctx.property_issues = self._ctx.property_issues[-6:]
 
+        negated_relocation = bool(re.search(r"\b(?:no longer|not|never|stopped)\s+(?:moving|relocating)\b", lower))
+        if negated_relocation:
+            self._ctx.motivation_signals = [signal for signal in self._ctx.motivation_signals if signal != "relocation"]
+        if re.search(r"\b(?:keeping (?:the|my|our) (?:rental|house|property)|decided not to sell)\b", lower):
+            self._ctx.intent_locked = False
+            self._ctx.pre_close_done = False
         for pattern, label in _MOTIVATION_PATTERNS:
+            if label == "relocation" and negated_relocation:
+                continue
             if re.search(pattern, lower):
                 if label not in self._ctx.motivation_signals:
                     self._ctx.motivation_signals.append(label)
@@ -646,7 +671,7 @@ class ContextTrackerProcessor(FrameProcessor):
 
 class ContextStateProcessor(FrameProcessor):
     def __init__(self, tracker):
-        super().__init__()
+        super().__init__(enable_direct_mode=True)
         self._tracker = tracker
 
     async def process_frame(self, frame, direction):

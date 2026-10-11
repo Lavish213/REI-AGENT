@@ -51,6 +51,8 @@ def _get_context(call_ctx) -> str:
 
 
 def _get_timeout(context: str, call_ctx) -> float:
+    if getattr(call_ctx, "response_goal", "") == "wait":
+        return getattr(call_ctx, "requested_pause_seconds", 60.0)
     base = _TIMEOUTS.get(context, 6.0)
     emotional_state = getattr(call_ctx, "emotional_state", "NEUTRAL")
     multiplier = _EMOTIONAL_MULTIPLIERS.get(emotional_state, 1.0)

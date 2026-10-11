@@ -1,6 +1,6 @@
 # Voice audit finding ledger
 
-All 129 original findings, 15 recovery findings and 16 conversation findings remain recorded below. Addressed describes tested code changes, not production certification. Original evidence is preserved in [VOICE-AUDIT-FINDINGS.json](VOICE-AUDIT-FINDINGS.json). Open and partial items remain release blockers or follow-ups.
+All 129 original findings, 15 recovery findings 16 conversation findings and 12 speech/accessibility findings remain recorded below. Addressed describes tested code changes, not production certification. Original evidence is preserved in [VOICE-AUDIT-FINDINGS.json](VOICE-AUDIT-FINDINGS.json). Open and partial items remain release blockers or follow-ups.
 
 | Finding | Severity | Repair status | Problem |
 |---|---|---|---|
@@ -164,3 +164,15 @@ All 129 original findings, 15 recovery findings and 16 conversation findings rem
 | REI-158 | P1 | Addressed locally; generated conversation and real-call verification pending | Simulator fabricated booking success |
 | REI-159 | P1 | Addressed locally; generated conversation and real-call verification pending | Simulation blocked the event loop and could affect production QA |
 | REI-160 | P2 | Addressed locally; generated conversation and real-call verification pending | Simulations used a different opening and conversation policy |
+| REI-161 | P1 | Addressed locally; live speech and production verification pending | Spoken requests without question marks missed answers |
+| REI-162 | P1 | Addressed locally; live speech and production verification pending | Ordinary callback phrasing continued selling |
+| REI-163 | P1 | Addressed locally; live speech and production verification pending | Partial refusal ended the entire discussion |
+| REI-164 | P1 | Addressed locally; live speech and production verification pending | Written-number timing corrections retained superseded timing |
+| REI-165 | P1 | Addressed locally; live speech and production verification pending | Denied ownership retained negotiation eligibility |
+| REI-166 | P1 | Addressed locally; live speech and production verification pending | Retracted moving motivation persisted |
+| REI-167 | P1 | Addressed locally; live speech and production verification pending | Uncertain transcripts changed facts and triggered actions |
+| REI-168 | P1 | Addressed locally; live speech and production verification pending | Queued processors mixed consecutive transcript states |
+| REI-169 | P1 | Addressed locally; live speech and production verification pending | Hearing difficulty caused more sales discovery |
+| REI-170 | P1 | Addressed locally; live speech and production verification pending | Explicit wait requests still received early silence prompts |
+| REI-171 | P1 | Addressed locally; live speech and production verification pending | Analysis callbacks confused identity with transfer |
+| REI-172 | P1 | Open; real-phone VAD calibration required | Sharp telephone-band filtering defeated synthetic VAD |

@@ -409,6 +409,12 @@ def execute_tool(
                 call_ctx.call_should_end = True
             return result
 
+        if getattr(call_ctx, "ownership_denied", False) and tool_name in {"book_appointment", "get_offer_range", "send_offer_summary"}:
+            return "Action not performed. The caller denied owning this property; human review is required."
+
+        if getattr(call_ctx, "transcript_uncertain", False) and tool_name in execution_context.SIDE_EFFECT_TOOLS and tool_name != "end_call":
+            return "Action not performed. I did not hear that clearly; please confirm the missing detail first."
+
         try:
             resolved = execution_context.resolve(call_ctx)
         except execution_context.ContextResolutionError as error:
