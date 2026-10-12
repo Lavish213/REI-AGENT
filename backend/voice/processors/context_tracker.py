@@ -582,7 +582,7 @@ class ContextTrackerProcessor(FrameProcessor):
             remember_fact("right_person", False)
             self._ctx.awaiting_owner_confirmation = False
             self._ctx.pre_close_done = False
-        if not denied_ownership and re.search(r"\b(i own|i'm the owner|i am the owner|it's my (?:house|property)|my house)\b", lower) and not re.search(r"\b(not|don't)\b.{0,15}\bown", lower):
+        if not denied_ownership and "?" not in text and not re.search(r"\b(?:if|maybe|might|suppose|hypothetically|my neighbor|my friend)\b", lower) and re.search(r"\b(i own|i'm the owner|i am the owner|it's my (?:house|property)|my house)\b", lower) and not re.search(r"\b(not|don't)\b.{0,15}\bown", lower):
             self._ctx.owner_confirmed = True
             self._ctx.ownership_denied = False
             remember_fact("right_person")

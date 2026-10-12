@@ -203,6 +203,7 @@ def test_questions_and_hypotheticals_are_not_verified_checklist_facts(text):
     ctx._call_sid = 'call-1'
     ContextTrackerProcessor(ctx)._analyze(text)
     assert not any(item['confirmed'] for item in ctx.bob_verified_facts.values())
+    assert ctx.owner_confirmed is False
 
 
 @pytest.mark.asyncio
