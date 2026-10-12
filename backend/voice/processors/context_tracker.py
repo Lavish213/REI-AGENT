@@ -447,10 +447,10 @@ class ContextTrackerProcessor(FrameProcessor):
                     self._ctx.runtime_instruction = None
                     logger.warning("dnc_signal_detected")
                     from backend.voice.tools import execute_tool
-                    await asyncio.to_thread(execute_tool, "honor_stop_request", {"verbatim": text}, self._ctx)
+                    stop_receipt = await asyncio.to_thread(execute_tool, "honor_stop_request", {"verbatim": text}, self._ctx)
                     self._ctx.call_should_end = True
                     if self._ctx._task_ref:
-                        await self._ctx._task_ref.queue_frames([TTSSpeakFrame("Understood. We'll stop contacting you. Goodbye."), EndFrame()])
+                        await self._ctx._task_ref.queue_frames([TTSSpeakFrame(stop_receipt), EndFrame()])
                     return
 
                 if self._objective_engine is not None:
