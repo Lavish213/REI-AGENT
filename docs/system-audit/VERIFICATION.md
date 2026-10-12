@@ -4,7 +4,7 @@ This pass is published as drafts; the full overhaul and production A grade are n
 
 | Project | Verified result | Evidence |
 |---|---|---|
-| The-Dashboard | 1,042 backend tests on disposable PostgreSQL 17 and Redis 8; frontend typecheck/lint/build; 20 frontend fault/concurrency/store checks; zero runtime dependency advisories | https://github.com/Lavish213/The-Dashboard/actions/runs/38282015032 on cf3292812f011288fc8b74a296460d334243ae70; repository docs/test-evidence/system-audit |
+| The-Dashboard | 1,042 backend tests on disposable PostgreSQL/Redis; typecheck/lint/clean build; 22 fault/concurrency/store tests; 31 fixture-only browser states across 16 routes, 0 automated violations; zero runtime advisories. Development tooling advisories remain open. | https://github.com/Lavish213/The-Dashboard/actions/runs/38288551534 on 06f7a063323dd96b91a929bb88e7e8ff987fc750; docs/visual-audit/REPORT.md and VALIDATION.json |
 | Sophia-Agent | Recovered full offline unit suite: 450 passed, 6 deprecation warnings. Unmocked Supabase access blocked. | docs/test-evidence/system-audit/sophia-recovered-tests.txt in https://github.com/Lavish213/Sophia-Agent/pull/1 |
 | REI-AGENT | 1,395 tests; 8 coordinated Bob/SQL checks; 30 dashboard HTTP fault checks; build/audit gate | https://github.com/Lavish213/REI-AGENT/actions/runs/38281972038 on 66cfe56f22c5b83f46d52ae2df89b3e2abc3e82b |
 | Bob-Intelligence- | Existing repaired producer is exercised by REI's coordinated checks; prior separate 237-test and 51-SQL-check evidence remains in its audit ledger. No new Bob runtime code in this pass. | https://github.com/Lavish213/Bob-Intelligence-/pull/1 |

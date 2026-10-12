@@ -30,7 +30,7 @@ This supplements the existing REI and Bob forensic ledgers. Each status applies 
 | SYS-24 | Critical | REI context_tracker.py | STOP persistence receipt ignored; fixed success speech on failure. | Hosted CI 38281972038 passes 1,395 tests, 8 Bob/SQL contracts and 30 dashboard HTTP fault checks on recovered tree. |
 | SYS-25 | High | Dashboard handoff/call mutation identity | Caller-selected operator attribution and read-only roles mutating calls. | Recovered role/identity/participant ownership repair; six independent handoff rejection cases pass. |
 | SYS-26 | High | Full database harness | Embedded adapter loses transaction/error behavior; cannot count that run as green. | Resolved testing blocker: hosted CI 38282015032 passes 1,042 tests against disposable PostgreSQL/Redis. Production/migration gates remain open. |
-| SYS-27 | Medium | Visual audit | Local server inaccessible; managed browser timed out for hours and reset workspace. | Blocked: supported screenshot/keyboard/mobile/contrast testing. No visual grade. |
+| SYS-27 | Medium | Visual audit | Original managed-browser blocker resolved using authorized local Playwright and hosted CI. | Partial: design contract, 23-item dashboard issue log, 31 rendered states across 16 routes, 0 automated violations and 7 interaction checks; Dashboard CI 38288551534 green. Populated production workflows and full cross-browser/a11y coverage remain open. See Dashboard docs/visual-audit/REPORT.md. |
 | SYS-28 | High | Production voice/providers | Simulations do not prove accents/noise/muffled audio/duplex/hearing access, recovery, schedules, callbacks or durable volumes. | Open: approved real-call corpus, latency/turn metrics, provider outages and rollback drills. |
 | SYS-29 | Medium | Dashboard properties/page.tsx | Storage failure still displayed save/remove success. | Second review repair: success toast requires storage acknowledgement; frontend checks required. |
 
@@ -41,7 +41,8 @@ This supplements the existing REI and Bob forensic ledgers. Each status applies 
 - [x] Recovery commits preserve restored code; rerun verification proceeds against those files.
 - [x] Recovered dashboard full backend suite and REI regression/contract checks pass hosted CI.
 - [ ] Complete cross-project integration and migration gates green.
-- [ ] Screenshot-backed visual design contract and complete redesign.
+- [x] Screenshot-backed design contract and tested dashboard repairs published in Dashboard PR #1.
+- [ ] Complete populated-workflow and production-connected dashboard verification.
 - [ ] Independent complete second audit against all original findings.
 - [ ] Real phone and production infrastructure gates.
 
