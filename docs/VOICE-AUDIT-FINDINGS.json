@@ -2307,5 +2307,38 @@
     "problem": "The live tool registry has no cancellation/rescheduling tools; direct SQL reminder tests do not establish a caller workflow.",
     "fix": "Implement bound authorized lifecycle tools and reminder integration, then test actual transactions.",
     "repair_status": "Open; no live lifecycle tool implemented"
+  },
+  {
+    "id": "REI-181",
+    "category": "Dependency security",
+    "severity": "P0",
+    "status": "npm audit and upstream advisory verification",
+    "title": "Dashboard shipped vulnerable Next.js and transitive runtime dependencies",
+    "file": "dashboard/package-lock.json",
+    "problem": "Final CI review reported 15 dependency findings, including one critical package. Next.js 16.2.6 was in published affected ranges; build success did not establish security.",
+    "fix": "Pin Next.js and eslint-config-next 16.4.0, refresh compatible transitive dependencies, and verify runtime npm audit, build, lint and HTTP faults.",
+    "repair_status": "Addressed locally; runtime npm audit reports zero known findings, deployment pending"
+  },
+  {
+    "id": "REI-182",
+    "category": "Dependency security",
+    "severity": "P1",
+    "status": "npm audit and upstream advisory verification",
+    "title": "Development lint dependency retains unpatched braces advisory",
+    "file": "dashboard/package-lock.json",
+    "problem": "Five high findings remain in the development-only braces/micromatch/fast-glob/Next lint dependency chain. GHSA-vfj7-8cjw-p6xm has no published patched version; a suggested force downgrade would mismatch Next.js 16.",
+    "fix": "Do not process attacker-controlled glob patterns in lint/build tooling. Retain explicit ledger and full audit output, isolate build tooling and update when a compatible upstream fix exists.",
+    "repair_status": "Partial; runtime chain removed but development-only upstream advisory remains"
+  },
+  {
+    "id": "REI-183",
+    "category": "Dependency security",
+    "severity": "P1",
+    "status": "Hosted workflow inspection",
+    "title": "Hosted build did not gate vulnerable runtime packages",
+    "file": ".github/workflows/voice-regression.yml",
+    "problem": "npm ci printed a critical advisory while the overall CI job could still pass.",
+    "fix": "Run npm audit --omit=dev --audit-level=high before dashboard build; retain full development audit separately.",
+    "repair_status": "Addressed; runtime advisory gate added"
   }
 ]

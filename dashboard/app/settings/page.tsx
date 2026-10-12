@@ -58,7 +58,7 @@ export default function SettingsPage() {
       <h2 className="font-semibold">Voice evaluation</h2>
       <p className="text-sm">Conversation scenarios check text behavior. Recorded phone calls are required to assess audio, latency, and interruptions.</p>
       <button disabled={busy} onClick={() => action('evals/run')} className="border rounded px-4 py-2">Run conversation scenarios</button>
-      <button className="block text-sm underline" onClick={() => window.location.assign("/api/backend/api/evals/history")}>View saved evaluations</button>
+      <a className="block text-sm underline" href="/api/backend/api/evals/history" download="voice-evaluations.json">Download saved evaluations</a>
     </section>
   </div>
 }

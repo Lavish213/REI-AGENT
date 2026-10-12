@@ -63,6 +63,7 @@ jobs:
       - name: Dashboard build and HTTP fault tests
         run: |
           npm ci --prefix dashboard
+          npm audit --omit=dev --audit-level=high --prefix dashboard
           npm run build --prefix dashboard
           npm run lint --prefix dashboard
           npm run test:dashboard --prefix tests

@@ -46,4 +46,6 @@ Nothing merged, deployed, migrated on a live project, called, texted or emailed.
 
 Second pass re-read the repaired Bob source and re-traced both directions, authentication, acknowledgment, job/source leases, file persistence, timestamp precedence, authority boundaries and shutdown. It found and repaired the guessed Karpathys route, SQLite deployment constraints, observation refresh, free-form guidance and duplicate functions. This is a bounded code audit, not proof that no unknown bugs exist.
 
+Hosted Bob CI run 38173657503 and coordinated REI run 38173684445 passed, including the actual cross-repository round trip. Final log review also found dashboard dependency vulnerabilities; the subsequent security upgrade and remaining development-only advisory are recorded in [DASHBOARD-DEPENDENCY-SECURITY.md](DASHBOARD-DEPENDENCY-SECURITY.md). That follow-up receives its own hosted regression run. Bob ledger remains 51 findings; the separate REI ledger now contains 183 entries.
+
 Implementation references: PostgreSQL [queue locking](https://www.postgresql.org/docs/17/sql-select.html) and SQLite [WAL durability and same-host restriction](https://www.sqlite.org/wal.html). Do not mount the journal on a network filesystem.
