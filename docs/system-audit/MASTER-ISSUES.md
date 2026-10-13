@@ -34,6 +34,10 @@ This supplements the existing REI and Bob forensic ledgers. Each status applies 
 | SYS-28 | High | Production voice/providers | Simulations do not prove accents/noise/muffled audio/duplex/hearing access, recovery, schedules, callbacks or durable volumes. | Open: approved real-call corpus, latency/turn metrics, provider outages and rollback drills. |
 | SYS-29 | Medium | Dashboard properties/page.tsx | Storage failure still displayed save/remove success. | Second review repair: success toast requires storage acknowledgement; frontend checks required. |
 
+## Additional confirmed findings
+
+| ID | Severity | Affected file/boundary | Root cause; fix | Verification/status |
+|---|---|---|---|---|
 | SYS-30 | Critical | Production Compose/Docker/env | Environment mappings overrode production env files; inherited public service ports/mounts, localhost browser builds, missing backend startup/domain wiring. | Repaired explicit required production configuration, private service ports, removed source mounts, build-time/same-origin browser config, authenticated Redis health and startup. Hosted production merge check passed; real containers/TLS/backup remain open. |
 | SYS-31 | High | WebsocketProvider / auth / realtime | Reusable JWT in query URL/logs; reconnection reused credentials. | Single-use Redis ticket <=20 seconds, atomic consumption, current active DB role, fresh reconnect and cancellation tests. Long-lived role/revocation policy after connect remains open. |
 | SYS-32 | High | Dashboard scheduled work / leads API | First page looked complete; aggregates covered loaded records; date writes insufficiently bounded. | Server pagination/month filters, full-set deal totals, timezone/past-date validation, acknowledged cancellation; 201/203-record browser and SQL checks passed. |
