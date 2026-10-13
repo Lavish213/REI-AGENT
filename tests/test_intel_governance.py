@@ -26,7 +26,7 @@ class TestPreflightGate:
     def test_always_allowed_tools_pass(self):
         from backend.voice.tools import _preflight_gate
         ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet={})
-        for tool in ["end_call", "set_disposition"]:
+        for tool in ["end_call", "honor_stop_request"]:
             result = _preflight_gate(tool, _resolved(), ctx)
             assert not result["blocked"], f"{tool} should always be allowed"
 
@@ -85,25 +85,25 @@ class TestPreflightGate:
 class TestConflictDetection:
     def test_seller_above_max_offer(self):
         from backend.lib.intel_assembler import _detect_conflicts
-        flags = _detect_conflicts(bob_max_offer=340000, comp_arv=380000, seller_price_floor=390000)
+        flags = _detect_conflicts(bob_max_offer=34000000, comp_arv=38000000, seller_price_floor=39000000)
         types = [f["type"] for f in flags]
         assert "SELLER_ABOVE_MAX_OFFER" in types
 
     def test_comp_below_max_offer(self):
         from backend.lib.intel_assembler import _detect_conflicts
-        flags = _detect_conflicts(bob_max_offer=340000, comp_arv=280000, seller_price_floor=None)
+        flags = _detect_conflicts(bob_max_offer=34000000, comp_arv=28000000, seller_price_floor=None)
         types = [f["type"] for f in flags]
         assert "COMP_BELOW_MAX_OFFER" in types
 
     def test_spread_too_thin(self):
         from backend.lib.intel_assembler import _detect_conflicts
-        flags = _detect_conflicts(bob_max_offer=None, comp_arv=310000, seller_price_floor=308000)
+        flags = _detect_conflicts(bob_max_offer=None, comp_arv=31000000, seller_price_floor=30800000)
         types = [f["type"] for f in flags]
         assert "SPREAD_TOO_THIN" in types
 
     def test_no_conflict_clean_deal(self):
         from backend.lib.intel_assembler import _detect_conflicts
-        flags = _detect_conflicts(bob_max_offer=340000, comp_arv=420000, seller_price_floor=280000)
+        flags = _detect_conflicts(bob_max_offer=34000000, comp_arv=42000000, seller_price_floor=28000000)
         assert flags == []
 
 
@@ -169,3 +169,8 @@ class TestIdempotency:
         k1 = _idem_key("lead123", "call456", "call_completed")
         k2 = _idem_key("lead123", "call456", "turn_signals")
         assert k1 != k2
+
+
+@pytest.fixture(autouse=True)
+def isolate_gate_audit_writes(monkeypatch):
+    monkeypatch.setattr("backend.lib.db.write_tool_gate_log", lambda *args, **kwargs: None)

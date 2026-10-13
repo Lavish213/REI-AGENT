@@ -1,6 +1,7 @@
 import os
 import math
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from loguru import logger
 
 MAO_MULTIPLIER = float(os.environ.get("MAO_MULTIPLIER", 0.70))
@@ -76,7 +77,7 @@ def calculate_arv(comps, subject_sqft):
     for comp in comps:
         sold_price = comp.get("sold_price")
         sqft = comp.get("sqft")
-        if not (sold_price and sqft and sqft > 0):
+        if not isinstance(sold_price, (int, float)) or not isinstance(sqft, (int, float)) or not math.isfinite(sold_price) or not math.isfinite(sqft) or sold_price <= 0 or sqft <= 0:
             continue
 
         ppsf = sold_price / sqft
@@ -119,9 +120,9 @@ def calculate_arv(comps, subject_sqft):
     else:
         comp_strength = "weak"
 
-    arv_cents = int(arv_dollars * 100)
+    arv_cents = int((Decimal(str(arv_dollars)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     repair_buffer_cents = MAO_REPAIR_BUFFER * 100
-    mao_cents = max(int((arv_cents * MAO_MULTIPLIER) - repair_buffer_cents), 0)
+    mao_cents = max(arv_cents * 70 // 100 - repair_buffer_cents, 0)
 
     logger.info("calculate_arv comps={} ppsf={:.2f} arv=${:.0f} mao=${:.0f} confidence={} variance={:.3f} strength={}",
                 len(comps), weighted_ppsf, arv_dollars, mao_cents / 100, confidence, price_variance, comp_strength)

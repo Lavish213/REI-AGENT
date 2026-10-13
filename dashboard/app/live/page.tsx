@@ -1,11 +1,15 @@
-import { supabase } from '@/lib/supabase'
+import type { LiveCall } from '@/lib/types'
+import Link from 'next/link'
+export const dynamic = 'force-dynamic'
+
+import { backendFetch } from '@/lib/backend'
+import { getSupabase } from '@/lib/supabase'
 import LiveActivity from '@/components/LiveActivity'
 
-const API = process.env.NEXT_PUBLIC_API_URL || ''
 
 async function fetchLiveCalls() {
   try {
-    const res = await fetch(`${API}/api/live/calls`, { cache: 'no-store' })
+    const res = await backendFetch(`/api/live/calls`, { cache: 'no-store' })
     if (!res.ok) return { active_count: 0, calls: [] }
     return res.json()
   } catch {
@@ -25,14 +29,14 @@ function elapsed(startedAt: string | null): string {
 export default async function LivePage() {
   const [liveData, recentEventsRes] = await Promise.all([
     fetchLiveCalls(),
-    supabase
+    getSupabase()
       .from('call_events')
       .select('id, event_type, payload, created_at, lead_id')
       .order('created_at', { ascending: false })
       .limit(15),
   ])
 
-  const activeCalls = liveData.calls ?? []
+  const activeCalls: LiveCall[] = liveData.calls ?? []
   const recentEvents = recentEventsRes.data ?? []
 
   return (
@@ -43,8 +47,8 @@ export default async function LivePage() {
           <p className="text-xs text-gray-500 mt-0.5">Refresh page to update active calls · Events stream live</p>
         </div>
         <div className="flex gap-3 text-sm">
-          <a href="/" className="text-blue-400 hover:underline">← Operations</a>
-          <a href="/calls" className="text-blue-400 hover:underline">Call History →</a>
+          <Link href="/" className="text-blue-400 hover:underline">← Operations</Link>
+          <Link href="/calls" className="text-blue-400 hover:underline">Call History →</Link>
         </div>
       </div>
 
@@ -68,7 +72,7 @@ export default async function LivePage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {activeCalls.map((call: any) => (
+            {activeCalls.map((call) => (
               <div key={call.call_sid} className="bg-gray-800 rounded-lg p-4">
                 <div className="flex items-center gap-4">
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
@@ -123,15 +127,15 @@ export default async function LivePage() {
                         <span className="text-purple-400">{call.metrics.situation_label.replace(/_/g, ' ')}</span>
                       )}
                     </div>
-                    {call.metrics?.objections_raised?.length > 0 && (
+                    {(call.metrics?.objections_raised?.length ?? 0) > 0 && (
                       <div className="text-xs text-orange-400/70 mt-0.5">
-                        Objections: {call.metrics.objections_raised.join(', ')}
+                        Objections: {(call.metrics?.objections_raised ?? []).join(', ')}
                       </div>
                     )}
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm font-mono text-green-400">
-                      {elapsed(call.started_at)}
+                      {elapsed(call.started_at ?? null)}
                     </div>
                     <div className="text-xs text-gray-600 mt-0.5">elapsed</div>
                   </div>
@@ -151,7 +155,7 @@ export default async function LivePage() {
       </section>
 
       {/* Live activity feed */}
-      <LiveActivity initialEvents={recentEvents as any} />
+      <LiveActivity initialEvents={recentEvents} />
     </main>
   )
 }

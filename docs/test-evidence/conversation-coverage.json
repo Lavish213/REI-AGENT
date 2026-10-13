@@ -1,0 +1,77 @@
+{
+  "meta": {
+    "format": 3,
+    "version": "7.16.2",
+    "timestamp": "2026-10-11T09:31:24.449726",
+    "branch_coverage": true,
+    "show_contexts": false
+  },
+  "totals": {
+    "covered_lines": 3673,
+    "num_statements": 11142,
+    "percent_covered": 31.049057649667407,
+    "percent_covered_display": "31",
+    "missing_lines": 7469,
+    "excluded_lines": 0,
+    "percent_statements_covered": 32.9653563094597,
+    "percent_statements_covered_display": "33",
+    "num_branches": 3290,
+    "num_partial_branches": 274,
+    "covered_branches": 808,
+    "missing_branches": 2482,
+    "percent_branches_covered": 24.559270516717326,
+    "percent_branches_covered_display": "25"
+  },
+  "scope": "all backend files, including unimported modules",
+  "new_conversation_module_coverage": {
+    "backend/voice/conversation_policy.py": {
+      "covered_lines": 102,
+      "num_statements": 105,
+      "percent_covered": 95.20958083832335,
+      "percent_covered_display": "95",
+      "missing_lines": 3,
+      "excluded_lines": 0,
+      "percent_statements_covered": 97.14285714285714,
+      "percent_statements_covered_display": "97",
+      "num_branches": 62,
+      "num_partial_branches": 5,
+      "covered_branches": 57,
+      "missing_branches": 5,
+      "percent_branches_covered": 91.93548387096774,
+      "percent_branches_covered_display": "92"
+    },
+    "backend/voice/conversation_replay.py": {
+      "covered_lines": 36,
+      "num_statements": 40,
+      "percent_covered": 90.0,
+      "percent_covered_display": "90",
+      "missing_lines": 4,
+      "excluded_lines": 0,
+      "percent_statements_covered": 90.0,
+      "percent_statements_covered_display": "90",
+      "num_branches": 10,
+      "num_partial_branches": 1,
+      "covered_branches": 9,
+      "missing_branches": 1,
+      "percent_branches_covered": 90.0,
+      "percent_branches_covered_display": "90"
+    },
+    "backend/voice/simulator.py": {
+      "covered_lines": 88,
+      "num_statements": 111,
+      "percent_covered": 75.1937984496124,
+      "percent_covered_display": "75",
+      "missing_lines": 23,
+      "excluded_lines": 0,
+      "percent_statements_covered": 79.27927927927928,
+      "percent_statements_covered_display": "79",
+      "num_branches": 18,
+      "num_partial_branches": 3,
+      "covered_branches": 9,
+      "missing_branches": 9,
+      "percent_branches_covered": 50.0,
+      "percent_branches_covered_display": "50"
+    }
+  },
+  "full_report_path_at_run": "conversation-coverage.json"
+}

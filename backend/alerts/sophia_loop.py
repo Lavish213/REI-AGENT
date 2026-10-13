@@ -1,6 +1,6 @@
 from __future__ import annotations
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 import pytz
 from loguru import logger
@@ -31,7 +31,7 @@ def _days_since(iso: str | None) -> float:
 
 def _decide_channel(lead: dict) -> str | None:
     disposition = (lead.get("disposition") or "").upper()
-    last_contact = lead.get("last_called_at") or lead.get("last_sms_at")
+    last_contact = max(filter(None, (lead.get("last_called_at"), lead.get("last_sms_at"))), default=None)
     days_silent = _days_since(last_contact)
     call_attempts = lead.get("call_attempts") or 0
     drip_started = lead.get("drip_started_at")
@@ -77,7 +77,7 @@ def _decide_channel(lead: dict) -> str | None:
 
 def _generate_personalized_sms(lead: dict, prop: dict) -> str:
     import anthropic
-    first_name = (lead.get("owner_first_name") or (lead.get("owner_name") or "").split()[0] or "").strip() or "there"
+    first_name = (lead.get("owner_first_name") or next(iter((lead.get("owner_name") or "").split()), "") or "").strip() or "there"
     motivation = lead.get("motivation_level")
     distress = (prop.get("distress_type") or "general").replace("_", " ")
     call_summary = (lead.get("call_summary") or "")[:120]
@@ -175,17 +175,14 @@ def run_sophia_loop() -> dict:
 
         lead_id = lead["id"]
 
-        if len(_ACTIVE_CALL_IDS) >= _MAX_CONCURRENT_OUTBOUND:
-            logger.info("sophia_loop concurrent limit reached active={}", len(_ACTIVE_CALL_IDS))
-            break
 
         try:
             if channel == "call":
                 result = call_lead(lead_id, bypass_cooldown=False)
                 if result.get("success"):
-                    _ACTIVE_CALL_IDS.add(lead_id)
+
                     results["called"] += 1
-                    _ACTIVE_CALL_IDS.add(lead_id)
+
                     actions += 1
 
             elif channel == "sms":

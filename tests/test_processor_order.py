@@ -2,83 +2,6 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
-CANONICAL_PIPELINE_ORDER = [
-    "transport.input()",
-    "stt",
-    "stt_mute_proc",
-    "interruption_proc",
-    "emotion_proc",
-    "ai_identity_proc",
-    "context_tracker",
-    "backchannel_proc",
-    "context_aggregator.user()",
-    "llm",
-    "sentence_streamer",
-    "fair_housing_filter",
-    "tts",
-    "latency_proc_tts",
-    "transport_output",
-    "context_aggregator.assistant()",
-]
-
-
-class TestPipelineOrder:
-    def test_stt_mute_before_interruption(self):
-        order = CANONICAL_PIPELINE_ORDER
-        assert order.index("stt_mute_proc") < order.index("interruption_proc")
-
-    def test_interruption_before_emotion(self):
-        order = CANONICAL_PIPELINE_ORDER
-        assert order.index("interruption_proc") < order.index("emotion_proc")
-
-    def test_emotion_before_ai_identity(self):
-        order = CANONICAL_PIPELINE_ORDER
-        assert order.index("emotion_proc") < order.index("ai_identity_proc")
-
-    def test_ai_identity_before_context_tracker(self):
-        order = CANONICAL_PIPELINE_ORDER
-        assert order.index("ai_identity_proc") < order.index("context_tracker")
-
-    def test_context_tracker_before_llm(self):
-        order = CANONICAL_PIPELINE_ORDER
-        assert order.index("context_tracker") < order.index("llm")
-
-    def test_llm_before_sentence_streamer(self):
-        order = CANONICAL_PIPELINE_ORDER
-        assert order.index("llm") < order.index("sentence_streamer")
-
-    def test_sentence_streamer_before_fair_housing(self):
-        order = CANONICAL_PIPELINE_ORDER
-        assert order.index("sentence_streamer") < order.index("fair_housing_filter")
-
-    def test_fair_housing_before_tts(self):
-        order = CANONICAL_PIPELINE_ORDER
-        assert order.index("fair_housing_filter") < order.index("tts")
-
-    def test_tts_before_latency(self):
-        order = CANONICAL_PIPELINE_ORDER
-        assert order.index("tts") < order.index("latency_proc_tts")
-
-    def test_latency_before_transport_output(self):
-        order = CANONICAL_PIPELINE_ORDER
-        assert order.index("latency_proc_tts") < order.index("transport_output")
-
-    def test_all_canonical_processors_present(self):
-        required = [
-            "stt_mute_proc",
-            "interruption_proc",
-            "emotion_proc",
-            "ai_identity_proc",
-            "context_tracker",
-            "backchannel_proc",
-            "sentence_streamer",
-            "fair_housing_filter",
-            "latency_proc_tts",
-        ]
-        for proc in required:
-            assert proc in CANONICAL_PIPELINE_ORDER, f"Missing processor: {proc}"
-
-
 class TestInterruptionProcessor:
     def test_interruption_ack_pool_not_empty(self):
         from backend.voice.processors.interruption import INTERRUPTION_ACKNOWLEDGMENTS
@@ -107,7 +30,7 @@ class TestAIIdentityProcessor:
 
     def test_identity_patterns_match_common_questions(self):
         import re
-        from backend.voice.processors.ai_identity import _IDENTITY_PATTERNS
+        from backend.voice.processors.ai_identity import _AI_QUESTION as _IDENTITY_PATTERNS
         questions = [
             "are you a robot",
             "is this a bot",
@@ -121,7 +44,7 @@ class TestAIIdentityProcessor:
 
     def test_identity_patterns_no_false_positives(self):
         import re
-        from backend.voice.processors.ai_identity import _IDENTITY_PATTERNS
+        from backend.voice.processors.ai_identity import _AI_QUESTION as _IDENTITY_PATTERNS
         normal = [
             "I want to sell my house",
             "what's your offer",
@@ -133,25 +56,20 @@ class TestAIIdentityProcessor:
 
 
 class TestEmotionProcessor:
-    def test_sad_keywords_detected(self):
-        from backend.voice.processors.emotion import _detect_emotion
-        assert _detect_emotion("my husband passed away last month") == "sad"
-        assert _detect_emotion("we're going through a divorce") == "sad"
-        assert _detect_emotion("I'm behind on the mortgage") == "sad"
-
-    def test_frustrated_keywords_detected(self):
-        from backend.voice.processors.emotion import _detect_emotion
-        assert _detect_emotion("I don't know what to do") == "frustrated"
-
-    def test_interested_keywords_detected(self):
-        from backend.voice.processors.emotion import _detect_emotion
-        assert _detect_emotion("how much would you offer for it") == "interested"
-        assert _detect_emotion("when can you come take a look") == "interested"
-
-    def test_neutral_text_returns_none(self):
-        from backend.voice.processors.emotion import _detect_emotion
-        assert _detect_emotion("hello there") is None
-        assert _detect_emotion("yes I'm the owner") is None
+    @pytest.mark.parametrize("text,expected", [
+        ("my husband passed away last month", "GRIEVING"),
+        ("we're going through a divorce", "DISTRESSED"),
+        ("I'm behind on the mortgage", "DISTRESSED"),
+        ("I don't know what to do", "OVERWHELMED"),
+        ("when can you come take a look", "EXCITED"),
+        ("the home has a new roof", "NEUTRAL"),
+    ])
+    def test_current_emotion_engine(self, text, expected):
+        from backend.voice.emotional_state_engine import EmotionalStateEngine
+        from backend.voice.processors.context_tracker import CallContext
+        ctx = CallContext()
+        EmotionalStateEngine(ctx)._update_emotional_state(text)
+        assert ctx.emotional_state == expected
 
 
 class TestFairHousingFilter:

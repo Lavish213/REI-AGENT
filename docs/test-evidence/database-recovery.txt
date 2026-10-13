@@ -1,0 +1,6 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> test:database
+> node voice_scheduling_db.cjs
+
+PASS: reservation idempotency, collision rejection, availability enforcement, generation-owned callback claims, provider event deduplication/stale rejection, rebooking reminder reset, due/type filtering, and anonymous denial

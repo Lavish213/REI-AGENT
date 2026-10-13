@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 import os
 from contextlib import asynccontextmanager
 
-from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from loguru import logger
 
@@ -55,7 +53,7 @@ def _run_sophia_loop() -> None:
 
 def _run_outbound_campaign() -> None:
     try:
-        from scripts.run_outbound import run_campaign
+        from backend.voice.campaign import run_campaign
         run_campaign()
         logger.info("outbound_campaign completed")
     except Exception as e:
@@ -72,42 +70,69 @@ def _refresh_engagement() -> None:
 
 
 def _run_pending_followups() -> None:
+    from backend.lib.db import claim_due_call_followups, claim_due_callbacks, finish_followup_claim, finish_callback_claim, campaign_is_running
+    from backend.voice.outbound import call_lead
     try:
-        from backend.lib.db import get_pending_followups, _get_client
-        from backend.voice.outbound import call_lead
-        from datetime import datetime, timezone
-        followups = get_pending_followups(limit=5)
-        for f in followups:
-            lead_id = f.get("lead_id")
-            if lead_id:
-                result = call_lead(lead_id, bypass_cooldown=False)
-                logger.info("followup_call lead_id={} success={}", lead_id, result.get("success"))
-        now = datetime.now(timezone.utc).isoformat()
-        client = _get_client()
-        due = client.table("leads").select("id").not_.is_("callback_scheduled_at", "null").lte("callback_scheduled_at", now).neq("last_call_outcome", "answered").limit(3).execute()
-        for lead in (due.data or []):
-            lid = lead.get("id")
-            if lid:
-                call_lead(lid, bypass_cooldown=True)
-                client.table("leads").update({"callback_scheduled_at": None}).eq("id", lid).execute()
-                logger.info("scheduled_callback_dialed lead_id={}", lid)
-    except Exception as e:
-        logger.exception("followup_poller error={}", str(e))
+        if not campaign_is_running():
+            return
+        try:
+            followups = claim_due_call_followups()
+        except Exception as error:
+            logger.exception("followup_claim failed error={}", str(error))
+            followups = []
+        for followup in followups:
+            if not followup.get("claim_token"):
+                logger.error("followup_claim missing ownership id={}", followup.get("id"))
+                continue
+            success = False
+            try:
+                success = bool(call_lead(followup["lead_id"], bypass_cooldown=False).get("success"))
+            except Exception as error:
+                logger.exception("followup_attempt failed id={} error={}", followup.get("id"), str(error))
+            finally:
+                try:
+                    finish_followup_claim(followup["id"], success, followup.get("claim_token"))
+                except Exception as error:
+                    logger.exception("followup_completion failed id={} error={}", followup.get("id"), str(error))
+        try:
+            callbacks = claim_due_callbacks()
+        except Exception as error:
+            logger.exception("callback_claim failed error={}", str(error))
+            callbacks = []
+        for callback in callbacks:
+            if not callback.get("callback_claim_token"):
+                logger.error("callback_claim missing ownership id={}", callback.get("id"))
+                continue
+            success = False
+            try:
+                success = bool(call_lead(callback["id"], bypass_cooldown=True).get("success"))
+            except Exception as error:
+                logger.exception("callback_attempt failed id={} error={}", callback.get("id"), str(error))
+            finally:
+                try:
+                    finish_callback_claim(callback["id"], callback["callback_scheduled_at"], success, callback.get("callback_claim_token"))
+                except Exception as error:
+                    logger.exception("callback_completion failed id={} error={}", callback.get("id"), str(error))
+    except Exception as error:
+        logger.exception("followup_poller error={}", str(error))
+
+
+def _flush_bob_facts():
+    try:
+        from backend.lib.db import flush_bob_call_fact_outbox
+        result = flush_bob_call_fact_outbox()
+        if result["failed"] or result["expired"]:
+            logger.warning("bob_fact_recovery results={}", result)
+    except Exception as error:
+        logger.error("bob_fact_recovery_failed type={}", type(error).__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _application_lifespan(app: FastAPI):
     logger.info("REI Agent API starting")
-    from backend.voice import agent as _agent_warmup  # noqa: F401
-    from backend.voice import agent as _agent_warmup  # noqa: F401
-    from backend.voice import agent as _voice_agent_warmup  # noqa: F401
-
-    if os.environ.get("GROQ_API_KEY", "").strip():
-        logger.critical(
-            "GROQ_API_KEY is set — tools (book_appointment, end_call, transfer_call) "
-            "will NOT work. Unset GROQ_API_KEY to restore full functionality."
-        )
-
+    if os.environ.get("ENABLE_BACKGROUND_JOBS", "false").lower() != "true":
+        yield
+        return
     baseline = os.environ.get("VOICE_BASELINE_MODE", "false").lower() == "true"
     if baseline:
         logger.info("voice startup baseline mode active")
@@ -123,18 +148,11 @@ async def lifespan(app: FastAPI):
     start_appointment_scheduler()
 
     try:
-        from backend.lib.db import _get_client
-        _get_client().table("leads").select("id").limit(1).execute()
+        from backend.lib.db import warm_database
+        warm_database()
         logger.info("supabase_warmup complete")
-    except Exception as _we:
-        logger.warning("supabase_warmup failed error={}", str(_we))
-
-    try:
-        from backend.lib.db import _get_client
-        _get_client().table("leads").select("id").limit(1).execute()
-        logger.info("supabase_warmup complete")
-    except Exception as _we:
-        logger.warning("supabase_warmup failed error={}", str(_we))
+    except Exception as error:
+        logger.warning("supabase_warmup failed error={}", str(error))
 
     outbound_scheduler = BackgroundScheduler(
         timezone="America/Los_Angeles"
@@ -223,12 +241,45 @@ async def lifespan(app: FastAPI):
         logger.warning("scheduler_shutdown_failed error={}", str(e))
 
 
+async def _bob_fact_recovery_loop():
+    import asyncio
+    while True:
+        await asyncio.to_thread(_flush_bob_facts)
+        await asyncio.sleep(30)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import asyncio
+    from backend.karpathys.outbox import start_recovery
+    delivery = await start_recovery()
+    recovery = asyncio.create_task(_bob_fact_recovery_loop()) if os.environ.get("VOICE_FACT_OUTBOX_PATH") else None
+    try:
+        async with _application_lifespan(app):
+            yield
+    finally:
+        if recovery:
+            recovery.cancel()
+            await asyncio.gather(recovery, return_exceptions=True)
+        if delivery:
+            delivery.cancel()
+            await asyncio.gather(delivery, return_exceptions=True)
+
+
 app = FastAPI(
     title="REI Agent API",
     description="San Joaquin House Buyers Voice Agent Platform",
     version="1.0.0",
     lifespan=lifespan,
 )
+from backend.api.security import OperatorAuthentication
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(OperatorAuthentication)
+origins = [origin.strip() for origin in os.environ.get("DASHBOARD_ORIGINS", "").split(",") if origin.strip()]
+if origins:
+    app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type"])
+
 
 
 
@@ -252,3 +303,9 @@ app.include_router(inbound_router, prefix="/api")
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+from backend.api.routes.appointments import router as appointments_router
+app.include_router(appointments_router, prefix="/api")
+
+from backend.api.routes.bob import router as bob_router
+app.include_router(bob_router, prefix="/api")

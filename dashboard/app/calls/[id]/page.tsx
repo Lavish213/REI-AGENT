@@ -1,4 +1,7 @@
-import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
+export const dynamic = 'force-dynamic'
+
+import { getSupabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 
 function formatDate(iso: string | null) {
@@ -57,11 +60,11 @@ function MotivationMeter({ level }: { level: number | null }) {
   )
 }
 
-export default async function CallDetailPage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default async function CallDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
 
   const [callResp, chunksResp, eventsResp] = await Promise.all([
-    supabase
+    getSupabase()
       .from('calls')
       .select(`
         id, created_at, signalwire_call_id, direction, call_disposition,
@@ -77,13 +80,13 @@ export default async function CallDetailPage({ params }: { params: { id: string 
       .eq('id', id)
       .single(),
 
-    supabase
+    getSupabase()
       .from('transcript_chunks')
       .select('id, speaker, text, chunk_type, sequence_order, confidence')
       .eq('call_id', id)
       .order('sequence_order'),
 
-    supabase
+    getSupabase()
       .from('call_events')
       .select('event_type, payload, created_at')
       .eq('call_id', id)
@@ -92,10 +95,10 @@ export default async function CallDetailPage({ params }: { params: { id: string 
 
   if (!callResp.data) notFound()
 
-  const call = callResp.data as any
+  const call = callResp.data
   const chunks = chunksResp.data ?? []
   const events = eventsResp.data ?? []
-  const lead = call.leads as any
+  const lead = Array.isArray(call.leads) ? call.leads[0] : call.leads
 
   const disposition = call.call_disposition
   const hasSummary = !!call.call_summary
@@ -106,13 +109,13 @@ export default async function CallDetailPage({ params }: { params: { id: string 
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <a href="/calls" className="text-blue-400 text-sm hover:underline mb-2 inline-block">← Back to calls</a>
+          <Link href="/calls" className="text-blue-400 text-sm hover:underline mb-2 inline-block">← Back to calls</Link>
           <h1 className="text-2xl font-bold">{lead?.address ?? 'Unknown Address'}</h1>
           <p className="text-gray-400 text-sm mt-1">{formatDate(call.created_at)} · {call.direction ?? 'inbound'}</p>
         </div>
         <div className="flex items-center gap-3">
           <DispositionBadge disposition={disposition} />
-          {call.is_hot_lead || lead?.is_hot_lead ? (
+          {lead?.is_hot_lead || lead?.is_hot_lead ? (
             <span className="bg-red-900/60 text-red-300 text-xs px-2 py-1 rounded font-semibold">HOT LEAD</span>
           ) : null}
           {call.score_overall != null && (
@@ -137,7 +140,7 @@ export default async function CallDetailPage({ params }: { params: { id: string 
             </h2>
             {hasChunks ? (
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {chunks.map((chunk: any) => (
+                {chunks.map((chunk) => (
                   <div
                     key={chunk.id}
                     className={`flex gap-2 ${chunk.speaker === 'SOPHIA' ? 'flex-row-reverse' : ''}`}
@@ -193,7 +196,7 @@ export default async function CallDetailPage({ params }: { params: { id: string 
             <section className="bg-gray-800 rounded-lg p-5">
               <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Event Timeline</h2>
               <div className="space-y-1">
-                {events.map((ev: any, i: number) => (
+                {events.map((ev, i: number) => (
                   <div key={i} className="flex items-center gap-3 text-xs">
                     <span className="text-gray-600 w-20 shrink-0">{new Date(ev.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
                     <span className="font-mono text-blue-300">{ev.event_type}</span>
@@ -221,15 +224,15 @@ export default async function CallDetailPage({ params }: { params: { id: string 
             <div className="space-y-3">
               <div>
                 <p className="text-gray-500 text-xs mb-1">Motivation</p>
-                <MotivationMeter level={call.motivation_level ?? lead?.motivation_level} />
+                <MotivationMeter level={lead?.motivation_level ?? lead?.motivation_level} />
                 {call.seller_motivation && (
                   <p className="text-gray-400 text-xs mt-1 italic">{call.seller_motivation}</p>
                 )}
               </div>
-              {(call.timeline_urgency || lead?.timeline_urgency) && (
+              {(lead?.timeline_urgency || lead?.timeline_urgency) && (
                 <div>
                   <p className="text-gray-500 text-xs">Timeline</p>
-                  <p className="text-gray-200 text-sm capitalize">{call.timeline_urgency ?? lead?.timeline_urgency}</p>
+                  <p className="text-gray-200 text-sm capitalize">{lead?.timeline_urgency ?? lead?.timeline_urgency}</p>
                   {call.timeline && <p className="text-gray-400 text-xs italic">{call.timeline}</p>}
                 </div>
               )}
@@ -257,7 +260,7 @@ export default async function CallDetailPage({ params }: { params: { id: string 
           </section>
 
           {/* Property Insights */}
-          {(call.property_condition || call.occupancy || call.property_address_mentioned) && (
+          {(call.property_condition || call.occupancy || lead?.address) && (
             <section className="bg-gray-800 rounded-lg p-4">
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Property Insights</h2>
               <div className="space-y-2 text-sm">

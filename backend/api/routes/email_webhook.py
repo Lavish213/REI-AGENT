@@ -9,20 +9,20 @@ from loguru import logger
 
 router = APIRouter()
 
-_WEBHOOK_SECRET = os.environ.get("SENDGRID_WEBHOOK_SECRET", "")
-
-
 def _verify_signature(request_body: bytes, signature: str, timestamp: str) -> bool:
-    if not _WEBHOOK_SECRET:
-        return True
     try:
-        import hmac
-        import hashlib
-        payload = timestamp.encode() + request_body
-        expected = hmac.new(_WEBHOOK_SECRET.encode(), payload, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected, signature)
-    except Exception:
+        import base64
+        import time
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        public_key = os.environ.get("SENDGRID_WEBHOOK_PUBLIC_KEY", "")
+        if not public_key or not signature or abs(time.time() - int(timestamp)) > 300:
+            return False
+        key = serialization.load_der_public_key(base64.b64decode(public_key))
+        key.verify(base64.b64decode(signature), timestamp.encode() + request_body, ec.ECDSA(hashes.SHA256()))
         return True
+    except Exception:
+        return False
 
 
 @router.post("/email/webhook")
@@ -30,7 +30,7 @@ async def sendgrid_webhook(request: Request) -> Response:
     body = await request.body()
     sig = request.headers.get("X-Twilio-Email-Event-Webhook-Signature", "")
     ts  = request.headers.get("X-Twilio-Email-Event-Webhook-Timestamp", "")
-    if sig and ts and not _verify_signature(body, sig, ts):
+    if not _verify_signature(body, sig, ts):
         logger.warning("sendgrid_webhook invalid signature")
         return Response(status_code=403)
 

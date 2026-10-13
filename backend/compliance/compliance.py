@@ -25,16 +25,11 @@ def _is_calling_hours() -> bool:
 
 def _check_dnc(phone: str) -> bool:
     try:
-        from backend.lib.db import _get_client
-
-        client = _get_client()
-        result = (
-            client.table("dnc_list").select("id").eq("phone", phone).limit(1).execute()
-        )
-        return bool(result.data)
+        from backend.lib.db import phone_is_do_not_call
+        return phone_is_do_not_call(phone)
     except Exception as e:
         logger.warning("dnc_check failed phone={} error={}", phone, str(e))
-        return False
+        raise RuntimeError("DNC verification unavailable") from e
 
 
 class ComplianceEngine:
@@ -60,10 +55,8 @@ class ComplianceEngine:
                         return ComplianceResult(allowed=False, reason="dnc_list_match")
             return ComplianceResult(allowed=True, reason="ok")
         except Exception as e:
-            logger.exception(
-                "compliance_check failed lead_id={} error={}", lead_id, str(e)
-            )
-            return ComplianceResult(allowed=True, reason="check_failed_allowing")
+            logger.exception("compliance_check failed lead_id={} error={}", lead_id, str(e))
+            return ComplianceResult(allowed=False, reason="compliance_unavailable")
 
     def handle_opt_out(
         self,
@@ -127,7 +120,5 @@ class ComplianceEngine:
                 return ComplianceResult(allowed=False, reason="dnc_blocked")
             return ComplianceResult(allowed=True, reason="ok")
         except Exception as e:
-            logger.exception(
-                "sms_compliance_check failed lead_id={} error={}", lead_id, str(e)
-            )
-            return ComplianceResult(allowed=True, reason="check_failed_allowing")
+            logger.exception("sms_compliance_check failed lead_id={} error={}", lead_id, str(e))
+            return ComplianceResult(allowed=False, reason="compliance_unavailable")

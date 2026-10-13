@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import httpx
@@ -104,6 +105,10 @@ def _build_signalwire_auth() -> tuple[str, str]:
     )
 
 
+class ProviderCallUncertainError(RuntimeError):
+    pass
+
+
 def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
     project_id = os.environ["SIGNALWIRE_PROJECT_ID"]
     try:
@@ -129,16 +134,21 @@ def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
         "AsyncAmd": "true",
         "AsyncAmdStatusCallback": callback_url,
         "Record": "true",
-        "RecordingStatusCallback": f"{status_url}",
+        "RecordingStatusCallback": f"{railway_url}/api/voice/recording-status/{lead_id}",
         "RecordingStatusCallbackMethod": "POST",
     }
 
     logger.info("signalwire_call_request lead_id={} to={} callback_url={}", lead_id, to_phone, callback_url)
 
     with httpx.Client() as client:
-        response = client.post(url, auth=_build_signalwire_auth(), data=payload, timeout=20, headers={"Accept": "application/json"})
+        try:
+            response = client.post(url, auth=_build_signalwire_auth(), data=payload, timeout=20, headers={"Accept": "application/json"})
+        except (httpx.TimeoutException, httpx.NetworkError) as error:
+            raise ProviderCallUncertainError("Phone provider acknowledgement unavailable") from error
+        if response.status_code >= 500:
+            raise ProviderCallUncertainError("Phone provider returned an uncertain server failure")
         response.raise_for_status()
-        logger.info("signalwire_response status={} body={}", response.status_code, response.text[:200])
+        logger.info("signalwire_response status={}", response.status_code)
         import xml.etree.ElementTree as ET
         try:
             data = response.json()
@@ -153,11 +163,15 @@ def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
                 call_sid = ""
                 status = "initiated"
 
-    return {"call_sid": call_sid, "status": status}
+    if not isinstance(call_sid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", call_sid):
+        raise ProviderCallUncertainError("Phone provider acknowledgement contains no valid call ID")
+    return {"call_sid": call_sid, "status": status if isinstance(status, str) else "initiated"}
 
 
 _MAX_CONCURRENT_CALLS = 3
-_REDIS_CONCURRENT_KEY = "rei_agent:concurrent_calls"
+_REDIS_CONCURRENT_KEY = "rei_agent:{calls}:concurrent"
+_REDIS_OWNERS_KEY = "rei_agent:{calls}:owners"
+_REDIS_CALLS_KEY = "rei_agent:{calls}:provider_ids"
 
 
 def _get_redis_client():
@@ -171,35 +185,96 @@ def _get_redis_client():
         return None
 
 
-def _acquire_call_slot(lead_id: str) -> bool:
-    client = _get_redis_client()
-    if not client:
-        return True
-    try:
-        import time
-        pipe = client.pipeline()
-        now = time.time()
-        pipe.zremrangebyscore(_REDIS_CONCURRENT_KEY, "-inf", now - 900)
-        pipe.zcard(_REDIS_CONCURRENT_KEY)
-        _, current_count = pipe.execute()
-        if current_count >= _MAX_CONCURRENT_CALLS:
-            logger.warning("concurrency_limit_reached lead_id={} active={}", lead_id, current_count)
-            return False
-        client.zadd(_REDIS_CONCURRENT_KEY, {lead_id: now + 900})
-        return True
-    except Exception as e:
-        logger.warning("acquire_call_slot failed error={}", str(e))
-        return True
+_ACQUIRE_SLOT_LUA = """
+local now = tonumber(ARGV[1])
+local expired = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', now)
+for _, lead in ipairs(expired) do
+  redis.call('HDEL', KEYS[2], lead)
+  redis.call('HDEL', KEYS[3], lead)
+end
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
+if redis.call('ZSCORE', KEYS[1], ARGV[2]) then return 0 end
+if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then return 0 end
+redis.call('ZADD', KEYS[1], now + tonumber(ARGV[4]), ARGV[2])
+redis.call('HSET', KEYS[2], ARGV[2], ARGV[5])
+redis.call('HDEL', KEYS[3], ARGV[2])
+for _, key in ipairs(KEYS) do redis.call('EXPIRE', key, tonumber(ARGV[4]) + 60) end
+return 1
+"""
 
 
-def _release_call_slot(lead_id: str) -> None:
+def _acquire_call_slot(lead_id: str, attempt_token: str = "") -> bool:
+    import time
     client = _get_redis_client()
     if not client:
-        return
+        logger.error("call_capacity_unavailable")
+        return False
     try:
-        client.zrem(_REDIS_CONCURRENT_KEY, lead_id)
-    except Exception:
-        pass
+        return bool(client.eval(_ACQUIRE_SLOT_LUA, 3, _REDIS_CONCURRENT_KEY, _REDIS_OWNERS_KEY, _REDIS_CALLS_KEY, time.time(), lead_id, _MAX_CONCURRENT_CALLS, 3600, attempt_token))
+    except Exception as error:
+        logger.warning("acquire_call_slot failed error={}", str(error))
+        return False
+
+
+def _bind_call_slot(lead_id: str, attempt_token: str, call_sid: str) -> bool:
+    client = _get_redis_client()
+    if not client or not attempt_token or not call_sid:
+        return False
+    script = """
+    if redis.call('HGET', KEYS[2], ARGV[1]) ~= ARGV[2] then return 0 end
+    if not redis.call('ZSCORE', KEYS[1], ARGV[1]) then return 0 end
+    redis.call('HSET', KEYS[3], ARGV[1], ARGV[3])
+    local ttl = redis.call('TTL', KEYS[1])
+    if ttl > 0 then redis.call('EXPIRE', KEYS[3], ttl) end
+    return 1
+    """
+    try:
+        return bool(client.eval(script, 3, _REDIS_CONCURRENT_KEY, _REDIS_OWNERS_KEY, _REDIS_CALLS_KEY, lead_id, attempt_token, call_sid))
+    except Exception as error:
+        logger.warning("bind_call_slot failed error={}", str(error))
+        return False
+
+
+def _renew_call_slot(lead_id: str, call_sid: str) -> bool:
+    import time
+    client = _get_redis_client()
+    if not client or not lead_id or not call_sid:
+        return False
+    script = """
+    if redis.call('HGET', KEYS[3], ARGV[1]) ~= ARGV[2] then return 0 end
+    local expires = redis.call('ZSCORE', KEYS[1], ARGV[1])
+    if not expires or tonumber(expires) <= tonumber(ARGV[3]) then return 0 end
+    redis.call('ZADD', KEYS[1], tonumber(ARGV[3]) + 3600, ARGV[1])
+    for _, key in ipairs(KEYS) do redis.call('EXPIRE', key, 3660) end
+    return 1
+    """
+    try:
+        return bool(client.eval(script, 3, _REDIS_CONCURRENT_KEY, _REDIS_OWNERS_KEY, _REDIS_CALLS_KEY, lead_id, call_sid, time.time()))
+    except Exception as error:
+        logger.warning("renew_call_slot failed lead_id={} error={}", lead_id, str(error))
+        return False
+
+
+def _release_call_slot(lead_id: str, attempt_token: str = "", call_sid: str = "") -> bool:
+    client = _get_redis_client()
+    if not client:
+        return False
+    script = """
+    local owner = redis.call('HGET', KEYS[2], ARGV[1])
+    local provider = redis.call('HGET', KEYS[3], ARGV[1])
+    if ARGV[3] ~= '' then
+      if provider ~= ARGV[3] then return 0 end
+    elseif owner and owner ~= ARGV[2] then return 0 end
+    redis.call('ZREM', KEYS[1], ARGV[1])
+    redis.call('HDEL', KEYS[2], ARGV[1])
+    redis.call('HDEL', KEYS[3], ARGV[1])
+    return 1
+    """
+    try:
+        return bool(client.eval(script, 3, _REDIS_CONCURRENT_KEY, _REDIS_OWNERS_KEY, _REDIS_CALLS_KEY, lead_id, attempt_token, call_sid))
+    except Exception as error:
+        logger.warning("release_call_slot failed error={}", str(error))
+        return False
 
 
 def _schedule_retry_for_disposition(lead_id: str, disposition: str, attempt_count: int) -> None:
@@ -222,6 +297,7 @@ def _schedule_retry_for_disposition(lead_id: str, disposition: str, attempt_coun
             followup_type="call",
             notes=f"Auto-retry after {disposition}. Attempt {attempt_count + 1}.",
             created_by="sophia",
+            scheduled_at=(datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)).isoformat(),
         )
         logger.info("retry_scheduled lead_id={} disposition={} delay_hours={:.1f}", lead_id, disposition, delay_seconds / 3600)
     except Exception as e:
@@ -234,8 +310,11 @@ def _check_active_call(lead_id: str) -> bool:
         return False
     try:
         import time
-        client.zremrangebyscore(_REDIS_CONCURRENT_KEY, "-inf", time.time() - 900)
-        count = client.zcard(_REDIS_CONCURRENT_KEY)
+        now = time.time()
+        expires = client.zscore(_REDIS_CONCURRENT_KEY, lead_id)
+        if expires is not None and expires > now:
+            return True
+        count = client.zcount(_REDIS_CONCURRENT_KEY, f"({now}", "+inf")
         if count >= _MAX_CONCURRENT_CALLS:
             logger.warning("active_call_detected lead_id={} count={}", lead_id, count)
             return True
@@ -249,7 +328,16 @@ def call_lead(
     lead_id: str,
     bypass_cooldown: bool = False,
 ) -> dict[str, Any]:
+    import uuid
+    attempt_token = uuid.uuid4().hex
+    provider_accepted = False
+    from backend.voice.execution_context import outbound_enabled
+    if not outbound_enabled():
+        return {"success": False, "reason": "outbound_disabled"}
     try:
+        from backend.lib.db import campaign_is_running
+        if not campaign_is_running():
+            return {"success": False, "reason": "campaign_paused"}
         from backend.compliance.compliance import ComplianceEngine
         engine = ComplianceEngine()
         result = engine.check_call_allowed(lead_id)
@@ -271,6 +359,8 @@ def call_lead(
             return {"success": False, "reason": "lead_not_found"}
 
         prop = lead.get("properties") or {}
+        if lead.get("callable") is False or lead.get("workflow_state") in ("closed", "dead_lead") or lead.get("stage") in ("closed", "dead"):
+            return {"success": False, "reason": "lead_not_callable"}
 
         if not _is_calling_hours():
             logger.warning("call_lead_outside_hours lead_id={}", lead_id)
@@ -299,20 +389,17 @@ def call_lead(
 
         score = int(prop.get("distress_score", 0))
 
-        if score < MIN_DISTRESS_SCORE:
+        if score < MIN_DISTRESS_SCORE and not bypass_cooldown:
             return {"success": False, "reason": "score_too_low"}
-
-        if not prop.get("estimated_arv"):
-            return {"success": False, "reason": "no_arv"}
 
         callback_at = _safe_iso_to_datetime(lead.get("callback_scheduled_at"))
         if callback_at and callback_at > datetime.now(timezone.utc):
-            logger.info("call_lead_callback_pending lead_id={} callback_at={}", lead_id, callback_at.isoformat())
+            return {"success": False, "reason": "callback_not_due"}
 
         if _check_active_call(lead_id):
             return {"success": False, "reason": "call_in_progress"}
 
-        if not _acquire_call_slot(lead_id):
+        if not _acquire_call_slot(lead_id, attempt_token):
             return {"success": False, "reason": "at_capacity"}
 
         first_name = _get_first_name(lead, prop)
@@ -322,7 +409,15 @@ def call_lead(
 
         result = _make_call(primary_phone, lead_id)
 
-        update_lead_call_outcome(lead_id, "initiated", result["call_sid"])
+        if not result["call_sid"]:
+            raise RuntimeError("Phone provider did not return a call ID")
+        provider_accepted = True
+        if not _bind_call_slot(lead_id, attempt_token, result["call_sid"]):
+            logger.error("provider_call_slot_unbound lead_id={} call_sid={}", lead_id, result["call_sid"])
+        try:
+            update_lead_call_outcome(lead_id, "initiated", result["call_sid"])
+        except Exception as error:
+            logger.error("initiated_call_not_persisted lead_id={} error={}", lead_id, str(error))
 
         logger.info("call_lead_success lead_id={} call_sid={}", lead_id, result["call_sid"])
 
@@ -335,8 +430,12 @@ def call_lead(
             "first_name": first_name,
         }
 
+    except ProviderCallUncertainError as error:
+        logger.error("provider_call_state_unknown lead_id={} error={}", lead_id, str(error))
+        return {"success": False, "reason": "provider_call_state_unknown", "requires_reconciliation": True}
     except Exception as e:
-        _release_call_slot(lead_id)
+        if not provider_accepted:
+            _release_call_slot(lead_id, attempt_token=attempt_token)
         logger.exception("call_lead_failed lead_id={} error={}", lead_id, str(e))
 
         try:
@@ -400,12 +499,16 @@ def build_outbound_answer_laml(lead_id: str) -> str:
 
     logger.info("build_outbound_answer_laml lead_id={} ws_url={}", lead_id, ws_url)
 
+    from backend.voice.session import issue_stream_token
+    token = issue_stream_token("outbound:" + lead_id)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
         <Stream
             url="{ws_url}"
             track="inbound_track"
-        />
+        >
+            <Parameter name="authorization" value="{token}"/>
+        </Stream>
     </Connect>
 </Response>"""

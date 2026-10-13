@@ -9,7 +9,7 @@ router = APIRouter()
 @router.post("/intel/packets/{lead_id}")
 async def bob_write_packet(lead_id: str, payload: dict):
     from backend.lib.db import load_intel_packet, save_intel_packet, write_packet_event
-    from backend.contracts.intel_packet import migrate_packet, PACKET_SCHEMA_VERSION
+    from backend.contracts.intel_packet import PACKET_SCHEMA_VERSION
     payload["lead_id"] = lead_id
     payload["schema_version"] = PACKET_SCHEMA_VERSION
     if "packet_state" not in payload:
@@ -69,10 +69,19 @@ async def get_packet_events(lead_id: str, limit: int = 50):
 @router.post("/intel/approvals/{approval_id}/resolve")
 async def resolve_approval(approval_id: str, body: dict):
     from backend.lib.db import resolve_approval_request
-    status = body.get("status", "approved")
-    approved_by = body.get("approved_by", "dashboard")
+    status = body.get("status")
+    if status not in {"approved", "rejected"}:
+        raise HTTPException(status_code=422, detail="An explicit approved or rejected decision is required")
     answer = body.get("answer", "")
-    await run_in_threadpool(resolve_approval_request, approval_id, approved_by, status, answer)
+    if not isinstance(answer, str):
+        raise HTTPException(status_code=422, detail="Answer must be text")
+    try:
+        await run_in_threadpool(resolve_approval_request, approval_id, "dashboard", status, answer)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except Exception as error:
+        logger.warning("approval_resolution_failed error={}", str(error))
+        raise HTTPException(status_code=503, detail="Approval could not be saved") from error
     return {"success": True, "approval_id": approval_id, "status": status}
 
 

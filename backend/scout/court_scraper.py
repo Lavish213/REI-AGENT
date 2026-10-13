@@ -1,4 +1,3 @@
-import os
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -165,7 +164,7 @@ def upsert_court_lead(case: dict) -> Optional[str]:
         upsert_property(property_data)
         logger.info("upsert_court_property apn={} type={}", apn, distress_type)
 
-        from backend.lib.db import get_properties_by_score, _get_client
+        from backend.lib.db import _get_client
 
         client_db = _get_client()
         resp = client_db.table("properties").select("id").eq("apn", apn).limit(1).execute()

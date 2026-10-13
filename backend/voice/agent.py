@@ -16,13 +16,16 @@ from pipecat.audio.vad.vad_analyzer import VADParams
 
 from pipecat.frames.frames import (
     AudioRawFrame,
+    EndFrame,
     BotStoppedSpeakingFrame,
     TTSSpeakFrame,
     UserStartedSpeakingFrame,
+    TranscriptionFrame,
+    TTSTextFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.workers.runner import WorkerRunner
+from pipecat.pipeline.worker import PipelineParams, PipelineWorker, ProcessorUnusablePolicy
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
@@ -45,29 +48,24 @@ from backend.voice.microstate_engine import MicrostateEngine
 from backend.voice.momentum_tracker import MomentumTracker
 from backend.voice.objective_engine import ObjectiveEngine
 from backend.voice.processors.analysis_callbacks import AnalysisCallbackProcessor
-from backend.voice.processors.backchannel import BackchannelProcessor
 from backend.voice.call_brief_loader import load_brief_into_ctx
-from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor
-from backend.voice.processors.stt_mute import BotSpeakingSTTMuteProcessor
+from backend.voice.processors.bob_fact_journal import BobFactJournalProcessor
+from backend.voice.processors.context_tracker import CallContext, ContextTrackerProcessor, ContextStateProcessor
 from backend.voice.resistance_tracker import ResistanceTracker
 from backend.voice.runtime_orchestrator import RuntimeOrchestrator
 from backend.voice.seller_profile_engine import SellerProfileEngine
 from backend.voice.silence_handler import SilenceHandler
-from backend.voice.speech_chunker import SpeechChunker
 from backend.voice.tools import SOPHIA_TOOLS, execute_tool
 from backend.voice.processors.fair_housing import FairHousingFilter
 from backend.voice.processors.compliance_output_filter import ComplianceOutputFilter
-from backend.voice.processors.ai_softener import AISoftenerProcessor as AISoftener
 from backend.voice.processors.ai_identity import AIIdentityProcessor
 from backend.voice.processors.input_guard import InputGuardProcessor
-from backend.voice.processors.interruption import InterruptionAckProcessor
-from backend.voice.processors.breath_injector import BreathInjectorProcessor
-from backend.voice.processors.humanized_latency import HumanizedLatencyProcessor
-from backend.voice.processors.phone_eq import PhoneEQProcessor
 from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
+from backend.voice.processors.speech_output import SpeechOutputProcessor
 
 from backend.voice.trust_tracker import TrustTracker
-from backend.voice.turn_controller import TurnController
+from backend.voice.processors.speech_understanding import SpeechUnderstandingProcessor
+from backend.voice.conversation_policy import ConversationTurnReset, ConversationPolicyProcessor, remember_assistant_turn
 
 _MD_STRIP_PATTERN = re.compile(r"^#{1,3}\s+|[*`]|^---+$", re.MULTILINE)
 
@@ -79,24 +77,6 @@ _MAX_TRANSCRIPT_INTEL_TIMEOUT = 60.0
 _MAX_WORKFLOW_TIMEOUT = 15.0
 _STREAM_SID_TIMEOUT = 2.0
 _STREAM_SID_MAX_READS = 5
-
-if os.environ.get("GROQ_API_KEY", "").strip():
-    import sys
-    print(
-        "CRITICAL: GROQ_API_KEY is set. Tools (book_appointment, set_disposition, "
-        "end_call, transfer_call) will NOT work on the Groq LLM path. "
-        "Unset GROQ_API_KEY to restore full functionality.",
-        file=sys.stderr,
-    )
-
-_SITUATION_OPENERS = {
-    "inherited_property": "I'm sorry for your loss first of all.",
-    "probate": "I'm sorry for your loss first of all.",
-    "preforeclosure": "I know this might be a tough time.",
-    "tired_landlord": "Hey — you still own that rental?",
-    "divorce": "I know things might be a bit complicated right now.",
-}
-
 
 def _require_env(name: str) -> str:
     value = os.environ.get(name, "").strip()
@@ -112,57 +92,13 @@ def _strip_markdown(text: str) -> str:
 
 
 def _build_opener(call_context: dict[str, Any]) -> str:
-    is_outbound = bool(call_context.get("is_outbound"))
+    if call_context.get("spanish_detected"):
+        return "Hola, soy Sophia, asistente automatizada de San Joaquin House Buyers."
+    if not call_context.get("is_outbound"):
+        return "Hey, this is Sophia, the automated assistant with San Joaquin House Buyers."
     name = (call_context.get("owner_first_name") or "").strip()
-    address = (call_context.get("address") or "").strip()
-    situation = (call_context.get("situation_label") or "").strip()
-    situation_opener = _SITUATION_OPENERS.get(situation, "")
-
-    if not is_outbound:
-        if name:
-            base = f"Hey {name}! This is Sophia with San Joaquin House Buyers."
-            if situation_opener:
-                return f"{base} {situation_opener}"
-            return base
-        else:
-            return "San Joaquin House Buyers — hey, this is Sophia. Can I ask who I'm speaking with?"
-
-    import random
-    variant = random.choice(["A", "B", "C", "D"])
-    if address and variant == "A":
-        base = (
-            f"Hey — Sophia calling from San Joaquin House Buyers. "
-            f"I was reaching out about your place on {address} — "
-            "I'm guessing you're probably never going to sell that place. Am I right?"
-        )
-    elif address and variant == "B":
-        base = (
-            f"Hey — Sophia calling. "
-            f"Quick question about your place on {address} — "
-            "you still the owner over there?"
-        )
-    elif address and variant == "C":
-        base = (
-            f"Hey — it's Sophia. "
-            f"I was looking at some properties in the area and yours on {address} stood out. "
-            "You got a sec?"
-        )
-    elif address:
-        base = (
-            f"Hey — Sophia, San Joaquin House Buyers. "
-            f"Your place on {address} caught my attention — "
-            "thinking about selling at all?"
-        )
-    else:
-        base = (
-            "Hey — Sophia calling from San Joaquin House Buyers. "
-            "Am I reaching the property owner?"
-        )
-
-    if situation_opener:
-        return situation_opener
-    return base
-
+    question = f"Am I speaking with {name}?" if name and name.lower() != "there" else "Am I speaking with the property owner?"
+    return "Hey, this is Sophia, the automated assistant with San Joaquin House Buyers. " + question
 
 
 def _assert_pipeline_safety(processors: list) -> None:
@@ -201,8 +137,6 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
             "Keep responses short and conversational."
         )
 
-    is_outbound_prompt = bool(call_context.get("is_outbound"))
-    turn_hint = call_context.get("turn_count_hint", 0)
 
 
     base_prompt = "\n\n".join(part for part in prompt_parts if part)
@@ -220,7 +154,8 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
         except Exception:
             pass
 
-    full_prompt = base_prompt.rstrip()
+    full_prompt = "\n\n".join(part for part in (base_prompt.rstrip(), "VERIFIED CALL CONTEXT\n" + property_context_str, intel_slice) if part)
+    full_prompt += "\n\nCONVERSATION RULES\nYou are an automated assistant. Answer identity questions truthfully. Never invent a personal biography or claim to be human. React to the caller's actual words first. Use one or two short sentences and at most one question. Wait for the caller to finish; do not fill every pause. A yes, no, correction, or stop request is meaningful. Never claim a booking, callback, transfer, or message succeeded unless its tool confirms success. Ask for an explicit date and time when scheduling is ambiguous. Repeat the date, local time, timezone, and address for confirmation before booking. Use only approved verified pricing; never invent an offer. If a tool fails, say so plainly and offer a human follow-up."
 
     full_prompt = apply_budget(full_prompt)
     full_prompt = _strip_markdown(full_prompt)
@@ -287,12 +222,29 @@ def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_t
         await params.result_callback(result)
         if call_ctx is not None and getattr(call_ctx, "call_should_end", False):
             logger.info("tool_handler call_should_end=True — cancelling task tool={}", tool_name)
-            await asyncio.sleep(1.5)
-            await task.cancel()
+            if call_ctx._task_ref is not None:
+                frames = [EndFrame()] if tool_name == "transfer_call" else [TTSSpeakFrame("Thanks for your time. Take care."), EndFrame()]
+                await call_ctx._task_ref.queue_frames(frames)
     return handler
 
 
-async def _build_tts(call_ctx_ref: CallContext) -> DeepgramTTSService:
+async def _build_tts(call_ctx_ref: CallContext):
+    default_provider = "cartesia" if os.environ.get("CARTESIA_API_KEY") and os.environ.get("CARTESIA_VOICE_ID") else "deepgram"
+    provider = os.environ.get("VOICE_TTS_PROVIDER", default_provider).lower()
+    if provider == "cartesia":
+        from pipecat.services.cartesia.tts import CartesiaTTSService
+        from pipecat.transcriptions.language import Language
+        return CartesiaTTSService(
+            api_key=_require_env("CARTESIA_API_KEY"),
+            sample_rate=8000,
+            settings=CartesiaTTSService.Settings(
+                voice=_require_env("CARTESIA_VOICE_ID"),
+                model=os.environ.get("CARTESIA_MODEL", "sonic-3"),
+                language=Language.EN,
+            ),
+        )
+    if provider != "deepgram":
+        raise ValueError("VOICE_TTS_PROVIDER must be cartesia or deepgram")
     api_key = _require_env("DEEPGRAM_API_KEY")
     model = os.environ.get("DEEPGRAM_TTS_MODEL", "aura-2-thalia-en")
     logger.info("tts active provider=deepgram model={}", model)
@@ -318,7 +270,7 @@ async def _create_stt_service(api_key: str, spanish: bool) -> DeepgramSTTService
         ttfs_p99_latency=0.8,
         settings=DeepgramSTTService.Settings(
             model=model,
-            language='en-US',
+            language=language,
             interim_results=True,
             endpointing=200,
             numerals=True,
@@ -350,6 +302,35 @@ class TTSFrameProbe(FrameProcessor):
             )
 
         await super().process_frame(frame, direction)
+        await self.push_frame(frame, direction)
+
+
+class TranscriptJournal(FrameProcessor):
+    def __init__(self, call_ctx, speaker):
+        super().__init__(enable_direct_mode=True)
+        self._ctx = call_ctx
+        self._speaker = speaker
+        self._spoken_text = ""
+
+    async def process_frame(self, frame, direction):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, UserStartedSpeakingFrame):
+            self._spoken_text = ""
+        expected = TranscriptionFrame if self._speaker == "user" else TTSTextFrame
+        if direction == FrameDirection.DOWNSTREAM and isinstance(frame, expected) and frame.text.strip():
+            self._ctx.transcript_events.append({"role": self._speaker, "content": frame.text.strip()})
+            sid = getattr(self._ctx, "_call_sid", "")
+            if sid:
+                from backend.karpathys import emitter, client
+                queued = await emitter.emit_turn_completed(sid, self._speaker, frame.text.strip(), turn_index=len(self._ctx.transcript_events) - 1)
+                if client.delivery_target() is not None and not queued:
+                    raise RuntimeError("Conversation journal unavailable")
+            if self._speaker == "assistant":
+                separator = "" if getattr(frame, "includes_inter_frame_spaces", False) or not self._spoken_text else " "
+                self._spoken_text = (self._spoken_text + separator + frame.text)[-4096:]
+                if "?" in self._spoken_text:
+                    remember_assistant_turn(self._ctx, self._spoken_text)
+                    self._spoken_text = self._spoken_text.rsplit("?", 1)[-1]
         await self.push_frame(frame, direction)
 
 
@@ -426,6 +407,28 @@ class _LoggingTwilioSerializer(TwilioFrameSerializer):
         return result
 
 
+async def _monitor_call_capacity(task, lead_id: str, call_sid: str, interval: float = 30.0) -> None:
+    from backend.voice.outbound import _renew_call_slot
+    failures = 0
+    while True:
+        await asyncio.sleep(interval)
+        if await asyncio.to_thread(_renew_call_slot, lead_id, call_sid):
+            failures = 0
+        else:
+            failures += 1
+            if failures >= 3:
+                logger.error("call_capacity_lease_lost lead_id={} call_sid={}", lead_id, call_sid)
+                await task.cancel()
+                return
+
+
+def _maximum_call_seconds() -> int:
+    value = int(os.environ.get("VOICE_MAX_CALL_SECONDS", "1200"))
+    if not 60 <= value <= 3000:
+        raise ValueError("VOICE_MAX_CALL_SECONDS must be between 60 and 3000")
+    return value
+
+
 async def run_sophia_agent(
     websocket,
     call_sid: str,
@@ -440,7 +443,9 @@ async def run_sophia_agent(
     from backend.observability import trace_call_start
     lf_trace = trace_call_start(call_sid, call_context)
 
-    stream_sid = call_sid
+    stream_sid = call_context.get("stream_sid")
+    if not stream_sid:
+        raise ValueError("A validated media stream ID is required")
 
     spanish_detected = bool(call_context.get("spanish_detected"))
     lead = call_context.get("lead")
@@ -450,7 +455,7 @@ async def run_sophia_agent(
         seller_memory = call_context.get("seller_memory")
         if seller_memory is None:
             from backend.voice.memory import SellerMemory
-            seller_memory = SellerMemory.load(lead["id"])
+            seller_memory = await asyncio.to_thread(SellerMemory.load, lead["id"])
 
     if call_context.get("boss_mode"):
         system_prompt = _load_boss_prompt(call_context.get("briefing", "No briefing available."))
@@ -491,8 +496,9 @@ async def run_sophia_agent(
 
     call_ctx = CallContext()
     call_ctx._call_sid = call_sid
-    if call_context.get("address") and not bool(call_context.get("is_outbound")):
+    if call_context.get("address"):
         call_ctx.address_known = True
+        call_ctx.property_address = call_context["address"]
     call_ctx.is_outbound = bool(call_context.get("is_outbound", False))
     if call_context.get("situation_label"):
         call_ctx.situation_label = call_context["situation_label"]
@@ -501,10 +507,13 @@ async def run_sophia_agent(
 
     if call_context.get("normalized_phone"):
         call_ctx.seller_phone = call_context["normalized_phone"]
-    load_brief_into_ctx(call_ctx, call_context.get("call_brief"))
+    call_ctx.memory_context_str = call_context.get("memory_context_str", "")
+    if seller_memory:
+        call_ctx.memory_context_str = seller_memory.to_prompt_context()
     lead = call_context.get("lead")
     if lead and lead.get("id"):
         call_ctx.lead_id = lead["id"]
+    load_brief_into_ctx(call_ctx, call_context.get("call_brief"))
 
     if lead and lead.get("id"):
         try:
@@ -520,11 +529,11 @@ async def run_sophia_agent(
                 )
             call_ctx.intel_packet = packet
             call_ctx.packet_version = packet.get("packet_version", 1)
+            call_ctx.fallback_mode = not packet.get("safe_for_live_call", False)
             call_ctx.packet_state = packet.get("packet_state", "system_assembled")
             call_ctx.action_permissions = packet.get("action_permissions", {})
             call_ctx.conflict_active = packet.get("packet_state") == "conflicted"
             call_ctx.extracted_entities = {}
-            from backend.voice.call_brief_loader import load_brief_into_ctx
             brief = call_context.get("call_brief") or packet.get("call_brief")
             load_brief_into_ctx(call_ctx, brief)
             if call_ctx.conflict_active:
@@ -570,8 +579,6 @@ async def run_sophia_agent(
         tools=_build_tools_schema() if not boss_mode else None,
     )
 
-    stt_mute = BotSpeakingSTTMuteProcessor()
-    backchannel_processor = BackchannelProcessor(call_ctx=call_ctx)
     emotional_engine = EmotionalStateEngine(call_ctx)
     trust_tracker = TrustTracker(call_ctx)
     resistance_tracker = ResistanceTracker(call_ctx)
@@ -596,17 +603,9 @@ async def run_sophia_agent(
         microstate_engine=microstate_engine,
         runtime_orchestrator=runtime_orchestrator,
     )
-    turn_controller = TurnController(call_ctx)
-    speech_chunker = SpeechChunker(call_ctx)
-    interruption_ack = InterruptionAckProcessor(call_ctx=call_ctx)
     sentence_streamer = SentenceStreamProcessor()
     ai_identity = AIIdentityProcessor(call_ctx=call_ctx)
     input_guard = InputGuardProcessor(call_ctx=call_ctx)
-    breath_injector = BreathInjectorProcessor()
-    humanized_latency = HumanizedLatencyProcessor(
-        energy_getter=lambda: getattr(call_ctx, "seller_energy", "calm")
-    )
-    phone_eq = PhoneEQProcessor()
 
     silence_handler = SilenceHandler(call_ctx, task=None)
     bot_speaking_monitor = BotSpeakingMonitor(silence_handler)
@@ -618,23 +617,24 @@ async def run_sophia_agent(
                 sample_rate=16000,
                 params=VADParams(
                     confidence=0.7,
-                    start_secs=0.2,
-                    stop_secs=0.5,
+                    start_secs=0.3,
+                    stop_secs=0.8,
                     min_volume=0.3,
                 ),
             ),
-            user_turn_stop_timeout=0.6,
+            user_turn_stop_timeout=1.0,
         ),
     )
 
     pipeline = Pipeline(
         [
             transport.input(),
-            stt_mute,
             stt,
+            ConversationTurnReset(call_ctx),
+            SpeechUnderstandingProcessor(call_ctx),
             input_guard,
+            TranscriptJournal(call_ctx, "user"),
             ai_identity,
-            backchannel_processor,
             emotional_engine,
             trust_tracker,
             resistance_tracker,
@@ -644,35 +644,26 @@ async def run_sophia_agent(
             seller_profile_engine,
             microstate_engine,
             context_tracker,
+            BobFactJournalProcessor(call_ctx),
             analysis_callbacks,
+            ConversationPolicyProcessor(call_ctx),
             context_aggregator.user(),
-            turn_controller,
+            ContextStateProcessor(context_tracker),
             llm,
             sentence_streamer,
-            AISoftener(),
-            speech_chunker,
+            SpeechOutputProcessor(),
             FairHousingFilter(),
             ComplianceOutputFilter(call_ctx=call_ctx),
-            humanized_latency,
             tts,
-            phone_eq,
-            breath_injector,
             TTSFrameProbe(),
             transport.output(),
+            TranscriptJournal(call_ctx, "assistant"),
             bot_speaking_monitor,
             context_aggregator.assistant(),
         ]
     )
 
-    ai_softener_inst = next(
-        (p for p in pipeline._processors if type(p).__name__ == 'AISoftenerProcessor'), None
-    )
-    _assert_pipeline_safety([
-        sentence_streamer,
-        ai_softener_inst or AISoftener(),
-        FairHousingFilter(),
-        ComplianceOutputFilter(call_ctx=call_ctx),
-    ])
+    _assert_pipeline_safety(pipeline._processors)
 
     is_outbound_call = bool(call_context.get("is_outbound"))
     if is_outbound_call:
@@ -680,62 +671,72 @@ async def run_sophia_agent(
         call_ctx._opener_fired = False
         call_ctx._task_ref = None
 
-    task = PipelineTask(
+    task = PipelineWorker(
         pipeline,
+        processor_unusable_policy=ProcessorUnusablePolicy.CANCEL,
         params=PipelineParams(
             enable_metrics=True,
             enable_usage_metrics=True,
-            aggregation_timeout=0.5,
-            allow_interruptions=True,
+            audio_in_sample_rate=16000,
+            audio_out_sample_rate=8000,
         ),
     )
 
     silence_handler._task = task
-    if is_outbound_call:
-        call_ctx._task_ref = task
+    call_ctx._task_ref = task
+    background_tasks: set[asyncio.Task] = set()
+
+    def spawn(coroutine):
+        child = asyncio.create_task(coroutine)
+        background_tasks.add(child)
+        child.add_done_callback(background_tasks.discard)
+        return child
 
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
         del transport, client
+        if call_ctx._opener_fired:
+            return
         logger.info("client connected call_sid={}", call_sid)
         from backend.karpathys import emitter
-        asyncio.create_task(emitter.emit_call_created(call_sid, call_context))
-        if not call_context.get("is_outbound"):
-            await asyncio.sleep(0.1)
-            opener_text = _build_opener(call_context)
-            logger.info("opener firing inbound text={!r}", opener_text)
-            context.messages.append({"role": "assistant", "content": opener_text})
-            await task.queue_frames([TTSSpeakFrame(opener_text)])
-        else:
-            async def _fire_opener_after_connect():
-                await asyncio.sleep(3.0)
-                opener = getattr(call_ctx, "_opener_text", None)
-                if opener and not getattr(call_ctx, "_opener_fired", False):
-                    call_ctx._opener_fired = True
-                    logger.info("outbound_opener_auto_fire call_sid={}", call_sid)
-                    context.messages.append({"role": "assistant", "content": opener})
-                    await task.queue_frames([TTSSpeakFrame(opener)])
-            asyncio.create_task(_fire_opener_after_connect())
-            logger.info("outbound_connected opener scheduled 3s call_sid={}", call_sid)
+        queued = await emitter.emit_call_created(call_sid, call_context)
+        from backend.karpathys.client import delivery_target
+        if delivery_target() is not None and not queued:
+            await task.queue_frames([TTSSpeakFrame("I'm Sophia, an AI assistant. Our system is unavailable right now. Please try again later."), EndFrame()])
+            return
+        if call_context.get("is_outbound") and call_ctx.lead_id:
+            spawn(_monitor_call_capacity(task, call_ctx.lead_id, call_sid))
+        call_ctx._opener_fired = True
+        call_ctx.awaiting_owner_confirmation = bool(call_context.get("is_outbound"))
+        await task.queue_frames([TTSSpeakFrame(_build_opener(call_context))])
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):
         del transport, client
         logger.info("client disconnected call_sid={}", call_sid)
         from backend.karpathys import emitter
-        asyncio.create_task(emitter.emit_call_ended(call_sid))
+        await emitter.emit_call_ended(call_sid)
         await task.cancel()
 
-    runner = PipelineRunner()
+    runner = WorkerRunner(handle_sigint=False)
+    await runner.add_workers(task)
 
     try:
-        await runner.run(task)
+        await asyncio.wait_for(runner.run(), timeout=_maximum_call_seconds())
+    except asyncio.TimeoutError:
+        logger.warning("maximum_call_duration reached call_sid={}", call_sid)
+        await task.cancel()
     except asyncio.CancelledError:
         logger.warning("sophia agent cancelled call_sid={}", call_sid)
         raise
     except Exception as error:
         logger.exception("sophia agent error call_sid={} error={}", call_sid, str(error))
     finally:
+        silence_handler.cancel_timer()
+        for child in tuple(background_tasks):
+            child.cancel()
+        if background_tasks:
+            await asyncio.gather(*background_tasks, return_exceptions=True)
         await _handle_call_end(
             call_sid=call_sid,
             call_context=call_context,
@@ -744,59 +745,6 @@ async def run_sophia_agent(
             seller_memory=seller_memory,
             lf_trace=lf_trace,
         )
-
-
-async def _read_stream_sid(websocket, call_sid: str) -> str:
-    stream_sid = call_sid
-    stream_sid_source = "fallback_call_sid"
-
-    try:
-        for index in range(_STREAM_SID_MAX_READS):
-            message = await asyncio.wait_for(
-                websocket.receive(), timeout=_STREAM_SID_TIMEOUT
-            )
-
-            if "text" in message:
-                raw = message["text"]
-            elif "bytes" in message:
-                raw = message["bytes"].decode("utf-8")
-            else:
-                logger.debug("ws_unknown_frame_type keys={}", list(message.keys()))
-                continue
-
-            payload = json.loads(raw)
-            event_type = payload.get("event")
-            logger.debug("ws_event index={} type={}", index, event_type)
-
-            if event_type != "start":
-                continue
-
-            start_obj = payload.get("start", {})
-            top_level_sid = payload.get("streamSid")
-            nested_sid = start_obj.get("streamSid")
-
-            if top_level_sid:
-                stream_sid = top_level_sid
-                stream_sid_source = "top_level"
-            elif nested_sid:
-                stream_sid = nested_sid
-                stream_sid_source = "nested_start"
-
-            break
-
-    except asyncio.TimeoutError:
-        logger.warning("ws_start_event_timeout call_sid={}", call_sid)
-    except Exception as error:
-        logger.exception("ws_start_event_error error={}", str(error))
-
-    logger.info(
-        "stream_routing stream_sid={} call_sid={} source={}",
-        stream_sid,
-        call_sid,
-        stream_sid_source,
-    )
-
-    return stream_sid
 
 
 async def _handle_call_end(
@@ -810,8 +758,15 @@ async def _handle_call_end(
     logger.info("handling call end call_sid={}", call_sid)
 
     try:
-        transcript = _build_transcript(context.messages)
+        transcript = _build_transcript(call_ctx.transcript_events if call_ctx is not None else context.messages)
         disposition = call_ctx.disposition if call_ctx else None
+
+        from backend.karpathys import emitter
+        chunks = _build_transcript_chunks_from_text(transcript)
+        lead = call_context.get("lead")
+        if chunks:
+            await emitter.emit_transcript_completed(call_sid, None, lead.get("id") if lead else None, len(chunks), chunks)
+        await emitter.emit_call_completed(call_sid, disposition, call_ctx.turn_count if call_ctx else 0, len(transcript))
 
         if seller_memory and transcript:
             try:
@@ -826,6 +781,13 @@ async def _handle_call_end(
                 logger.exception("seller_memory save failed error={}", str(error))
 
         lead = call_context.get("lead")
+        if lead and call_ctx and getattr(call_ctx, "bob_verified_facts", None):
+            try:
+                from backend.lib.db import stage_bob_call_facts, flush_bob_call_fact_outbox
+                await asyncio.to_thread(stage_bob_call_facts, lead["id"], call_sid, call_ctx.bob_verified_facts)
+                await asyncio.to_thread(flush_bob_call_fact_outbox, 1)
+            except Exception as error:
+                logger.warning("bob_call_facts_not_saved call_sid={} type={}", call_sid, type(error).__name__)
         call_id_db = None
 
         if lead:
@@ -837,16 +799,25 @@ async def _handle_call_end(
                 call_context=call_context,
             )
 
-            asyncio.create_task(_run_qa_async(transcript, lead["id"], call_sid))
-            asyncio.create_task(
+            await asyncio.gather(
+                _run_qa_async(transcript, lead["id"], call_sid),
                 _run_transcript_intel_async(
                     transcript=transcript,
                     lead_id=lead["id"],
                     call_sid=call_sid,
                     call_id_db=call_id_db,
                     disposition=disposition,
-                )
+                ),
             )
+
+        else:
+            call_id_db = await asyncio.to_thread(insert_call, {
+                "lead_id": None,
+                "signalwire_call_id": call_sid,
+                "direction": "inbound",
+                "transcript": transcript,
+                "call_disposition": disposition,
+            })
 
         from backend.observability import trace_call_end
         trace_call_end(
@@ -857,13 +828,6 @@ async def _handle_call_end(
             call_ctx.turn_count if call_ctx else 0,
         )
 
-        from backend.karpathys import emitter
-        await emitter.emit_call_completed(
-            call_sid=call_sid,
-            disposition=disposition,
-            turn_count=call_ctx.turn_count if call_ctx else 0,
-            transcript_length=len(transcript),
-        )
 
     except Exception as error:
         logger.exception("handle_call_end error call_sid={} error={}", call_sid, str(error))
@@ -872,7 +836,7 @@ async def _handle_call_end(
 async def _handle_orchestrator_decision(
     call_ctx: CallContext,
     orchestrator: RuntimeOrchestrator,
-    task: PipelineTask,
+    task: PipelineWorker,
 ) -> None:
     decision = orchestrator.decide(call_ctx)
 
@@ -926,32 +890,9 @@ async def _persist_call_result(
         from backend.voice.events import TRANSCRIPT_COMPLETED, emit_event
         emit_event(TRANSCRIPT_COMPLETED, call_id_db, lead["id"], {"chunk_count": len(chunks)})
 
-        from backend.karpathys import emitter
-        await emitter.emit_transcript_completed(
-            call_sid=call_sid,
-            call_id_db=call_id_db,
-            lead_id=lead["id"],
-            chunk_count=len(chunks),
-        )
 
     if disposition:
         await asyncio.to_thread(update_lead_for_disposition, lead["id"], disposition)
-        try:
-            from backend.alerts.sms import send_sms
-            from backend.lib.db import _get_client as _gc
-            _row = _gc().table("leads").select("owner_phone,owner_name").eq("id", lead["id"]).single().execute()
-            _raw = (_row.data or {}).get("owner_phone") or ""
-            _digits = "".join(c for c in _raw if c.isdigit())
-            _phone = "+" + _digits if _digits.startswith("1") and len(_digits) == 11 else ("+1" + _digits if len(_digits) == 10 else "")
-            _rname = (_row.data or {}).get("owner_name") or ""
-            _name = _rname.strip().split()[0] if _rname.strip() else ""
-            if _phone and disposition == "HOT":
-                send_sms(to=_phone, body=f"Hey {_name} — Sophia here from San Joaquin House Buyers. Thanks for chatting! Alanzo will be in touch to set up that walkthrough.")
-            elif _phone and disposition == "WARM":
-                send_sms(to=_phone, body=f"Hey {_name} — Sophia with San Joaquin House Buyers. Good talking. Just reply here anytime if you have questions.")
-            logger.info("auto_followup_sms lead_id={} disposition={}", lead["id"], disposition)
-        except Exception as _sms_err:
-            logger.warning("auto_followup_sms failed lead_id={} error={}", lead["id"], str(_sms_err))
 
     return call_id_db
 
@@ -997,9 +938,10 @@ async def _run_transcript_intel_async(
             try:
                 from backend.alerts.sms import send_owner_call_digest
                 from backend.lib.db import get_lead_with_property
-                lead_data = get_lead_with_property(lead_id)
+                lead_data = await asyncio.to_thread(get_lead_with_property, lead_id)
                 address = (lead_data.get("properties") or {}).get("address") if lead_data else None
-                send_owner_call_digest(
+                await asyncio.to_thread(
+                    send_owner_call_digest,
                     disposition=disposition,
                     call_summary=intel.get("call_summary"),
                     next_best_action=intel.get("next_best_action"),
@@ -1017,7 +959,7 @@ async def _run_transcript_intel_async(
                 from backend.lib.db import write_bob_feedback_event, load_intel_packet, save_intel_packet
                 from backend.contracts.intel_packet import migrate_packet
                 now = datetime.now(timezone.utc).isoformat()
-                existing = load_intel_packet(lead_id) or {}
+                existing = await asyncio.to_thread(load_intel_packet, lead_id) or {}
                 existing = migrate_packet(existing)
                 sp = existing.get("seller_profile") or {}
                 sp["motivation_level"] = {"value": intel.get("motivation_level"), "source": "transcript_intel", "updated_at": now}
@@ -1027,8 +969,9 @@ async def _run_transcript_intel_async(
                 sp["objections"] = {"value": intel.get("objections"), "source": "transcript_intel", "updated_at": now}
                 existing["seller_profile"] = sp
                 existing["lead_id"] = lead_id
-                save_intel_packet(existing)
-                write_bob_feedback_event(
+                await asyncio.to_thread(save_intel_packet, existing)
+                await asyncio.to_thread(
+                    write_bob_feedback_event,
                     lead_id=lead_id,
                     call_sid=call_sid,
                     event_type="call_completed",
@@ -1050,7 +993,7 @@ async def _run_transcript_intel_async(
         if intel and lead_id:
             try:
                 from backend.voice.memory import SellerMemory
-                memory = SellerMemory.load(lead_id)
+                memory = await asyncio.to_thread(SellerMemory.load, lead_id)
                 memory.update_from_intel(intel)
                 await asyncio.to_thread(memory.save)
                 logger.info("seller_memory updated from intel lead_id={}", lead_id)

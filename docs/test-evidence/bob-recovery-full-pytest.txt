@@ -1,0 +1,38 @@
+........................................................................ [  5%]
+........................................................................ [ 10%]
+........................................................................ [ 15%]
+........................................................................ [ 20%]
+........................................................................ [ 25%]
+........................................................................ [ 30%]
+........................................................................ [ 36%]
+........................................................................ [ 41%]
+........................................................................ [ 46%]
+........................................................................ [ 51%]
+........................................................................ [ 56%]
+........................................................................ [ 61%]
+........................................................................ [ 67%]
+........................................................................ [ 72%]
+........................................................................ [ 77%]
+........................................................................ [ 82%]
+........................................................................ [ 87%]
+........................................................................ [ 92%]
+........................................................................ [ 98%]
+...........................                                              [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.11/site-packages/pipecat/audio/utils.py:14
+  /workspace/scratch/189c92124d0f/REI-AGENT/.venv/lib/python3.11/site-packages/pipecat/audio/utils.py:14: DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+    import audioop
+
+<frozen abc>:106
+  <frozen abc>:106: DeprecationWarning: `AudioContextTTSService` is deprecated since 0.0.105 and will be removed in 2.0.0. Use `WebsocketTTSService` instead.
+
+tests/test_voice_reliability.py::test_live_pipeline_can_construct_without_network
+  /workspace/scratch/189c92124d0f/REI-AGENT/.venv/lib/python3.11/site-packages/pipecat/audio/vad/silero.py:160: DeprecationWarning: path is deprecated. Use files() instead. Refer to https://importlib-resources.readthedocs.io/en/latest/using.html#migrating-from-legacy for migration advice.
+    with impresources.path(package_path, model_name) as f:
+
+tests/test_voice_reliability.py::test_live_pipeline_can_construct_without_network
+  /workspace/scratch/189c92124d0f/REI-AGENT/.venv/lib/python3.11/site-packages/pipecat/audio/turn/smart_turn/local_smart_turn_v3.py:61: DeprecationWarning: path is deprecated. Use files() instead. Refer to https://importlib-resources.readthedocs.io/en/latest/using.html#migrating-from-legacy for migration advice.
+    with impresources.path(package_path, model_name) as f:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1395 passed, 4 warnings in 20.85s

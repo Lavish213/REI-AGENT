@@ -2,7 +2,7 @@ import re
 
 from loguru import logger
 
-from pipecat.frames.frames import Frame, LLMTextFrame, TextFrame
+from pipecat.frames.frames import Frame, LLMTextFrame, TextFrame, TTSSpeakFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
@@ -44,13 +44,13 @@ class FairHousingFilter(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, (LLMTextFrame, TextFrame)):
+        if isinstance(frame, (LLMTextFrame, TextFrame, TTSSpeakFrame)):
             text = frame.text if hasattr(frame, "text") else ""
             if _is_fair_housing_violation(text):
                 logger.warning(
                     "fair_housing violation detected original_text={!r}", text
                 )
-                replacement_frame = TextFrame(text=_NEUTRAL_REPLACEMENT)
+                replacement_frame = TTSSpeakFrame(_NEUTRAL_REPLACEMENT) if isinstance(frame, TTSSpeakFrame) else TextFrame(text=_NEUTRAL_REPLACEMENT)
                 await self.push_frame(replacement_frame, direction)
                 return
 

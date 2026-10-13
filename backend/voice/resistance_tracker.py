@@ -60,7 +60,7 @@ def _downgrade_level(level: str) -> str:
 
 class ResistanceTracker(FrameProcessor):
     def __init__(self, call_ctx):
-        super().__init__()
+        super().__init__(enable_direct_mode=True)
         self._ctx = call_ctx
         self._score: float = 0.0
         self._objection_types: list[str] = []
@@ -70,7 +70,7 @@ class ResistanceTracker(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, TranscriptionFrame) and frame.text:
+        if not getattr(self._ctx, "transcript_uncertain", False) and isinstance(frame, TranscriptionFrame) and frame.text:
             text = frame.text.strip()
             if text:
                 self._update_resistance(text)
@@ -80,42 +80,6 @@ class ResistanceTracker(FrameProcessor):
     def _update_resistance(self, text: str) -> None:
         matched_this_turn = False
         softening_detected = False
-
-        for pattern, obj_type in _COLD_OPEN_REFLEX:
-            if pattern.search(text):
-                self._score = min(10.0, self._score + 1.0)
-                if obj_type not in self._objection_types:
-                    self._objection_types.append(obj_type)
-                matched_this_turn = True
-                self._turns_since_objection = 0
-                logger.info("cold_reflex detected type={} score={:.1f}", obj_type, self._score)
-
-        for pattern, obj_type in _COLD_OPEN_REFLEX:
-            if pattern.search(text):
-                self._score = min(10.0, self._score + 1.0)
-                if obj_type not in self._objection_types:
-                    self._objection_types.append(obj_type)
-                matched_this_turn = True
-                self._turns_since_objection = 0
-                logger.info("cold_reflex detected type={} score={:.1f}", obj_type, self._score)
-
-        for pattern, obj_type in _COLD_OPEN_REFLEX:
-            if pattern.search(text):
-                self._score = min(10.0, self._score + 1.0)
-                if obj_type not in self._objection_types:
-                    self._objection_types.append(obj_type)
-                matched_this_turn = True
-                self._turns_since_objection = 0
-                logger.info("cold_reflex detected type={} score={:.1f}", obj_type, self._score)
-
-        for pattern, obj_type in _COLD_OPEN_REFLEX:
-            if pattern.search(text):
-                self._score = min(10.0, self._score + 1.0)
-                if obj_type not in self._objection_types:
-                    self._objection_types.append(obj_type)
-                matched_this_turn = True
-                self._turns_since_objection = 0
-                logger.info("cold_reflex detected type={} score={:.1f}", obj_type, self._score)
 
         for pattern, obj_type in _COLD_OPEN_REFLEX:
             if pattern.search(text):

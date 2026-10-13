@@ -1,0 +1,9 @@
+
+> test:dashboard
+> node dashboard_http_stress.cjs
+
+{
+  "checks": 30,
+  "passed": 30,
+  "failures": []
+}

@@ -50,7 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="px-4 py-4 border-t text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              Sophia active
+              REI Operations
             </div>
           </div>
         </aside>
@@ -63,9 +63,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </p>
             <div className="flex items-center gap-4">
-              <a href="/leads/new" className="text-xs px-3 py-1.5 rounded font-medium transition-colors" style={{ background: 'var(--teal)', color: 'var(--bg)' }}>
-                + New Lead
-              </a>
+              <Link href="/upload" className="text-xs px-3 py-1.5 rounded font-medium transition-colors" style={{ background: 'var(--teal)', color: 'var(--bg)' }}>
+                + Import Leads
+              </Link>
             </div>
           </header>
 

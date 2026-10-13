@@ -1,7 +1,8 @@
 from __future__ import annotations
 import re
+import asyncio
 from loguru import logger
-from pipecat.frames.frames import Frame, LLMTextFrame, TextFrame, TTSTextFrame
+from pipecat.frames.frames import Frame, LLMTextFrame, TextFrame, TTSSpeakFrame, TTSTextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 _SEVERITY_EXACT = "exact_block"
@@ -27,7 +28,7 @@ class ComplianceOutputFilter(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, (LLMTextFrame, TextFrame, TTSTextFrame)):
+        if isinstance(frame, (LLMTextFrame, TextFrame, TTSTextFrame, TTSSpeakFrame)):
             text = getattr(frame, "text", "") or ""
             if not text:
                 await self.push_frame(frame, direction)
@@ -48,14 +49,14 @@ class ComplianceOutputFilter(FrameProcessor):
                 for dnp_term in dnp_lower:
                     if dnp_term in text_lower:
                         logger.warning("compliance_output_filter dnp_blocked term={} preview={!r}", dnp_term, text[:60])
-                        self._write_gate_log("dnp_blocked", dnp_term)
+                        await asyncio.to_thread(self._write_gate_log, "dnp_blocked", dnp_term)
                         await self.push_frame(TextFrame(text=_SAFE_DEFLECT), direction)
                         return
 
             for pattern, severity, replacement in _PHRASE_RULES:
                 if pattern.search(text):
                     logger.warning("compliance_output_filter rule={} severity={} preview={!r}", pattern.pattern[:30], severity, text[:60])
-                    self._write_gate_log(f"rule_{severity}", pattern.pattern[:30])
+                    await asyncio.to_thread(self._write_gate_log, f"rule_{severity}", pattern.pattern[:30])
                     if severity == _SEVERITY_EXACT:
                         await self.push_frame(TextFrame(text=replacement or _SAFE_DEFLECT), direction)
                         return

@@ -1,15 +1,16 @@
 'use client'
 
+import Link from 'next/link'
+
 import { useState } from 'react'
 
-const API = process.env.NEXT_PUBLIC_API_URL || ''
 
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null)
   const [minScore, setMinScore] = useState(50)
   const [createLeads, setCreateLeads] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<any>(null)
+  const [result, setResult] = useState<{ parsed: number; upserted: number; scored: number; leads_created: number; skipped_score: number; errors: number } | null>(null)
   const [error, setError] = useState('')
 
   async function handleUpload() {
@@ -23,14 +24,14 @@ export default function UploadPage() {
 
     try {
       const res = await fetch(
-        `${API}/api/properties/upload?min_score=${minScore}&create_leads=${createLeads}`,
+        `/api/backend/api/properties/upload?min_score=${minScore}&create_leads=${createLeads}`,
         { method: 'POST', body: form }
       )
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Upload failed')
       setResult(data)
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed')
     } finally {
       setLoading(false)
     }
@@ -117,7 +118,7 @@ export default function UploadPage() {
 
       <div className="mt-6 bg-gray-800 rounded-lg p-4 text-sm text-gray-400 space-y-1">
         <p className="font-medium text-gray-300">After upload:</p>
-        <p>1. Check <a href="/queue" className="text-blue-400 underline">Campaign Queue</a> for eligible count.</p>
+        <p>1. Check <Link href="/queue" className="text-blue-400 underline">Campaign Queue</Link> for eligible count.</p>
         <p>2. If eligible = 0 and leads need phones, use the Lead Activate button or run BatchData enrichment via the API.</p>
         <p>3. Outbound dialer runs automatically at 9am and 1pm PT.</p>
       </div>

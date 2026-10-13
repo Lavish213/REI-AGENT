@@ -1,0 +1,45 @@
+
+> dashboard@0.1.0 build
+> next build
+
+▲ Next.js 16.4.0 (Turbopack)
+✓ Running next.config.ts took 47ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 960ms
+  Running TypeScript ...
+  Finished TypeScript in 2.8s ...
+  Collecting page data using 8 workers ...
+  Generating static pages using 8 workers (0/10) ...
+  Generating static pages using 8 workers (2/10) 
+  Generating static pages using 8 workers (4/10) 
+  Generating static pages using 8 workers (7/10) 
+✓ Generating static pages using 8 workers (10/10) in 212ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /analytics
+├ ƒ /api/backend/[...path]
+├ ƒ /api/events
+├ ƒ /api/ingest/call
+├ ƒ /api/ingest/complete
+├ ƒ /api/ingest/ended
+├ ƒ /api/ingest/turn
+├ ƒ /calls
+├ ƒ /calls/[id]
+├ ƒ /leads
+├ ƒ /leads/[id]
+├ ƒ /live
+├ ƒ /queue
+├ ○ /settings
+├ ○ /upload
+└ ƒ /workflow
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

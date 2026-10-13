@@ -62,7 +62,7 @@ class RuntimeOrchestrator:
                 inject_instruction=(
                     "Seller is ready to move forward. "
                     "Go directly to appointment. "
-                    "Two time options only. "
+                    "Ask one missing scheduling detail; use only approved availability. "
                     "No more discovery questions."
                 ),
                 decision_reason="seller committing + deal heat high",
@@ -107,7 +107,7 @@ class RuntimeOrchestrator:
                 inject_instruction=(
                     "Seller is fatigued. "
                     "Wrap up warmly. "
-                    "Confirm follow-up. "
+                    "Offer an optional follow-up; never claim one is saved without a tool result. "
                     "End call gracefully."
                 ),
                 decision_reason="fatigue critical",
@@ -119,8 +119,8 @@ class RuntimeOrchestrator:
                 response_length_cap=2,
                 inject_instruction=(
                     "Resistance is softening. "
-                    "Lean in gently. "
-                    "Do not back off. "
+                    "Respect their uncertainty and answer their concern. "
+                    "Do not increase pressure. "
                     "One soft qualifying question."
                 ),
                 decision_reason="resistance softening",

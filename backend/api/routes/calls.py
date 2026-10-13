@@ -70,7 +70,7 @@ async def grade_call_manually(call_id: str):
         raise HTTPException(status_code=400, detail="Call has no transcript to grade")
 
     from backend.qa.grader import grade_call
-    scores = grade_call(
+    scores = await grade_call(
         transcript=transcript,
         lead_id=call.get("lead_id", ""),
         call_sid=call.get("signalwire_call_id", call_id),

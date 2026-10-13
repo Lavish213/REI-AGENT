@@ -1,0 +1,14 @@
+{
+  "passed": 8,
+  "results": [
+    "actual Bob planner requests identity before anything else",
+    "actual Sophia consumer accepts actual Bob output",
+    "actual clear speech produces all six discovery boxes",
+    "actual PostgreSQL feedback RPC merges Sophia facts",
+    "Bob replans from actual persisted Sophia feedback",
+    "uncertain speech produces no verified bridge evidence",
+    "ownership retraction travels all the way back to Bob",
+    "suppression never becomes dial authority"
+  ],
+  "limits": "Actual Python producers/consumers and embedded PostgreSQL; synthetic text, no hosted Supabase/provider/audio"
+}

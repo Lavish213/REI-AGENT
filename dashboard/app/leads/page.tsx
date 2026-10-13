@@ -1,13 +1,10 @@
-import { supabase } from '@/lib/supabase'
+export const dynamic = 'force-dynamic'
+
+import { getSupabase } from '@/lib/supabase'
 
 function formatCurrency(cents: number | null) {
   if (cents == null) return '—'
   return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
-}
-
-function formatDate(iso: string | null) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 const stageBadge: Record<string, string> = {
@@ -21,7 +18,7 @@ const stageBadge: Record<string, string> = {
 }
 
 export default async function LeadsPage() {
-  const { data: leads, error } = await supabase
+  const { data: leads, error } = await getSupabase()
     .from('leads')
     .select('id, address, distress_score, composite_score, arv, mao, stage, status, last_contact, callable, motivation_level, timeline_urgency, followup_urgency, is_hot_lead, call_summary')
     .order('followup_urgency', { ascending: false })
@@ -64,7 +61,7 @@ export default async function LeadsPage() {
                 <td colSpan={9} className="px-4 py-8 text-center text-gray-500">No leads found</td>
               </tr>
             ) : (
-              rows.map((lead: any) => {
+              rows.map((lead) => {
                 const stage = lead.stage ?? lead.status ?? 'new'
                 const badgeClass = stageBadge[stage] ?? 'bg-gray-600 text-gray-300'
                 const score = lead.distress_score ?? lead.composite_score

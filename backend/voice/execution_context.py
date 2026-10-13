@@ -190,6 +190,8 @@ def sanitize(tool_name: str, tool_input: dict | None, resolved: ResolvedContext)
         supplied.pop(key, None)
 
     clean = {k: v for k, v in supplied.items() if k not in IDENTITY_KEYS}
+    if tool_name in {"send_followup_email", "collect_and_send_email"}:
+        server["to"] = resolved.seller_email
     clean.update({k: v for k, v in server.items() if v})
     return clean
 

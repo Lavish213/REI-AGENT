@@ -51,6 +51,8 @@ def _get_context(call_ctx) -> str:
 
 
 def _get_timeout(context: str, call_ctx) -> float:
+    if getattr(call_ctx, "response_goal", "") == "wait":
+        return getattr(call_ctx, "requested_pause_seconds", 60.0)
     base = _TIMEOUTS.get(context, 6.0)
     emotional_state = getattr(call_ctx, "emotional_state", "NEUTRAL")
     multiplier = _EMOTIONAL_MULTIPLIERS.get(emotional_state, 1.0)
@@ -88,14 +90,11 @@ class SilenceHandler:
 
             if self._consecutive_silences >= _CONSECUTIVE_SILENCE_END:
                 logger.info("silence_handler consecutive_limit reached count={} ending call", self._consecutive_silences)
-                from pipecat.frames.frames import TTSSpeakFrame
-                await self._task.queue_frames([TTSSpeakFrame(
-                    "Hey — no rush at all. Still there?"
-                )])
-                await asyncio.sleep(4.0)
+                from pipecat.frames.frames import EndFrame, TTSSpeakFrame
                 self._ctx.call_should_end = True
-                self._consecutive_silences = 0
-                self._ctx.consecutive_silences = 0
+                await self._task.queue_frames([TTSSpeakFrame(
+                    "I can't hear you now. You're welcome to call us back. Take care."
+                ), EndFrame()])
                 return
 
             phrase = self._pick_phrase(context)

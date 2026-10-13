@@ -1,0 +1,2164 @@
+{
+  "mode": "synthetic_state_policy_stress_without_LLM_audio_or_real_elapsed_calls",
+  "real_calls": 0,
+  "runs": 15,
+  "virtual_windows_minutes": [
+    3,
+    5,
+    10,
+    20,
+    50
+  ],
+  "probe_checks": 195,
+  "passed_probes": 195,
+  "failed_probes": 0,
+  "direct_question_checks": 1584,
+  "direct_question_checks_passed": 1584,
+  "results": [
+    {
+      "virtual_minutes": 3,
+      "variant": "original",
+      "filler_exchanges": 18,
+      "direct_question_checks_passed": 18,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "Actually I want $210k now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "Actually the roof is fine now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "Are there any fees?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "Let me finish",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "Tell me what fees you charge",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "Call me tomorrow at three",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "Not interested in a walkthrough, but I do want an offer",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "Actually six months instead of next week",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I don't own that house; my brother does",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I'm no longer moving; I'm keeping the rental",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "Are you an AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "Can I speak to a human?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "Stop calling me",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 3,
+      "variant": "uppercase",
+      "filler_exchanges": 18,
+      "direct_question_checks_passed": 18,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "ACTUALLY I WANT $210K NOW",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "ACTUALLY THE ROOF IS FINE NOW",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "ARE THERE ANY FEES?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "LET ME FINISH",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "TELL ME WHAT FEES YOU CHARGE",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "CALL ME TOMORROW AT THREE",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "NOT INTERESTED IN A WALKTHROUGH, BUT I DO WANT AN OFFER",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "ACTUALLY SIX MONTHS INSTEAD OF NEXT WEEK",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I DON'T OWN THAT HOUSE; MY BROTHER DOES",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I'M NO LONGER MOVING; I'M KEEPING THE RENTAL",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "ARE YOU AN AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "CAN I SPEAK TO A HUMAN?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "STOP CALLING ME",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 3,
+      "variant": "curly",
+      "filler_exchanges": 18,
+      "direct_question_checks_passed": 18,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "Actually I want $210k now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "Actually the roof is fine now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "Are there any fees?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "Let me finish",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "Tell me what fees you charge",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "Call me tomorrow at three",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "Not interested in a walkthrough, but I do want an offer",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "Actually six months instead of next week",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I don\u2019t own that house; my brother does",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I\u2019m no longer moving; I\u2019m keeping the rental",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "Are you an AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "Can I speak to a human?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "Stop calling me",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 5,
+      "variant": "original",
+      "filler_exchanges": 30,
+      "direct_question_checks_passed": 30,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "Actually I want $210k now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "Actually the roof is fine now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "Are there any fees?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "Let me finish",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "Tell me what fees you charge",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "Call me tomorrow at three",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "Not interested in a walkthrough, but I do want an offer",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "Actually six months instead of next week",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I don't own that house; my brother does",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I'm no longer moving; I'm keeping the rental",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "Are you an AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "Can I speak to a human?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "Stop calling me",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 5,
+      "variant": "uppercase",
+      "filler_exchanges": 30,
+      "direct_question_checks_passed": 30,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "ACTUALLY I WANT $210K NOW",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "ACTUALLY THE ROOF IS FINE NOW",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "ARE THERE ANY FEES?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "LET ME FINISH",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "TELL ME WHAT FEES YOU CHARGE",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "CALL ME TOMORROW AT THREE",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "NOT INTERESTED IN A WALKTHROUGH, BUT I DO WANT AN OFFER",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "ACTUALLY SIX MONTHS INSTEAD OF NEXT WEEK",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I DON'T OWN THAT HOUSE; MY BROTHER DOES",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I'M NO LONGER MOVING; I'M KEEPING THE RENTAL",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "ARE YOU AN AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "CAN I SPEAK TO A HUMAN?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "STOP CALLING ME",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 5,
+      "variant": "curly",
+      "filler_exchanges": 30,
+      "direct_question_checks_passed": 30,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "Actually I want $210k now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "Actually the roof is fine now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "Are there any fees?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "Let me finish",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "Tell me what fees you charge",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "Call me tomorrow at three",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "Not interested in a walkthrough, but I do want an offer",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "Actually six months instead of next week",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I don\u2019t own that house; my brother does",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I\u2019m no longer moving; I\u2019m keeping the rental",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "Are you an AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "Can I speak to a human?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "Stop calling me",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 10,
+      "variant": "original",
+      "filler_exchanges": 60,
+      "direct_question_checks_passed": 60,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "Actually I want $210k now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "Actually the roof is fine now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "Are there any fees?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "Let me finish",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "Tell me what fees you charge",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "Call me tomorrow at three",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "Not interested in a walkthrough, but I do want an offer",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "Actually six months instead of next week",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I don't own that house; my brother does",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I'm no longer moving; I'm keeping the rental",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "Are you an AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "Can I speak to a human?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "Stop calling me",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 10,
+      "variant": "uppercase",
+      "filler_exchanges": 60,
+      "direct_question_checks_passed": 60,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "ACTUALLY I WANT $210K NOW",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "ACTUALLY THE ROOF IS FINE NOW",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "ARE THERE ANY FEES?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "LET ME FINISH",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "TELL ME WHAT FEES YOU CHARGE",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "CALL ME TOMORROW AT THREE",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "NOT INTERESTED IN A WALKTHROUGH, BUT I DO WANT AN OFFER",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "ACTUALLY SIX MONTHS INSTEAD OF NEXT WEEK",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I DON'T OWN THAT HOUSE; MY BROTHER DOES",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I'M NO LONGER MOVING; I'M KEEPING THE RENTAL",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "ARE YOU AN AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "CAN I SPEAK TO A HUMAN?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "STOP CALLING ME",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 10,
+      "variant": "curly",
+      "filler_exchanges": 60,
+      "direct_question_checks_passed": 60,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "Actually I want $210k now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "Actually the roof is fine now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "Are there any fees?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "Let me finish",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "Tell me what fees you charge",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "Call me tomorrow at three",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "Not interested in a walkthrough, but I do want an offer",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "Actually six months instead of next week",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I don\u2019t own that house; my brother does",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I\u2019m no longer moving; I\u2019m keeping the rental",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "Are you an AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "Can I speak to a human?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "Stop calling me",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 20,
+      "variant": "original",
+      "filler_exchanges": 120,
+      "direct_question_checks_passed": 120,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "Actually I want $210k now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "Actually the roof is fine now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "Are there any fees?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "Let me finish",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "Tell me what fees you charge",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "Call me tomorrow at three",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "Not interested in a walkthrough, but I do want an offer",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "Actually six months instead of next week",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I don't own that house; my brother does",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I'm no longer moving; I'm keeping the rental",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "Are you an AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "Can I speak to a human?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "Stop calling me",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 20,
+      "variant": "uppercase",
+      "filler_exchanges": 120,
+      "direct_question_checks_passed": 120,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "ACTUALLY I WANT $210K NOW",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "ACTUALLY THE ROOF IS FINE NOW",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "ARE THERE ANY FEES?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "LET ME FINISH",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "TELL ME WHAT FEES YOU CHARGE",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "CALL ME TOMORROW AT THREE",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "NOT INTERESTED IN A WALKTHROUGH, BUT I DO WANT AN OFFER",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "ACTUALLY SIX MONTHS INSTEAD OF NEXT WEEK",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I DON'T OWN THAT HOUSE; MY BROTHER DOES",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I'M NO LONGER MOVING; I'M KEEPING THE RENTAL",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "ARE YOU AN AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "CAN I SPEAK TO A HUMAN?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "STOP CALLING ME",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 20,
+      "variant": "curly",
+      "filler_exchanges": 120,
+      "direct_question_checks_passed": 120,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "Actually I want $210k now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "Actually the roof is fine now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "Are there any fees?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "Let me finish",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "Tell me what fees you charge",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "Call me tomorrow at three",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "Not interested in a walkthrough, but I do want an offer",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "Actually six months instead of next week",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I don\u2019t own that house; my brother does",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I\u2019m no longer moving; I\u2019m keeping the rental",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "Are you an AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "Can I speak to a human?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "Stop calling me",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 50,
+      "variant": "original",
+      "filler_exchanges": 300,
+      "direct_question_checks_passed": 300,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "Actually I want $210k now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "Actually the roof is fine now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "Are there any fees?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "Let me finish",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "Tell me what fees you charge",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "Call me tomorrow at three",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "Not interested in a walkthrough, but I do want an offer",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "Actually six months instead of next week",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I don't own that house; my brother does",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I'm no longer moving; I'm keeping the rental",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "Are you an AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "Can I speak to a human?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "Stop calling me",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 50,
+      "variant": "uppercase",
+      "filler_exchanges": 300,
+      "direct_question_checks_passed": 300,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "ACTUALLY I WANT $210K NOW",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "ACTUALLY THE ROOF IS FINE NOW",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "ARE THERE ANY FEES?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "LET ME FINISH",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "TELL ME WHAT FEES YOU CHARGE",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "CALL ME TOMORROW AT THREE",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "NOT INTERESTED IN A WALKTHROUGH, BUT I DO WANT AN OFFER",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "ACTUALLY SIX MONTHS INSTEAD OF NEXT WEEK",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I DON'T OWN THAT HOUSE; MY BROTHER DOES",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I'M NO LONGER MOVING; I'M KEEPING THE RENTAL",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "ARE YOU AN AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "CAN I SPEAK TO A HUMAN?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "STOP CALLING ME",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    },
+    {
+      "virtual_minutes": 50,
+      "variant": "curly",
+      "filler_exchanges": 300,
+      "direct_question_checks_passed": 300,
+      "probes": [
+        {
+          "name": "price_correction",
+          "seller": "Actually I want $210k now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "condition_correction",
+          "seller": "Actually the roof is fine now",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "remember_current_facts",
+          "seller": "Are there any fees?",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "wait_request",
+          "seller": "Let me finish",
+          "goal": "wait",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "spoken_question_without_punctuation",
+          "seller": "Tell me what fees you charge",
+          "goal": "answer",
+          "passed": true,
+          "timeline": "next week",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "callback_without_back_keyword",
+          "seller": "Call me tomorrow at three",
+          "goal": "callback",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "qualified_refusal",
+          "seller": "Not interested in a walkthrough, but I do want an offer",
+          "goal": "alternative",
+          "passed": true,
+          "timeline": "tomorrow",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "timeline_correction_words",
+          "seller": "Actually six months instead of next week",
+          "goal": "correction",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": true,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "ownership_retraction",
+          "seller": "I don\u2019t own that house; my brother does",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": [
+            "relocation"
+          ]
+        },
+        {
+          "name": "motivation_retraction",
+          "seller": "I\u2019m no longer moving; I\u2019m keeping the rental",
+          "goal": "contact",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "identity_question",
+          "seller": "Are you an AI?",
+          "goal": "identity",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "human_request",
+          "seller": "Can I speak to a human?",
+          "goal": "human",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        },
+        {
+          "name": "stop_request",
+          "seller": "Stop calling me",
+          "goal": "stop",
+          "passed": true,
+          "timeline": "six months",
+          "owner_confirmed": false,
+          "motivation": []
+        }
+      ]
+    }
+  ]
+}

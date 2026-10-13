@@ -6,6 +6,38 @@ from loguru import logger
 router = APIRouter()
 
 
+@router.get("/health/dashboard-delivery")
+async def dashboard_delivery_health():
+    import asyncio
+    from backend.karpathys.client import delivery_target
+    from backend.lib.db import dashboard_event_journal_health
+    if delivery_target() is None:
+        return {"status": "disabled"}
+    try:
+        result = await asyncio.to_thread(dashboard_event_journal_health)
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(503, "Dashboard delivery journal unavailable")
+    return {"status": "degraded" if result["dead"] or result["oldest_pending_seconds"] > 300 else "ok", **result}
+
+
+@router.post("/health/dashboard-delivery/{event_id}/retry")
+async def dashboard_delivery_retry(event_id: str):
+    import asyncio
+    from uuid import UUID
+    from fastapi import HTTPException
+    from backend.karpathys.client import delivery_target
+    from backend.lib.db import retry_dashboard_event
+    try:
+        UUID(event_id)
+    except ValueError:
+        raise HTTPException(422, "Invalid event identifier")
+    target = delivery_target()
+    if target is None or not await asyncio.to_thread(retry_dashboard_event, event_id, target):
+        raise HTTPException(409, "Event cannot be retried for the configured destination")
+    return {"status": "queued", "event_id": event_id}
+
+
 async def _check_deepgram(key: str) -> dict:
     if not key:
         return {"status": "missing"}

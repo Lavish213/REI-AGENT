@@ -6,6 +6,7 @@ from typing import Any
 from loguru import logger
 from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from backend.voice.conversation_policy import plan_turn
 
 _PHRASE_END_CALL = re.compile(
     r"\b(stop calling|remove me|do not call|never call again|leave me alone|take me off)\b",
@@ -44,7 +45,7 @@ class AnalysisCallbackProcessor(FrameProcessor):
         microstate_engine: Any,
         runtime_orchestrator: Any,
     ):
-        super().__init__()
+        super().__init__(enable_direct_mode=True)
         self._ctx = call_ctx
         self._emotional_engine = emotional_engine
         self._trust_tracker = trust_tracker
@@ -60,7 +61,7 @@ class AnalysisCallbackProcessor(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, TranscriptionFrame) and frame.text:
+        if not getattr(self._ctx, "transcript_uncertain", False) and isinstance(frame, TranscriptionFrame) and frame.text:
             text = frame.text.strip()
             if text:
                 await self._check_phrase_triggers(text)
@@ -92,7 +93,7 @@ class AnalysisCallbackProcessor(FrameProcessor):
             self._ctx.call_should_end = True
             return
 
-        if _PHRASE_TRANSFER.search(text):
+        if plan_turn(self._ctx, text).goal == "human":
             logger.info("phrase_trigger transfer text={!r}", text[:60])
             self._ctx.runtime_instruction = (
                 "[Seller is asking to speak with a real person. "
@@ -100,7 +101,7 @@ class AnalysisCallbackProcessor(FrameProcessor):
             )
             return
 
-        if _PHRASE_IDENTITY.search(text):
+        if plan_turn(self._ctx, text).goal == "identity":
             logger.info("phrase_trigger identity_challenge")
             self._ctx.runtime_instruction = (
                 f"[Seller asked if you are AI. Respond exactly: '{_IDENTITY_DISCLOSURE}']"
@@ -111,7 +112,7 @@ class AnalysisCallbackProcessor(FrameProcessor):
             logger.info("phrase_trigger goodbye text={!r}", text[:40])
             self._ctx.runtime_instruction = (
                 "[Seller is saying goodbye. Wrap up warmly. "
-                "Do the referral ask, then use end_call tool.]"
+                "Respect their goodbye, then use end_call tool.]"
             )
 
     def _run_analysis(self, text: str) -> None:
@@ -120,13 +121,8 @@ class AnalysisCallbackProcessor(FrameProcessor):
     def _run_orchestrator(self) -> None:
         try:
             decision = self._runtime_orchestrator.decide(self._ctx)
-            if decision.objective_override:
-                self._ctx.objective = decision.objective_override
-            if decision.inject_instruction:
+            if decision.inject_instruction and not self._ctx.runtime_instruction:
                 self._ctx.runtime_instruction = decision.inject_instruction
-            if decision.end_call:
-                logger.info("orchestrator end_call reason={}", decision.end_reason)
-                self._ctx.call_should_end = True
         except Exception as e:
             logger.warning("orchestrator failed error={}", str(e))
     def _accumulate_entities(self, text: str) -> None:

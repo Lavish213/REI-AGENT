@@ -1,8 +1,11 @@
-const API = process.env.NEXT_PUBLIC_API_URL || ''
+import type { OpsRow } from '@/lib/types'
+export const dynamic = 'force-dynamic'
+
+import { backendFetch } from '@/lib/backend'
 
 async function fetchWorkflow(path: string) {
   try {
-    const res = await fetch(`${API}/api${path}`, { cache: 'no-store' })
+    const res = await backendFetch(`/api${path}`, { cache: 'no-store' })
     if (!res.ok) return null
     return res.json()
   } catch {
@@ -10,7 +13,7 @@ async function fetchWorkflow(path: string) {
   }
 }
 
-function PriorityBadge({ priority }: { priority: string | null }) {
+function PriorityBadge({ priority }: { priority?: string | null }) {
   if (!priority) return null
   const cls: Record<string, string> = {
     high: 'bg-red-900/50 text-red-300',
@@ -24,7 +27,7 @@ function PriorityBadge({ priority }: { priority: string | null }) {
   )
 }
 
-function StateBadge({ state }: { state: string | null }) {
+function StateBadge({ state }: { state?: string | null }) {
   if (!state) return <span className="text-gray-500 text-xs">—</span>
   const cls: Record<string, string> = {
     new_lead: 'bg-gray-700 text-gray-300',
@@ -44,33 +47,13 @@ function StateBadge({ state }: { state: string | null }) {
   )
 }
 
-function EventRow({ ev }: { ev: any }) {
-  const ago = ev.created_at
-    ? (() => {
-        const diff = Math.round((Date.now() - new Date(ev.created_at).getTime()) / 1000)
-        if (diff < 60) return `${diff}s ago`
-        if (diff < 3600) return `${Math.round(diff / 60)}m ago`
-        return `${Math.round(diff / 3600)}h ago`
-      })()
-    : '—'
-
-  const typeColor: Record<string, string> = {
-    hot_lead_detected: 'text-red-400',
-    appointment_detected: 'text-green-400',
-    appointment_confirmed: 'text-green-300',
-    followup_created: 'text-yellow-400',
-    workflow_created: 'text-blue-400',
-    workflow_updated: 'text-blue-300',
-    lead_escalated: 'text-red-300',
-    call_ended: 'text-gray-300',
-    transcript_completed: 'text-gray-400',
-    summary_generated: 'text-gray-400',
-  }
+function EventRow({ ev }: { ev: OpsRow }) {
+  const ago = ev.created_at ? new Date(ev.created_at).toLocaleString('en-US') : '—'
 
   return (
     <div className="flex items-center gap-3 py-1.5 border-b border-gray-800 last:border-0">
       <span className="text-gray-600 text-xs w-16 shrink-0 text-right">{ago}</span>
-      <span className={`text-xs font-mono ${typeColor[ev.event_type] ?? 'text-gray-400'}`}>
+      <span className={`text-xs font-mono text-gray-400`}>
         {ev.event_type}
       </span>
       {ev.payload?.state && (
@@ -98,11 +81,11 @@ export default async function WorkflowPage() {
     fetchWorkflow('/workflow/pipeline'),
   ])
 
-  const events = activityData?.events ?? []
-  const followups = followupData?.followups ?? []
-  const hotLeads = hotLeadsData?.leads ?? []
-  const appointments = appointmentsData?.appointments ?? []
-  const pipeline = pipelineData?.pipeline ?? {}
+  const events: OpsRow[] = activityData?.events ?? []
+  const followups: OpsRow[] = followupData?.followups ?? []
+  const hotLeads: OpsRow[] = hotLeadsData?.leads ?? []
+  const appointments: OpsRow[] = appointmentsData?.appointments ?? []
+  const pipeline: Record<string, number> = pipelineData?.pipeline ?? {}
 
   return (
     <main className="min-h-screen bg-gray-900 text-white p-6">
@@ -113,7 +96,7 @@ export default async function WorkflowPage() {
 
       {/* Pipeline state bar */}
       <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2 mb-8">
-        {Object.entries(pipeline).map(([state, count]: [string, any]) => (
+        {Object.entries(pipeline).map(([state, count]: [string, number]) => (
           <div key={state} className="bg-gray-800 rounded-lg p-3 text-center">
             <p className={`text-2xl font-bold font-mono ${count > 0 ? 'text-white' : 'text-gray-600'}`}>
               {count}
@@ -136,7 +119,7 @@ export default async function WorkflowPage() {
               <p className="text-gray-600 text-xs">No recent events</p>
             ) : (
               <div className="max-h-80 overflow-y-auto">
-                {events.map((ev: any) => <EventRow key={ev.id} ev={ev} />)}
+                {events.map((ev) => <EventRow key={ev.id} ev={ev} />)}
               </div>
             )}
           </section>
@@ -151,7 +134,7 @@ export default async function WorkflowPage() {
               <p className="text-gray-600 text-xs">No upcoming appointments</p>
             ) : (
               <div className="space-y-2">
-                {appointments.map((appt: any) => {
+                {appointments.map((appt) => {
                   const prop = appt.properties ?? {}
                   const apptDate = appt.appointment_at
                     ? new Date(appt.appointment_at).toLocaleString('en-US', {
@@ -187,7 +170,7 @@ export default async function WorkflowPage() {
               <p className="text-gray-600 text-xs">No hot leads</p>
             ) : (
               <div className="space-y-2">
-                {hotLeads.map((lead: any) => {
+                {hotLeads.map((lead) => {
                   const prop = lead.properties ?? {}
                   return (
                     <div key={lead.id} className="border border-red-900/40 rounded-lg p-3 bg-red-950/20">
@@ -238,7 +221,7 @@ export default async function WorkflowPage() {
               <p className="text-gray-600 text-xs">No pending followups</p>
             ) : (
               <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                {followups.map((f: any) => {
+                {followups.map((f) => {
                   const lead = f.leads ?? {}
                   return (
                     <div key={f.id} className="border border-gray-700 rounded-lg p-3">
@@ -271,12 +254,12 @@ export default async function WorkflowPage() {
                         </p>
                       )}
                       <div className="flex gap-2 mt-2">
-                        <form action={`${API}/api/workflow/followups/${f.id}/complete`} method="POST">
+                        <form action={`/api/backend/api/workflow/followups/${f.id}/complete`} method="POST">
                           <button type="submit" className="text-xs text-green-400 hover:text-green-300">
                             ✓ Done
                           </button>
                         </form>
-                        <form action={`${API}/api/workflow/followups/${f.id}/cancel`} method="POST">
+                        <form action={`/api/backend/api/workflow/followups/${f.id}/cancel`} method="POST">
                           <button type="submit" className="text-xs text-gray-500 hover:text-gray-400">
                             × Cancel
                           </button>

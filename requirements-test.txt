@@ -1,0 +1,3 @@
+fakeredis[lua]==2.39.0
+redislite==6.2.912183
+coverage==7.16.2

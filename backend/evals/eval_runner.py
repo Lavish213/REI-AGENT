@@ -18,14 +18,8 @@ def _get_client() -> Anthropic:
 
 
 def _load_sophia_prompt() -> str:
-    prompts_dir = os.path.join(os.path.dirname(__file__), "..", "voice", "prompts")
-    parts = []
-    for filename in ["sophia_system.md", "sophia_scenarios.md", "sophia_scripts.md"]:
-        filepath = os.path.join(prompts_dir, filename)
-        if os.path.exists(filepath):
-            with open(filepath) as f:
-                parts.append(f.read().strip())
-    return "\n\n---\n\n".join(parts)
+    from backend.voice.agent import _load_system_prompt
+    return _load_system_prompt({"property_context_str": "SIMULATION: No verified offers or live actions available."})
 
 
 def _build_eval_prompt(case: dict) -> str:

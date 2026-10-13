@@ -1,193 +1,216 @@
-"use client"
-
 import Link from 'next/link'
+export const dynamic = 'force-dynamic'
 
-const API = process.env.NEXT_PUBLIC_API_URL || ''
+import { backendFetch } from '@/lib/backend'
+import { getSupabase } from '@/lib/supabase'
+import LiveActivity from '@/components/LiveActivity'
 
-async function fetchAPI(path: string) {
+
+function todayISOStart() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d.toISOString()
+}
+
+async function fetchPipeline() {
   try {
-    const res = await fetch(`${API}/api${path}`, { cache: 'no-store' })
+    const res = await backendFetch(`/api/workflow/pipeline`, { cache: 'no-store' })
     if (!res.ok) return null
     return res.json()
-  } catch { return null }
-}
-
-function fmt$(cents: number | null) {
-  if (!cents) return '$0'
-  return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-}
-
-function MetricCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {
-  return (
-    <div className="rounded-xl p-4 border" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-      <p className="text-xs uppercase tracking-wide mb-2" style={{ color: 'var(--text-dim)' }}>{label}</p>
-      <p className="text-3xl font-bold" style={{ color: accent || 'var(--text)' }}>{value}</p>
-      {sub && <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
-    </div>
-  )
-}
-
-function DispositionBadge({ d }: { d: string }) {
-  const map: Record<string, string> = {
-    HOT: 'var(--hot)', WARM: 'var(--warm)', COLD: 'var(--cold)', DEAD: 'var(--dead)',
+  } catch {
+    return null
   }
-  return (
-    <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ color: map[d] || 'var(--text-dim)', background: 'var(--bg)' }}>
-      {d}
-    </span>
-  )
 }
 
-export default async function CommandPage() {
-  const [workflow, live, perf] = await Promise.all([
-    fetchAPI('/analytics/workflow'),
-    fetchAPI('/live/calls'),
-    fetchAPI('/calls/performance/summary'),
+export default async function MorningBriefingPage() {
+  const todayStart = todayISOStart()
+
+  const [
+    hotLeadsRes,
+    followupNeededRes,
+    callsTodayRes,
+    apptTodayRes,
+    recentCallsRes,
+    pipelineData,
+    liveEventsRes,
+  ] = await Promise.all([
+    getSupabase()
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_hot_lead', true)
+      .neq('stage', 'dead'),
+    getSupabase()
+      .from('followups')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending'),
+    getSupabase()
+      .from('calls')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', todayStart),
+    getSupabase()
+      .from('leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('stage', 'walkthrough_booked'),
+    getSupabase()
+      .from('calls')
+      .select('id, created_at, call_disposition, score_overall, call_summary, leads(address)')
+      .order('created_at', { ascending: false })
+      .limit(8),
+    fetchPipeline(),
+    getSupabase()
+      .from('call_events')
+      .select('id, event_type, payload, created_at, lead_id')
+      .order('created_at', { ascending: false })
+      .limit(10),
   ])
 
-  const w = workflow ?? {}
-  const activeCalls: any[] = live?.active_calls ?? []
-  const hotLeads: any[] = live?.hot_leads ?? []
-  const overdueFollowups: any[] = live?.overdue_followups ?? []
+  const hotCount = hotLeadsRes.count ?? 0
+  const followupCount = followupNeededRes.count ?? 0
+  const callsTodayCount = callsTodayRes.count ?? 0
+  const apptCount = apptTodayRes.count ?? 0
+  const recentCalls = recentCallsRes.data ?? []
+  const pipeline: Record<string, number> = pipelineData?.pipeline ?? {}
+  const liveEvents = liveEventsRes.data ?? []
+
+  const dispColor: Record<string, string> = {
+    HOT: 'text-red-400', WARM: 'text-yellow-400',
+    COLD: 'text-blue-300', DEAD: 'text-gray-500',
+  }
 
   return (
-    <div className="p-6 space-y-8">
-
-      {/* Active calls */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold uppercase tracking-widest" style={{ color: 'var(--text-dim)' }}>
-            Active Calls
-          </h2>
-          {activeCalls.length > 0 && (
-            <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--green)' }}>
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              {activeCalls.length} live
-            </span>
-          )}
+    <main className="min-h-screen bg-gray-900 text-white p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Operations</h1>
+        <div className="flex gap-3 text-sm">
+          <Link href="/live" className="text-green-400 hover:underline">Live →</Link>
+          <Link href="/analytics" className="text-blue-400 hover:underline">Analytics →</Link>
+          <Link href="/workflow" className="text-blue-400 hover:underline">Workflow →</Link>
+          <Link href="/calls" className="text-blue-400 hover:underline">Calls →</Link>
+          <Link href="/leads" className="text-blue-400 hover:underline">Leads →</Link>
+          <Link href="/queue" className="text-blue-400 hover:underline">Queue →</Link>
         </div>
+      </div>
 
-        {activeCalls.length === 0 ? (
-          <div className="rounded-xl border p-8 text-center text-sm" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-            No active calls — Sophia is standing by
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {activeCalls.map((call: any) => (
-              <div key={call.call_sid} className="rounded-xl border px-4 py-3 flex items-center gap-4" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse shrink-0" />
-                <span className="text-sm font-medium flex-1">{call.seller_name || call.address || call.call_sid}</span>
-                <span className="text-xs font-mono" style={{ color: 'var(--text-dim)' }}>{call.duration || '0:00'}</span>
-                <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'var(--bg)', color: 'var(--teal)' }}>{call.objective || 'DISCOVERY'}</span>
-                {call.deal_heat > 7 && <span style={{ color: 'var(--hot)' }}>🔥</span>}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Today's summary */}
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-dim)' }}>Today</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <MetricCard label="Calls" value={w.calls_today ?? 0} />
-          <MetricCard label="Connected" value={w.connected_today ?? 0} />
-          <MetricCard label="Appointments" value={w.appointments_today ?? 0} accent="var(--green)" />
-          <MetricCard label="Hot Leads" value={w.hot_leads ?? 0} accent="var(--hot)" />
-          <MetricCard label="Conversion" value={w.conversion_rate_pct != null ? `${w.conversion_rate_pct}%` : '—'} accent="var(--teal)" />
-          <MetricCard label="Avg QA" value={perf?.avg_score?.toFixed(1) ?? '—'} />
+      {/* Operational stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+        <div className="bg-gray-800 rounded-lg p-4">
+          <p className="text-xs text-gray-400 mb-1">Hot Leads</p>
+          <p className={`text-3xl font-bold ${hotCount > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+            {hotCount}
+          </p>
+          <p className="text-xs text-gray-600 mt-1">need contact now</p>
         </div>
-      </section>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <p className="text-xs text-gray-400 mb-1">Pending Followups</p>
+          <p className={`text-3xl font-bold ${followupCount > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
+            {followupCount}
+          </p>
+          <p className="text-xs text-gray-600 mt-1">in queue</p>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <p className="text-xs text-gray-400 mb-1">Calls Today</p>
+          <p className="text-3xl font-bold text-green-400">{callsTodayCount}</p>
+          <p className="text-xs text-gray-600 mt-1">since midnight</p>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4">
+          <p className="text-xs text-gray-400 mb-1">Walkthroughs Booked</p>
+          <p className={`text-3xl font-bold ${apptCount > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+            {apptCount}
+          </p>
+          <p className="text-xs text-gray-600 mt-1">pending visits</p>
+        </div>
+      </div>
 
-      {/* Priority queue + campaign side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        {/* Priority queue */}
+        {/* Workflow pipeline */}
+        {Object.keys(pipeline).length > 0 && (
+          <section>
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
+              Workflow Pipeline
+            </h2>
+            <div className="bg-gray-800 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <tbody>
+                  {Object.entries(pipeline).map(([state, count]: [string, number]) => (
+                    <tr key={state} className="border-b border-gray-700/50 last:border-0">
+                      <td className="px-4 py-2 text-gray-400 capitalize">{state.replace(/_/g, ' ')}</td>
+                      <td className="px-4 py-2 text-right">
+                        <span className={`font-mono font-semibold ${
+                          count > 0 ? (state === 'dead_lead' ? 'text-gray-600' : 'text-white') : 'text-gray-700'
+                        }`}>{count}</span>
+                      </td>
+                      <td className="px-4 py-2 w-32">
+                        <div className="bg-gray-700 rounded-full h-1.5">
+                          <div
+                            className={`h-1.5 rounded-full ${
+                              state === 'dead_lead' ? 'bg-gray-600' :
+                              state === 'closed' ? 'bg-green-500' :
+                              state.includes('appointment') ? 'bg-green-400' :
+                              state === 'hot_lead' ? 'bg-red-500' : 'bg-blue-500'
+                            }`}
+                            style={{ width: `${Math.min(100, (count / Math.max(1, Math.max(...Object.values(pipeline) as number[]))) * 100)}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* Recent calls */}
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-dim)' }}>Priority Queue</h2>
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-            {hotLeads.length === 0 && overdueFollowups.length === 0 ? (
-              <div className="p-6 text-sm text-center" style={{ color: 'var(--text-muted)' }}>Queue is clear</div>
-            ) : (
-              <div>
-                {hotLeads.slice(0, 3).map((lead: any) => (
-                  <div key={lead.id} className="flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}>
-                    <span style={{ color: 'var(--hot)' }}>🔥</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{lead.address}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{lead.owner_name || 'Unknown owner'}</p>
-                    </div>
-                    <DispositionBadge d="HOT" />
-                    <Link href={`/leads/${lead.id}`} className="text-xs" style={{ color: 'var(--teal)' }}>View →</Link>
-                  </div>
-                ))}
-                {overdueFollowups.slice(0, 3).map((f: any) => (
-                  <div key={f.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-0" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}>
-                    <span style={{ color: 'var(--warm)' }}>⏰</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{f.address || 'Unknown address'}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Overdue followup</p>
-                    </div>
-                    <Link href={`/leads/${f.lead_id}`} className="text-xs" style={{ color: 'var(--teal)' }}>View →</Link>
-                  </div>
-                ))}
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
+            Recent Calls
+          </h2>
+          <div className="space-y-2">
+            {recentCalls.length === 0 ? (
+              <div className="bg-gray-800 rounded-lg p-4 text-center text-gray-600 text-sm">
+                No calls yet today
               </div>
+            ) : (
+              recentCalls.map((call) => {
+                const address = (Array.isArray(call.leads) ? call.leads[0] : call.leads)?.address ?? '—'
+                const disp = call.call_disposition
+                const qa = call.score_overall
+                return (
+                  <div key={call.id} className="bg-gray-800 rounded-lg p-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex-1 text-sm truncate">{address}</span>
+                      <span className={`text-xs ${dispColor[disp] ?? 'text-gray-500'}`}>
+                        {disp ?? '—'}
+                      </span>
+                      {qa != null && (
+                        <span className={`text-xs font-mono font-semibold ${qa >= 8 ? 'text-green-400' : qa >= 6 ? 'text-yellow-400' : 'text-red-400'}`}>
+                          {qa.toFixed(1)}
+                        </span>
+                      )}
+                      <a href={`/calls/${call.id}`} className="text-xs text-blue-400 hover:underline shrink-0">
+                        →
+                      </a>
+                    </div>
+                    {call.call_summary && (
+                      <p className="text-xs text-gray-500 mt-1 italic leading-tight line-clamp-1">
+                        {call.call_summary}
+                      </p>
+                    )}
+                  </div>
+                )
+              })
             )}
           </div>
-        </section>
-
-        {/* Campaign status */}
-        <section>
-          <h2 className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-dim)' }}>Campaign</h2>
-          <div className="rounded-xl border p-5 space-y-4" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">Outbound Campaign</p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Runs 9am + 1pm PT</p>
-              </div>
-              <span className="text-xs px-2 py-1 rounded font-medium" style={{ background: 'var(--bg)', color: 'var(--green)' }}>
-                Running
-              </span>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs mb-1.5" style={{ color: 'var(--text-dim)' }}>
-                <span>Active slots</span>
-                <span style={{ color: 'var(--text)' }}>{w.active_calls ?? 0} / 3</span>
-              </div>
-              <div className="h-1.5 rounded-full" style={{ background: 'var(--border)' }}>
-                <div className="h-1.5 rounded-full" style={{ background: 'var(--teal)', width: `${Math.min(100, ((w.active_calls ?? 0) / 3) * 100)}%` }} />
-              </div>
-            </div>
-
-            <div className="flex gap-2 pt-1">
-              <button className="flex-1 text-xs py-2 rounded border transition-colors hover:opacity-80" style={{ borderColor: 'var(--border)', color: 'var(--text-dim)' }}
-                onClick={() => fetch(`${API}/api/campaigns/pause`, { method: 'POST' })}>
-                Pause
-              </button>
-              <button className="flex-1 text-xs py-2 rounded border transition-colors hover:opacity-80" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}
-                onClick={() => fetch(`${API}/api/campaigns/resume`, { method: 'POST' })}>
-                Resume
-              </button>
-            </div>
-          </div>
+          <Link href="/calls" className="text-xs text-blue-400 hover:underline mt-2 inline-block">
+            View all calls →
+          </Link>
         </section>
       </div>
 
-      {/* Pipeline summary */}
-      {w.stage_pipeline && (
-        <section>
-          <h2 className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-dim)' }}>Pipeline</h2>
-          <div className="grid grid-cols-4 md:grid-cols-7 gap-3">
-            {Object.entries(w.stage_pipeline as Record<string, number>).map(([stage, count]) => (
-              <Link key={stage} href="/leads" className="rounded-xl border p-3 text-center hover:opacity-80 transition-opacity" style={{ borderColor: 'var(--border)', background: 'var(--bg-card)' }}>
-                <p className="text-2xl font-bold font-mono" style={{ color: count > 0 && stage !== 'dead' ? 'var(--text)' : 'var(--text-muted)' }}>{count}</p>
-                <p className="text-xs mt-1 capitalize" style={{ color: 'var(--text-dim)' }}>{stage.replace(/_/g, ' ')}</p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-    </div>
+      <div className="mt-6">
+        <LiveActivity initialEvents={liveEvents} />
+      </div>
+    </main>
   )
 }

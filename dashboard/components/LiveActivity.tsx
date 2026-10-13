@@ -1,13 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
 interface LiveEvent {
   id: string
   event_type: string
@@ -43,23 +36,18 @@ export default function LiveActivity({ initialEvents = [] }: { initialEvents?: L
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
-    const channel = supabase
-      .channel('live-call-events')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'call_events' },
-        (payload) => {
-          const row = payload.new as LiveEvent
-          setEvents((prev) => [row, ...prev].slice(0, 20))
-        }
-      )
-      .subscribe((status) => {
-        setConnected(status === 'SUBSCRIBED')
-      })
-
-    return () => {
-      supabase.removeChannel(channel)
+    let disposed = false
+    async function refresh() {
+      try {
+        const response = await fetch('/api/events', { cache: 'no-store' })
+        if (!response.ok) throw new Error('Activity unavailable')
+        const data = await response.json()
+        if (!disposed) { setEvents(data.events); setConnected(true) }
+      } catch { if (!disposed) setConnected(false) }
     }
+    void refresh()
+    const timer = setInterval(refresh, 5000)
+    return () => { disposed = true; clearInterval(timer) }
   }, [])
 
   return (
@@ -71,7 +59,7 @@ export default function LiveActivity({ initialEvents = [] }: { initialEvents?: L
         <span className="flex items-center gap-1.5 text-xs">
           <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-gray-600'}`} />
           <span className={connected ? 'text-green-400' : 'text-gray-600'}>
-            {connected ? 'Live' : 'Connecting…'}
+            {connected ? 'Updating every 5s' : 'Unavailable'}
           </span>
         </span>
       </div>

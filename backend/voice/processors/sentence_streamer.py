@@ -1,72 +1,51 @@
+from __future__ import annotations
+
 import re
 
-from loguru import logger
-
-from pipecat.frames.frames import AggregationType, Frame, LLMFullResponseEndFrame, LLMTextFrame, TextFrame, TTSTextFrame
+from pipecat.frames.frames import (
+    AggregationType,
+    CancelFrame,
+    EndFrame,
+    Frame,
+    InterruptionFrame,
+    LLMFullResponseEndFrame,
+    LLMFullResponseStartFrame,
+    LLMTextFrame,
+    TTSTextFrame,
+)
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
-_HARD_BOUNDARY = re.compile(r"(?<=[.?!])\s+(?=[A-Z])|(?<=[.?!])$")
-
-_COMMA_MIN_WORDS = 5
-
-
-def _word_count(text: str) -> int:
-    return len(text.split())
-
-
-def _find_hard_boundary(text: str) -> int:
-    for m in _HARD_BOUNDARY.finditer(text):
-        candidate = text[: m.start() + 1].rstrip()
-        if _word_count(candidate) >= 5:
-            return m.end()
-    return -1
-
-
-def _find_comma_boundary(text: str) -> int:
-    idx = text.find(",")
-    if idx == -1:
-        return -1
-    if _word_count(text[:idx]) >= _COMMA_MIN_WORDS:
-        return idx + 1
-    return -1
+_BOUNDARY = re.compile(r"(?<!\d)[.!?](?=\s|$)|(?<=\d)[.!?](?=\s)")
+_MAX_BUFFER = 1200
 
 
 class SentenceStreamProcessor(FrameProcessor):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self._buffer = ""
 
     async def _flush(self, text: str, direction: FrameDirection) -> None:
-        text = text.strip()
-        if text:
-            if not text.endswith((" ", "\n")):
-                text = text + " "
-            logger.debug("sentence_streamer flush text={!r}", text)
-            await self.push_frame(TTSTextFrame(text=text, aggregated_by=AggregationType.SENTENCE), direction)
+        if text.strip():
+            await self.push_frame(TTSTextFrame(text=text.strip() + " ", aggregated_by=AggregationType.SENTENCE), direction)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
-
-        if isinstance(frame, (LLMTextFrame, TextFrame)):
-            text = frame.text if hasattr(frame, "text") else ""
-            self._buffer += text
-            while True:
-                boundary = _find_hard_boundary(self._buffer)
-                if boundary != -1:
-                    chunk = self._buffer[:boundary]
-                    self._buffer = self._buffer[boundary:]
-                    await self._flush(chunk, direction)
-                    continue
-                break
-            return
-
-        if isinstance(frame, LLMFullResponseEndFrame):
-            remaining = self._buffer.strip()
+        if isinstance(frame, (InterruptionFrame, CancelFrame, EndFrame, LLMFullResponseStartFrame)):
             self._buffer = ""
-            if remaining:
-                await self._flush(remaining, direction)
-            await self.push_frame(frame, direction)
+        if direction == FrameDirection.DOWNSTREAM and isinstance(frame, LLMTextFrame):
+            self._buffer += frame.text
+            while match := _BOUNDARY.search(self._buffer):
+                boundary = match.end()
+                await self._flush(self._buffer[:boundary], direction)
+                self._buffer = self._buffer[boundary:]
+            while len(self._buffer) > _MAX_BUFFER:
+                boundary = self._buffer.rfind(" ", 0, _MAX_BUFFER)
+                boundary = boundary if boundary > 0 else _MAX_BUFFER
+                await self._flush(self._buffer[:boundary], direction)
+                self._buffer = self._buffer[boundary:]
             return
-
+        if direction == FrameDirection.DOWNSTREAM and isinstance(frame, LLMFullResponseEndFrame):
+            await self._flush(self._buffer, direction)
+            self._buffer = ""
         await self.push_frame(frame, direction)

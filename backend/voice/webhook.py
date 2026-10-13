@@ -22,15 +22,7 @@ def _normalize_phone(phone: str) -> str:
 
 
 def _is_boss(caller_phone: str) -> bool:
-    owner_phone = os.environ.get("OWNER_PHONE", "")
-
-    if not owner_phone:
-        return False
-
-    return (
-        _normalize_phone(caller_phone)
-        == _normalize_phone(owner_phone)
-    )
+    return False
 
 
 def _build_ws_url() -> str:
@@ -150,13 +142,17 @@ async def handle_inbound_call(
 
         ws_url = _build_ws_url()
 
+        from backend.voice.session import issue_stream_token
+        token = issue_stream_token("inbound:" + call_sid)
         laml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
         <Stream
             url="{ws_url}/api/voice/stream/{call_sid}"
             track="inbound_track"
-        />
+        >
+            <Parameter name="authorization" value="{token}"/>
+        </Stream>
     </Connect>
 </Response>"""
 
@@ -204,22 +200,11 @@ async def handle_inbound_call(
 @router.websocket("/voice/stream/{call_sid}")
 async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
     await websocket.accept()
+    resolved_sid = call_sid
     try:
-        import json as _json
-        resolved_sid = call_sid
-        for _ in range(5):
-            raw = await asyncio.wait_for(websocket.receive_text(), timeout=3.0)
-            msg = _json.loads(raw)
-            if msg.get("event") == "start":
-                real_sid = (
-                    msg.get("start", {}).get("callSid")
-                    or msg.get("callSid")
-                    or ""
-                )
-                if real_sid:
-                    resolved_sid = real_sid
-                break
-
+        from backend.voice.session import read_media_session
+        session = await read_media_session(websocket, expected_call_sid=call_sid, authorized_scope="inbound:" + call_sid)
+        resolved_sid = session.call_sid
         call_context = {}
         try:
             store = getattr(websocket.app.state, "call_contexts", {})
@@ -229,13 +214,17 @@ async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
                 waited += 0.05
                 store = getattr(websocket.app.state, "call_contexts", {})
             if resolved_sid in store:
-                call_context = store.pop(resolved_sid)
+                call_context = store[resolved_sid]
                 logger.info("call_context loaded waited={:.2f}s lead={}", waited, bool(call_context.get("lead")))
             else:
                 logger.warning("call_context timeout after 5s starting cold")
         except Exception:
             pass
 
+        if not hasattr(websocket.app.state, "call_contexts"):
+            websocket.app.state.call_contexts = {}
+        websocket.app.state.call_contexts[resolved_sid] = call_context
+        call_context["stream_sid"] = session.stream_sid
         logger.info("inbound_stream_started call_sid={}", resolved_sid)
         app_state = websocket.app.state
         if not hasattr(app_state, "call_metrics"):
@@ -256,6 +245,8 @@ async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
     except Exception as e:
         logger.exception("inbound_stream_failed call_sid={} error={}", call_sid, str(e))
     finally:
+        for name in ("call_metrics", "call_started_at", "call_contexts"):
+            getattr(websocket.app.state, name, {}).pop(resolved_sid, None)
         try:
             await websocket.close()
         except Exception:
@@ -357,14 +348,10 @@ async def handle_inbound_sms(
         owner_phone = os.environ.get("OWNER_PHONE", "")
         if owner_phone and "".join(c for c in from_number if c.isdigit())[-10:] == "".join(c for c in owner_phone if c.isdigit())[-10:]:
             try:
-                from backend.lib.db import _get_client
-                client = _get_client()
-                pending = client.table("operator_queries").select("id").eq("status", "pending").order("created_at", desc=True).limit(1).execute()
-                if pending.data:
-                    query_id = pending.data[0]["id"]
-                    client.table("operator_queries").update({"answer": body, "status": "answered"}).eq("id", query_id).execute()
-                    logger.info("operator_reply recorded query_id={}", query_id)
-                    return PlainTextResponse(content=_empty_twiml(), media_type="text/xml")
+                from backend.lib.db import record_operator_reply
+                recorded = record_operator_reply(body)
+                logger.info("operator_reply recorded={}", recorded)
+                return PlainTextResponse(content=_empty_twiml(), media_type="text/xml")
             except Exception as op_err:
                 logger.warning("operator_reply failed error={}", str(op_err))
 

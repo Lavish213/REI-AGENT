@@ -307,3 +307,35 @@ def send_offer_summary_email(to, first_name, address, offer_low, offer_high, lea
         f"{os.environ.get('SIGNALWIRE_PHONE', '')}"
     )
     return send_email(to=to, subject=subject, body=body)
+
+
+def create_unsubscribe_token(lead_id: str, email: str) -> str:
+    import base64
+    import hashlib
+    import hmac
+    import json
+    key = os.environ["EMAIL_UNSUBSCRIBE_SECRET"]
+    if not key:
+        raise ValueError("An unsubscribe signing secret is required")
+    payload = base64.urlsafe_b64encode(json.dumps({"lead_id": lead_id, "email": email}).encode()).decode()
+    signature = hmac.new(key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return payload + "." + signature
+
+
+def verify_unsubscribe_token(token: str):
+    import base64
+    import hashlib
+    import hmac
+    import json
+    try:
+        payload, signature = token.split(".", 1)
+        key = os.environ["EMAIL_UNSUBSCRIBE_SECRET"]
+        if not key:
+            return None
+        expected = hmac.new(key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            return None
+        data = json.loads(base64.urlsafe_b64decode(payload))
+        return (data["lead_id"], data["email"])
+    except (ValueError, KeyError, TypeError):
+        return None
