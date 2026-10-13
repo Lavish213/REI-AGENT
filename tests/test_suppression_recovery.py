@@ -219,3 +219,45 @@ def test_invalid_phone_never_creates_suppression(journal, phone):
     with pytest.raises(ValueError):
         db.stage_contact_suppression(TENANT, phone)
     assert not journal.exists()
+
+
+@pytest.mark.parametrize("language", ["en", "es"])
+def test_voicemail_discloses_ai_before_business_and_escapes_contact_xml(language):
+    from xml.etree import ElementTree
+    from backend.voice import outbound
+    xml = outbound.build_voicemail_laml({"owner_name": "<Play>injected</Play>"}, {"address": "123 & <Redirect>injected</Redirect>"}, language)
+    root = ElementTree.fromstring(xml)
+    assert root.find("Play") is None and root.find("Redirect") is None
+    text = root.find("Say").text.strip()
+    disclosure = "AI assistant" if language == "en" else "inteligencia artificial"
+    assert disclosure in text.split(".")[0]
+    assert "<Redirect>injected</Redirect>" in text
+
+
+@pytest.mark.parametrize("language,attempt", [(language, attempt) for language in ("en", "es") for attempt in (1, 2, 3)])
+def test_every_ringless_script_discloses_ai_first(language, attempt):
+    from backend.alerts import ringless
+    text = ringless._get_script_text(attempt, {"owner_name": "Synthetic Seller"}, {}, language)
+    disclosure = "AI assistant" if language == "en" else "inteligencia artificial"
+    assert disclosure in text.split(".")[0]
+    assert "moving fast" not in text and "vendiendo rápido" not in text
+
+
+def test_ringless_fallback_discloses_ai_and_keeps_xml_text_safe():
+    from xml.etree import ElementTree
+    from backend.alerts import ringless
+    root = ElementTree.fromstring(ringless.build_voicemail_laml({"owner_name": "<Play>injected</Play>"}, {}))
+    assert root.find("Play") is None
+    assert "AI assistant" in root.find("Say").text.split(".")[0]
+
+
+@pytest.mark.parametrize("message", ["Send me the details", "Can I extend the appointment?", "Please stop by tomorrow", "Can we cancel the appointment?"])
+def test_ordinary_sms_words_are_not_permanent_opt_outs(message):
+    from backend.alerts.drip import is_sms_opt_out
+    assert not is_sms_opt_out(message)
+
+
+@pytest.mark.parametrize("message", ["STOP", " END! ", "please stop", "stop texting me", "Do not call me again", "Please unsubscribe me", "opt-out", "No me llames"])
+def test_standard_and_natural_sms_opt_out_requests_are_recognized(message):
+    from backend.alerts.drip import is_sms_opt_out
+    assert is_sms_opt_out(message)

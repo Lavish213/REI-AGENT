@@ -273,11 +273,19 @@ def _tick() -> None:
             logger.error("drip_tick process error lead_id={} error={}", lead.get("id"), str(e))
 
 
+def is_sms_opt_out(body: str) -> bool:
+    import re
+    normalized = body.casefold().strip(" \t\r\n.!?,")
+    if normalized in OPT_OUT_KEYWORDS or normalized in {"please stop", "stop now", "please unsubscribe", "please opt out"}:
+        return True
+    return bool(re.search(r"\b(?:stop (?:calling|texting|messaging|contacting)(?: me)?|(?:do not|don't|dont) (?:call|text|contact|message)(?: me)?|unsubscribe me|opt[ -]?out(?: me)?|remove me (?:from|off)|no me (?:llames|contactes|escribas))\b", normalized))
+
+
 def handle_inbound_reply(from_phone: str, body: str, message_sid: str) -> str:
     body_stripped = body.strip()
     body_lower = body_stripped.lower()
 
-    if any(kw in body_lower for kw in OPT_OUT_KEYWORDS):
+    if is_sms_opt_out(body_stripped):
         from backend.lib import db
         tenant = os.environ.get("TENANT_ID") or "00000000-0000-0000-0000-000000000001"
         staged = db.stage_contact_suppression(tenant, from_phone, method="sms_stop")
