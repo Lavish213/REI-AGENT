@@ -305,3 +305,15 @@ def test_world_writable_journal_directory_is_rejected(journal):
             stage()
     finally:
         directory.chmod(original)
+
+
+def test_separate_processes_share_a_cold_journal_without_lost_or_duplicate_events(journal):
+    code = "from backend.lib.db import stage_dashboard_event; import os; [stage_dashboard_event('call', {'call_sid': 'multiprocess-call'}, 'a'*64) for _ in range(20)]; os._exit(0)"
+    def producer(_):
+        return subprocess.run([sys.executable, '-c', code], env=dict(os.environ), capture_output=True, timeout=30)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(producer, range(12)))
+    assert all(result.returncode == 0 for result in results), [result.stderr.decode() for result in results if result.returncode]
+    assert db.dashboard_event_journal_health()['pending'] == 1
+    event = db.claim_dashboard_event('a' * 64)
+    assert event['call_sid'] == 'multiprocess-call'

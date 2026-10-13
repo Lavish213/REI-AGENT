@@ -1513,20 +1513,9 @@ def record_bob_call_facts(lead_id, call_sid, facts):
 
 
 def _bob_fact_outbox():
-    import sqlite3
     from pathlib import Path
     path = Path(os.environ.get("VOICE_FACT_OUTBOX_PATH", "/data/sophia/bob-facts.sqlite3"))
-    if path.is_symlink():
-        raise RuntimeError("Fact journal cannot be a symlink")
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    descriptor = os.open(str(path), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    os.close(descriptor)
-    connection = sqlite3.connect(str(path), timeout=2)
-    os.chmod(path, 0o600)
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.execute("PRAGMA synchronous=FULL")
-    connection.execute("CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, lead_id TEXT NOT NULL, call_sid TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, due REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, leased_until REAL, state TEXT NOT NULL DEFAULT 'pending', error TEXT)")
-    return connection
+    return _private_journal_connection(path, ("CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, lead_id TEXT NOT NULL, call_sid TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, due REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, leased_until REAL, state TEXT NOT NULL DEFAULT 'pending', error TEXT)",))
 
 
 def stage_bob_call_facts(lead_id, call_sid, facts):
@@ -1638,36 +1627,15 @@ def accept_bob_brief_event(event_id, payload):
 
 
 def _dashboard_event_outbox():
-    import sqlite3
-    import stat
     from pathlib import Path
     configured = os.environ.get("KARPATHYS_OUTBOX_PATH", "")
-    path = Path(configured)
-    if not configured or not path.is_absolute() or any(parent.is_symlink() for parent in (path, *path.parents)):
+    if not configured:
         raise RuntimeError("Dashboard event journal requires an absolute non-symlink persistent path")
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    parent = path.parent.stat()
-    if parent.st_uid != os.getuid() or parent.st_mode & 0o022:
-        raise RuntimeError("Dashboard event journal directory must be owned and private")
-    descriptor = os.open(str(path), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    try:
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            raise RuntimeError("Dashboard event journal must be a regular file")
-        os.fchmod(descriptor, 0o600)
-    finally:
-        os.close(descriptor)
-    connection = sqlite3.connect(str(path), timeout=5)
-    try:
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("PRAGMA synchronous=FULL")
-        connection.execute("CREATE TABLE IF NOT EXISTS dashboard_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, target TEXT NOT NULL, call_sid TEXT NOT NULL, endpoint TEXT NOT NULL, fingerprint TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, due REAL NOT NULL, expires REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, leased_until REAL, state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','delivered','dead')), error TEXT, receipt TEXT, delivered_at REAL)")
-        connection.execute("CREATE INDEX IF NOT EXISTS dashboard_events_due ON dashboard_events(state,due,leased_until)")
-        connection.execute("CREATE INDEX IF NOT EXISTS dashboard_events_call ON dashboard_events(target,call_sid,seq)")
-        return connection
-    except BaseException:
-        connection.close()
-        raise
+    return _private_journal_connection(Path(configured), (
+        "CREATE TABLE IF NOT EXISTS dashboard_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, target TEXT NOT NULL, call_sid TEXT NOT NULL, endpoint TEXT NOT NULL, fingerprint TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, due REAL NOT NULL, expires REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, leased_until REAL, state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','delivered','dead')), error TEXT, receipt TEXT, delivered_at REAL)",
+        "CREATE INDEX IF NOT EXISTS dashboard_events_due ON dashboard_events(state,due,leased_until)",
+        "CREATE INDEX IF NOT EXISTS dashboard_events_call ON dashboard_events(target,call_sid,seq)",
+    ))
 
 
 def stage_dashboard_event(endpoint, payload, target):
@@ -1792,3 +1760,50 @@ def retry_dashboard_event(event_id, target):
             return changed == 1
     finally:
         connection.close()
+
+
+
+def _private_journal_connection(path, statements):
+    import fcntl
+    import sqlite3
+    import stat
+    import time
+    if not path.is_absolute() or any(parent.is_symlink() for parent in (path, *path.parents)):
+        raise RuntimeError("Event journal requires an absolute non-symlink persistent path")
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    parent = path.parent.stat()
+    if parent.st_uid != os.getuid() or parent.st_mode & 0o022:
+        raise RuntimeError("Event journal directory must be owned and private")
+    lock = os.open(str(path) + ".init.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    connection = None
+    try:
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Event journal initialization busy")
+                time.sleep(0.01)
+        if not path.exists():
+            descriptor = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+            os.close(descriptor)
+        if not stat.S_ISREG(path.lstat().st_mode) or path.is_symlink():
+            raise RuntimeError("Event journal must be a regular non-symlink file")
+        os.chmod(path, 0o600)
+        connection = sqlite3.connect(str(path), timeout=5)
+        connection.row_factory = sqlite3.Row
+        if connection.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal":
+            connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=FULL")
+        for statement in statements:
+            connection.execute(statement)
+        connection.commit()
+        return connection
+    except BaseException:
+        if connection is not None:
+            connection.close()
+        raise
+    finally:
+        os.close(lock)
