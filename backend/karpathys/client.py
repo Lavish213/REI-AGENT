@@ -16,6 +16,7 @@ _MAX_RETRIES = 2
 
 def delivery_target() -> str | None:
     import hashlib
+    from uuid import UUID
     if not _KARPATHYS_URL:
         return None
     base = urlsplit(_KARPATHYS_URL)
@@ -23,7 +24,8 @@ def delivery_target() -> str | None:
         raise ValueError("Invalid dashboard delivery configuration")
     if base.scheme == "http" and base.hostname not in {"localhost", "127.0.0.1", "::1"} and os.environ.get("KARPATHYS_ALLOW_INSECURE_INTERNAL_HTTP", "false").lower() != "true":
         raise ValueError("Dashboard delivery requires HTTPS")
-    return hashlib.sha256(_KARPATHYS_URL.encode()).hexdigest()
+    tenant = str(UUID(os.environ.get("TENANT_ID") or "00000000-0000-0000-0000-000000000001"))
+    return hashlib.sha256((_KARPATHYS_URL + ":" + tenant).encode()).hexdigest()
 
 
 async def send_event(endpoint: str, payload: dict[str, Any]) -> dict:

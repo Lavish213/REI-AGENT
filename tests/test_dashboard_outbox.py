@@ -265,3 +265,43 @@ def test_dead_payload_and_health_do_not_expose_secrets(journal):
     health = json.dumps(db.dashboard_event_journal_health())
     assert 'password' not in health and 'synthetic-only' not in health
     assert db.dashboard_event_journal_health()['errors']['worker_failed'] == 1
+
+
+def test_tenant_switch_does_not_replay_previous_business_queue(journal, monkeypatch):
+    monkeypatch.setenv('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    original = client.delivery_target()
+    key = stage()
+    monkeypatch.setenv('TENANT_ID', '00000000-0000-0000-0000-000000000002')
+    changed = client.delivery_target()
+    assert changed != original
+    assert db.claim_dashboard_event(changed) is None
+    assert not db.retry_dashboard_event(key, changed)
+
+
+@pytest.mark.parametrize('kind', ['oversized', 'nonfinite', 'missing_call', 'bad_turn'])
+def test_invalid_payload_budget_or_identity_never_enters_journal(journal, kind):
+    payload = {'call_sid': 'provider-1'}
+    endpoint = 'call'
+    if kind == 'oversized':
+        payload['text'] = 'x' * (1024 * 1024 + 1)
+    elif kind == 'nonfinite':
+        payload['trust_score'] = float('nan')
+    elif kind == 'missing_call':
+        payload['call_sid'] = None
+    elif kind == 'bad_turn':
+        endpoint = 'turn'
+        payload.update(speaker='user', turn_index=True)
+    with pytest.raises(ValueError):
+        db.stage_dashboard_event(endpoint, payload, client.delivery_target())
+    assert not journal.exists()
+
+
+def test_world_writable_journal_directory_is_rejected(journal):
+    directory = journal.parent
+    original = directory.stat().st_mode & 0o777
+    directory.chmod(0o777)
+    try:
+        with pytest.raises(RuntimeError, match='owned and private'):
+            stage()
+    finally:
+        directory.chmod(original)
