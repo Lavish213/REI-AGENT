@@ -110,6 +110,9 @@ class ProviderCallUncertainError(RuntimeError):
 
 
 def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
+    from backend.lib import db
+    if db.phone_is_do_not_call(to_phone):
+        raise RuntimeError("Contact is suppressed")
     project_id = os.environ["SIGNALWIRE_PROJECT_ID"]
     try:
         from backend.alerts.phone_pool import pick_number_for_lead
@@ -461,6 +464,7 @@ def call_lead(
 
 
 def build_voicemail_laml(lead: dict, prop: dict, language: str = "en") -> str:
+    from xml.sax.saxutils import escape
     first_name = _get_first_name(lead, prop)
     address = prop.get("address", "your property")
     agent_phone = os.environ.get("SIGNALWIRE_PHONE", "")
@@ -469,8 +473,8 @@ def build_voicemail_laml(lead: dict, prop: dict, language: str = "en") -> str:
         voice = _VM_VOICE_ES
         rate = _VM_RATE_ES
         say_text = (
-            f"Oye {first_name}, te habla Sophia de San Joaquin House Buyers "
-            f"sobre tu propiedad en {address}. Quiero hacerte una oferta en efectivo. "
+            f"Hola {first_name}, soy Sophia, asistente de inteligencia artificial de San Joaquin House Buyers. "
+            f"Te llamo sobre tu propiedad en {address}. Nuestro equipo puede hablar contigo sobre una oferta en efectivo. "
             f"Sin reparaciones, sin agentes, y cierre rapido. "
             f"Llamame o mandame mensaje al {agent_phone}. Gracias."
         )
@@ -478,7 +482,7 @@ def build_voicemail_laml(lead: dict, prop: dict, language: str = "en") -> str:
         voice = _VM_VOICE_EN
         rate = _VM_RATE_EN
         say_text = (
-            f"Hey {first_name} — Sophia here. "
+            f"Hi {first_name}, this is Sophia, the AI assistant for San Joaquin House Buyers. "
             f"I was looking at {address} and had a quick question for you. "
             f"Call or text me back when you get a chance at {agent_phone}. Thanks."
         )
@@ -486,7 +490,7 @@ def build_voicemail_laml(lead: dict, prop: dict, language: str = "en") -> str:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say voice="{voice}" rate="{rate}">
-        {say_text}
+        {escape(say_text)}
     </Say>
     <Hangup/>
 </Response>"""

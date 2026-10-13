@@ -248,16 +248,39 @@ async def _bob_fact_recovery_loop():
         await asyncio.sleep(30)
 
 
+async def _suppression_recovery_loop():
+    import asyncio
+    from backend.lib import db
+    while True:
+        try:
+            result = await asyncio.to_thread(db.recover_contact_suppressions)
+            if result["retrying"] or result["unowned"]:
+                logger.warning("suppression_recovery_degraded results={}", result)
+        except Exception as error:
+            logger.error("suppression_recovery_failed type={}", type(error).__name__)
+        await asyncio.sleep(5)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
+    from backend.lib import db
     from backend.karpathys.outbox import start_recovery
-    delivery = await start_recovery()
-    recovery = asyncio.create_task(_bob_fact_recovery_loop()) if os.environ.get("VOICE_FACT_OUTBOX_PATH") else None
+    suppression = None
+    delivery = None
+    recovery = None
     try:
+        if os.environ.get("CONTACT_SUPPRESSION_PATH") or os.environ.get("OUTBOUND_ENABLED", "false").lower() == "true":
+            await asyncio.to_thread(db.suppression_journal_health)
+            suppression = asyncio.create_task(_suppression_recovery_loop())
+        delivery = await start_recovery()
+        recovery = asyncio.create_task(_bob_fact_recovery_loop()) if os.environ.get("VOICE_FACT_OUTBOX_PATH") else None
         async with _application_lifespan(app):
             yield
     finally:
+        if suppression:
+            suppression.cancel()
+            await asyncio.gather(suppression, return_exceptions=True)
         if recovery:
             recovery.cancel()
             await asyncio.gather(recovery, return_exceptions=True)

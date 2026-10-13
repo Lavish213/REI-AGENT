@@ -480,6 +480,7 @@ def test_delayed_provider_bind_cannot_overwrite_newer_generation(monkeypatch):
 
 def test_real_backend_route_inventory_is_protected(monkeypatch):
     import importlib
+    monkeypatch.setenv("OUTBOUND_ENABLED", "false")
     monkeypatch.setenv("ENABLE_BACKGROUND_JOBS", "false")
     monkeypatch.setenv("OPERATOR_API_TOKEN", "operator-test")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")

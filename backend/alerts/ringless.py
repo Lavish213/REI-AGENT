@@ -8,36 +8,36 @@ _voicemail_callback_tally: dict[int, int] = {1: 0, 2: 0, 3: 0}
 _SCRIPTS: dict[str, dict[int, str]] = {
     "en": {
         1: (
-            "Hey, this is Sophia calling from San Joaquin House Buyers. "
+            "Hi, this is Sophia, the AI assistant for San Joaquin House Buyers. "
             "I was reaching out about your property and wanted to connect. "
             "Give me a call back at {phone} when you get a chance. Thanks!"
         ),
         2: (
-            "Hey {first_name}, Sophia again from San Joaquin House Buyers. "
-            "Properties in your area have been moving fast lately and I wanted to get you a real number. "
+            "Hi {first_name}, this is Sophia, the AI assistant for San Joaquin House Buyers. "
+            "I'm following up about your property. Our team can discuss your options with you. "
             "Call me back at {phone} — takes about five minutes. Hope to hear from you!"
         ),
         3: (
-            "Hey {first_name}, last message from Sophia at San Joaquin House Buyers. "
-            "We're actively buying in your neighborhood this month. "
+            "Hi {first_name}, this is Sophia, the AI assistant for San Joaquin House Buyers. "
+            "This is a final follow-up about your property. "
             "If you ever want a fast cash offer, no repairs, no hassle — call me at {phone}. "
             "No pressure at all. Take care!"
         ),
     },
     "es": {
         1: (
-            "Hola, soy Sophia de San Joaquin House Buyers. "
+            "Hola, soy Sophia, asistente de inteligencia artificial de San Joaquin House Buyers. "
             "Te llamo sobre tu propiedad y quería comunicarme contigo. "
             "Llámame al {phone} cuando puedas. ¡Gracias!"
         ),
         2: (
-            "Hola {first_name}, soy Sophia de nuevo de San Joaquin House Buyers. "
-            "Las propiedades en tu área se están vendiendo rápido. "
+            "Hola {first_name}, soy Sophia, asistente de inteligencia artificial de San Joaquin House Buyers. "
+            "Nuestro equipo puede hablar contigo sobre tu propiedad y tus opciones. "
             "Llámame al {phone} — solo toma cinco minutos. ¡Espero saber de ti!"
         ),
         3: (
-            "Hola {first_name}, último mensaje de Sophia de San Joaquin House Buyers. "
-            "Estamos comprando activamente en tu vecindario este mes. "
+            "Hola {first_name}, soy Sophia, asistente de inteligencia artificial de San Joaquin House Buyers. "
+            "Este es un último seguimiento sobre tu propiedad. "
             "Si alguna vez quieres una oferta en efectivo rápida, llámame al {phone}. ¡Cuídate!"
         ),
     },
@@ -131,7 +131,7 @@ def build_voicemail_laml(lead: dict, prop: dict) -> str:
     first_name = name_raw.strip().split()[0] if name_raw.strip() else "there"
     phone = os.environ.get("AGENT_PHONE", os.environ.get("SIGNALWIRE_PHONE", ""))
     text = (
-        f"Hey {first_name}, this is Sophia from San Joaquin House Buyers. "
+        f"Hi {first_name}, this is Sophia, the AI assistant for San Joaquin House Buyers. "
         f"Just calling about your property — give me a call back at {phone} when you get a chance. Thanks!"
     )
     return _build_polly_laml(text)

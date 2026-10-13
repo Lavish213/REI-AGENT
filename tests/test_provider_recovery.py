@@ -10,6 +10,7 @@ from backend.voice import outbound
 
 @pytest.fixture
 def provider_env(monkeypatch):
+    monkeypatch.setattr("backend.lib.db.phone_is_do_not_call", lambda phone: False)
     for name, value in {"SIGNALWIRE_PROJECT_ID": "project-test", "SIGNALWIRE_TOKEN": "token-test", "SIGNALWIRE_PHONE": "+15555550100", "SIGNALWIRE_SPACE": "test.signalwire.com", "PUBLIC_URL": "https://example.test"}.items():
         monkeypatch.setenv(name, value)
 

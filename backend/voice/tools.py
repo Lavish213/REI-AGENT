@@ -501,6 +501,8 @@ def _honor_stop_request(inp: dict, resolved, call_ctx=None) -> str:
             call_ctx.runtime_instruction = None
         return "Understood. I am ending this call. I could not confirm that your number was removed from the contact list."
 
+    db.try_write("stop_local_journal", db.stage_contact_suppression, resolved.tenant_id, resolved.seller_phone, resolved.lead_id, "verbal_stop_request", resolved.call_sid)
+
     results = {
         "evidence": db.try_write(
             "stop_evidence",
