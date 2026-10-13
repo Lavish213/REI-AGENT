@@ -19,7 +19,7 @@ EMAIL_SEQUENCES: list[tuple[int, str, str]] = [
         0,
         "Interested in {address}",
         (
-            "Hi {first_name} — I'm a local buyer in Stockton and came across your property "
+            "Hi {first_name} — I'm Sophia, the AI assistant for San Joaquin House Buyers, contacting you about "
             "on {address}. We pay cash, close fast, and buy as-is. Worth a quick conversation?\n\n"
             "- Sophia\n"
             "San Joaquin House Buyers\n"
@@ -40,12 +40,11 @@ EMAIL_SEQUENCES: list[tuple[int, str, str]] = [
     ),
     (
         21,
-        "We just closed nearby",
+        "Checking in about {address}",
         (
-            "Hey {first_name} — Sophia with San Joaquin House Buyers.\n\n"
-            "We just closed on a property similar to yours in {neighborhood} last month. "
-            "Owner walked away in 18 days — no repairs, no agent fees, zero hassle.\n\n"
-            "Still open to a conversation about {address}?\n\n"
+            "Hey {first_name} — Sophia, the AI assistant for San Joaquin House Buyers.\n\n"
+            "If you're considering selling {address}, I can help connect you with the team "
+            "to discuss your property and the process. Are you still open to a conversation?\n\n"
             "- Sophia\n"
             "{phone}"
         ),

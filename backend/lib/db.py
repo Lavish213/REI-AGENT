@@ -1356,6 +1356,9 @@ def record_do_not_call(lead_id: str, phone: str) -> None:
 
 
 def phone_is_do_not_call(phone: str) -> bool:
+    phone = _suppression_phone(phone)
+    if local_phone_suppressed(phone):
+        return True
     response = _get_client().table("dnc_list").select("id").eq("phone", phone).limit(1).execute()
     return bool(response.data)
 
@@ -1761,6 +1764,113 @@ def retry_dashboard_event(event_id, target):
     finally:
         connection.close()
 
+
+
+def _suppression_journal():
+    from pathlib import Path
+    configured = os.environ.get("CONTACT_SUPPRESSION_PATH", "")
+    if not configured:
+        raise RuntimeError("Contact suppression requires a persistent path")
+    return _private_journal_connection(Path(configured), (
+        "CREATE TABLE IF NOT EXISTS contact_suppression (phone TEXT PRIMARY KEY, event_id TEXT NOT NULL UNIQUE, tenant_id TEXT NOT NULL, lead_id TEXT, method TEXT NOT NULL, call_sid TEXT, created REAL NOT NULL, due REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, leased_until REAL, recovered INTEGER NOT NULL DEFAULT 0)",
+    ))
+
+
+def _suppression_phone(phone):
+    import re
+    if not isinstance(phone, str) or len(phone) > 64:
+        raise ValueError("Invalid suppression phone")
+    if re.search(r"[^0-9+(). -]", phone):
+        raise ValueError("Invalid suppression phone")
+    digits = re.sub(r"\D", "", phone)
+    if len(digits) == 10:
+        digits = "1" + digits
+    if not 8 <= len(digits) <= 15 or (len(digits) != 11 and not phone.strip().startswith("+")):
+        raise ValueError("Invalid suppression phone")
+    return "+" + digits
+
+
+def stage_contact_suppression(tenant_id, phone, lead_id=None, method="seller_request", call_sid=None):
+    import time
+    from uuid import uuid4
+    if not os.environ.get("CONTACT_SUPPRESSION_PATH"):
+        return False
+    phone = _suppression_phone(phone)
+    if not isinstance(tenant_id, str) or not tenant_id.strip() or len(tenant_id) > 128:
+        raise ValueError("Suppression tenant is required")
+    if not isinstance(method, str) or not method or len(method) > 128:
+        raise ValueError("Invalid suppression method")
+    connection = _suppression_journal()
+    try:
+        with connection:
+            connection.execute("INSERT INTO contact_suppression(phone,event_id,tenant_id,lead_id,method,call_sid,created,due) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(phone) DO NOTHING", (phone, str(uuid4()), tenant_id, lead_id or None, method, call_sid, time.time(), time.time()))
+        return True
+    finally:
+        connection.close()
+
+
+def local_phone_suppressed(phone):
+    if not os.environ.get("CONTACT_SUPPRESSION_PATH"):
+        return False
+    phone = _suppression_phone(phone)
+    connection = _suppression_journal()
+    try:
+        return connection.execute("SELECT 1 FROM contact_suppression WHERE phone=?", (phone,)).fetchone() is not None
+    finally:
+        connection.close()
+
+
+def suppression_journal_health():
+    connection = _suppression_journal()
+    try:
+        row = connection.execute("SELECT count(*) AS total,coalesce(sum(recovered=0),0) AS pending FROM contact_suppression").fetchone()
+        return dict(row)
+    finally:
+        connection.close()
+
+
+def recover_contact_suppressions(limit=20):
+    import time
+    from uuid import uuid4
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("Invalid suppression recovery batch")
+    tenant = os.environ.get("TENANT_ID") or "00000000-0000-0000-0000-000000000001"
+    result = {"recovered": 0, "retrying": 0, "unowned": 0}
+    for _ in range(limit):
+        connection = _suppression_journal()
+        try:
+            now = time.time()
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute("SELECT * FROM contact_suppression WHERE tenant_id=? AND recovered=0 AND due<=? AND (leased_until IS NULL OR leased_until<=?) ORDER BY created LIMIT 1", (tenant, now, now)).fetchone()
+            if row is None:
+                connection.commit()
+                break
+            event = dict(row)
+            lease = str(uuid4())
+            connection.execute("UPDATE contact_suppression SET lease=?,leased_until=?,attempts=attempts+1 WHERE phone=?", (lease, now + 60, event["phone"]))
+            connection.commit()
+        finally:
+            connection.close()
+        saved = False
+        try:
+            client = _get_client()
+            client.table("dnc_list").upsert({"tenant_id": event["tenant_id"], "phone": event["phone"], "reason": "seller_request"}, on_conflict="phone").execute()
+            receipt = client.table("suppression_events").select("id,action,contact_point,tenant_id").eq("id", event["event_id"]).limit(1).execute()
+            if not receipt.data:
+                receipt = client.table("suppression_events").insert({"id": event["event_id"], "tenant_id": event["tenant_id"], "lead_id": event["lead_id"], "contact_point": event["phone"], "contact_type": "phone", "channel": "all", "action": "suppressed", "method": event["method"], "source": "durable_recovery", "call_sid": event["call_sid"], "actor": "system", "occurred_at": datetime.fromtimestamp(event["created"], timezone.utc).isoformat()}).execute()
+            saved = any(item.get("id") == event["event_id"] and item.get("action") == "suppressed" and item.get("contact_point") == event["phone"] and item.get("tenant_id") == event["tenant_id"] for item in (receipt.data or []))
+            dnc = client.table("dnc_list").select("phone").eq("phone", event["phone"]).limit(1).execute()
+            saved = saved and any(item.get("phone") == event["phone"] for item in (dnc.data or []))
+        except Exception as error:
+            logger.warning("suppression_recovery_failed type={}", type(error).__name__)
+        connection = _suppression_journal()
+        try:
+            with connection:
+                changed = connection.execute("UPDATE contact_suppression SET recovered=?,due=?,lease=NULL,leased_until=NULL WHERE phone=? AND lease=? AND leased_until>?", (int(saved), time.time() + min(3600, 5 * 2 ** min(event["attempts"], 9)), event["phone"], lease, time.time())).rowcount
+            result["unowned" if not changed else "recovered" if saved else "retrying"] += 1
+        finally:
+            connection.close()
+    return result
 
 
 def _private_journal_connection(path, statements):

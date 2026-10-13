@@ -110,6 +110,9 @@ class ProviderCallUncertainError(RuntimeError):
 
 
 def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
+    from backend.lib import db
+    if db.phone_is_do_not_call(to_phone):
+        raise RuntimeError("Contact is suppressed")
     project_id = os.environ["SIGNALWIRE_PROJECT_ID"]
     try:
         from backend.alerts.phone_pool import pick_number_for_lead

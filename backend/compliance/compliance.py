@@ -73,6 +73,9 @@ class ComplianceEngine:
         tenant_id = os.environ.get("TENANT_ID", "").strip()
         point = (contact_point or "").strip()
 
+        if point and "@" not in point:
+            db.try_write("opt_out_local_journal", db.stage_contact_suppression, tenant_id or "00000000-0000-0000-0000-000000000001", point, lead_id, method, call_sid)
+
         if not point:
             lead = db.get_lead_with_property(lead_id) or {}
             point = lead.get("owner_phone") or lead.get("owner_email") or ""

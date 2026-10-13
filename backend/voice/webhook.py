@@ -379,7 +379,6 @@ async def handle_inbound_sms(
 <Response>
     <Message>
         You have been unsubscribed.
-        Reply START to resubscribe.
     </Message>
 </Response>"""
 

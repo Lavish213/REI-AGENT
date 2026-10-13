@@ -41,6 +41,13 @@ def send_sms(to: str, body: str, lead_id: str = "", bypass_hours: bool = False) 
         to = _e164(to)
     except ValueError:
         return False
+    try:
+        from backend.lib import db
+        if db.phone_is_do_not_call(to):
+            return False
+    except Exception as error:
+        logger.warning("sms_suppression_unavailable type={}", type(error).__name__)
+        return False
     if lead_id:
         from backend.compliance.compliance import ComplianceEngine
         if not ComplianceEngine().check_sms_allowed(lead_id).allowed:

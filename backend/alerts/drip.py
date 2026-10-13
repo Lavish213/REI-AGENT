@@ -277,6 +277,21 @@ def handle_inbound_reply(from_phone: str, body: str, message_sid: str) -> str:
     body_stripped = body.strip()
     body_lower = body_stripped.lower()
 
+    if any(kw in body_lower for kw in OPT_OUT_KEYWORDS):
+        from backend.lib import db
+        tenant = os.environ.get("TENANT_ID") or "00000000-0000-0000-0000-000000000001"
+        staged = db.stage_contact_suppression(tenant, from_phone, method="sms_stop")
+        db.try_write("sms_stop_dnc", db.add_to_dnc, tenant, from_phone)
+        if not staged and not db.phone_is_do_not_call(from_phone):
+            raise RuntimeError("STOP persistence was not acknowledged")
+        try:
+            stopped_lead = get_lead_by_owner_phone(from_phone)
+            if stopped_lead:
+                db.try_write("sms_stop_lead", mark_lead_opted_out, stopped_lead["id"])
+        except Exception as error:
+            logger.warning("sms_stop_lookup_failed journal_saved={} type={}", staged, type(error).__name__)
+        return "opted_out"
+
     lead = get_lead_by_owner_phone(from_phone)
 
     insert_sms({
@@ -286,12 +301,6 @@ def handle_inbound_reply(from_phone: str, body: str, message_sid: str) -> str:
         "signalwire_message_id": message_sid,
         "sent_at": datetime.now(timezone.utc).isoformat(),
     })
-
-    if any(kw in body_lower for kw in OPT_OUT_KEYWORDS):
-        if lead:
-            mark_lead_opted_out(lead["id"])
-            logger.info("opt_out lead_id={} phone={}", lead.get("id"), from_phone)
-        return "opted_out"
 
     if not lead:
         logger.warning("inbound_sms no lead found phone={}", from_phone)
