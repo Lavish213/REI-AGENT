@@ -251,6 +251,8 @@ async def _bob_fact_recovery_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
+    from backend.karpathys.outbox import start_recovery
+    delivery = await start_recovery()
     recovery = asyncio.create_task(_bob_fact_recovery_loop()) if os.environ.get("VOICE_FACT_OUTBOX_PATH") else None
     try:
         async with _application_lifespan(app):
@@ -259,6 +261,9 @@ async def lifespan(app: FastAPI):
         if recovery:
             recovery.cancel()
             await asyncio.gather(recovery, return_exceptions=True)
+        if delivery:
+            delivery.cancel()
+            await asyncio.gather(delivery, return_exceptions=True)
 
 
 app = FastAPI(

@@ -1635,3 +1635,160 @@ def bob_integration_health():
 def accept_bob_brief_event(event_id, payload):
     response = _get_client().rpc("bob_accept_brief_event", {"p_tenant_id": os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001"), "p_event_id": event_id, "p_payload": payload}).execute()
     return response.data is True
+
+
+def _dashboard_event_outbox():
+    import sqlite3
+    import stat
+    from pathlib import Path
+    configured = os.environ.get("KARPATHYS_OUTBOX_PATH", "")
+    path = Path(configured)
+    if not configured or not path.is_absolute() or any(parent.is_symlink() for parent in (path, *path.parents)):
+        raise RuntimeError("Dashboard event journal requires an absolute non-symlink persistent path")
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    parent = path.parent.stat()
+    if parent.st_uid != os.getuid() or parent.st_mode & 0o022:
+        raise RuntimeError("Dashboard event journal directory must be owned and private")
+    descriptor = os.open(str(path), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise RuntimeError("Dashboard event journal must be a regular file")
+        os.fchmod(descriptor, 0o600)
+    finally:
+        os.close(descriptor)
+    connection = sqlite3.connect(str(path), timeout=5)
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=FULL")
+        connection.execute("CREATE TABLE IF NOT EXISTS dashboard_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, target TEXT NOT NULL, call_sid TEXT NOT NULL, endpoint TEXT NOT NULL, fingerprint TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, due REAL NOT NULL, expires REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, leased_until REAL, state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','delivered','dead')), error TEXT, receipt TEXT, delivered_at REAL)")
+        connection.execute("CREATE INDEX IF NOT EXISTS dashboard_events_due ON dashboard_events(state,due,leased_until)")
+        connection.execute("CREATE INDEX IF NOT EXISTS dashboard_events_call ON dashboard_events(target,call_sid,seq)")
+        return connection
+    except BaseException:
+        connection.close()
+        raise
+
+
+def stage_dashboard_event(endpoint, payload, target):
+    import hashlib
+    import json
+    import time
+    from uuid import uuid5, NAMESPACE_URL
+    allowed = {"call", "turn", "complete", "ended", "transcript", "failed", "sophia/disposition-action"}
+    if endpoint not in allowed or not isinstance(payload, dict) or not isinstance(target, str) or len(target) != 64:
+        raise ValueError("Invalid dashboard event")
+    sid = payload.get("call_sid")
+    if not isinstance(sid, str) or not sid.strip() or len(sid) > 255:
+        raise ValueError("Dashboard event requires a provider call identity")
+    suffix = ""
+    if endpoint == "turn":
+        if payload.get("speaker") not in {"user", "seller", "sophia", "assistant", "system"} or type(payload.get("turn_index")) is not int or not 0 <= payload["turn_index"] <= 10000:
+            raise ValueError("Invalid dashboard turn identity")
+        suffix = f":{payload['speaker']}:{payload['turn_index']}"
+    stable = json.dumps({key: value for key, value in payload.items() if key != "occurred_at"}, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    fingerprint = hashlib.sha256(stable.encode()).hexdigest()
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    if len(serialized.encode()) > 1024 * 1024:
+        raise ValueError("Dashboard event exceeds journal payload budget")
+    event_id = str(uuid5(NAMESPACE_URL, target + ":" + sid + ":" + endpoint + suffix))
+    now = time.time()
+    connection = _dashboard_event_outbox()
+    try:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute("SELECT fingerprint FROM dashboard_events WHERE event_id=?", (event_id,)).fetchone()
+            if existing:
+                if existing["fingerprint"] != fingerprint:
+                    raise ValueError("Conflicting dashboard event replay")
+                return event_id
+            connection.execute("DELETE FROM dashboard_events WHERE state='delivered' AND delivered_at<?", (now - 7 * 86400,))
+            count, size = connection.execute("SELECT count(*),coalesce(sum(length(CAST(payload AS BLOB))),0) FROM dashboard_events").fetchone()
+            if count >= 100000 or size + len(serialized.encode()) > 64 * 1024 * 1024:
+                raise RuntimeError("Dashboard event journal full; operator recovery required")
+            connection.execute("INSERT INTO dashboard_events(event_id,target,call_sid,endpoint,fingerprint,payload,created,due,expires) VALUES(?,?,?,?,?,?,?,?,?)", (event_id, target, sid, endpoint, fingerprint, serialized, now, now, now + 7 * 86400))
+        return event_id
+    finally:
+        connection.close()
+
+
+def claim_dashboard_event(target):
+    import json
+    import time
+    from uuid import uuid4
+    now = time.time()
+    connection = _dashboard_event_outbox()
+    try:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("UPDATE dashboard_events SET state='dead',error='delivery_expired',lease=NULL,leased_until=NULL WHERE state='pending' AND expires<=? AND (leased_until IS NULL OR leased_until<=?)", (now, now))
+            connection.execute("UPDATE dashboard_events SET state='dead',error='destination_changed',lease=NULL,leased_until=NULL WHERE state='pending' AND target<>? AND (leased_until IS NULL OR leased_until<=?)", (target, now))
+            connection.execute("UPDATE dashboard_events SET state='dead',error='call_creation_failed' WHERE state='pending' AND endpoint<>'call' AND (leased_until IS NULL OR leased_until<=?) AND EXISTS (SELECT 1 FROM dashboard_events root WHERE root.target=dashboard_events.target AND root.call_sid=dashboard_events.call_sid AND root.endpoint='call' AND root.state='dead')", (now,))
+            row = connection.execute("SELECT e.* FROM dashboard_events e WHERE e.target=? AND e.state='pending' AND e.due<=? AND (e.leased_until IS NULL OR e.leased_until<=?) AND NOT EXISTS (SELECT 1 FROM dashboard_events active WHERE active.target=e.target AND active.call_sid=e.call_sid AND active.leased_until>? AND active.state='pending') AND (e.endpoint='call' OR EXISTS (SELECT 1 FROM dashboard_events root WHERE root.target=e.target AND root.call_sid=e.call_sid AND root.endpoint='call' AND root.state='delivered')) AND (e.endpoint='call' OR NOT EXISTS (SELECT 1 FROM dashboard_events prior WHERE prior.target=e.target AND prior.call_sid=e.call_sid AND prior.endpoint<>'call' AND prior.state='pending' AND prior.seq<e.seq)) ORDER BY e.seq LIMIT 1", (target, now, now, now)).fetchone()
+            if row is None:
+                return None
+            token = str(uuid4())
+            connection.execute("UPDATE dashboard_events SET lease=?,leased_until=?,attempts=attempts+1 WHERE event_id=?", (token, now + 60, row["event_id"]))
+            return {**dict(row), "lease": token, "attempts": row["attempts"] + 1, "payload": json.loads(row["payload"])}
+    finally:
+        connection.close()
+
+
+def finish_dashboard_event(event_id, lease, receipt=None, error="transport_unavailable", permanent=False):
+    import json
+    import time
+    now = time.time()
+    connection = _dashboard_event_outbox()
+    try:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute("SELECT * FROM dashboard_events WHERE event_id=? AND state='pending' AND lease=? AND leased_until>?", (event_id, lease, now)).fetchone()
+            if row is None:
+                return False
+            if receipt is not None:
+                if not isinstance(receipt, dict) or receipt.get("persisted") is not True or type(receipt.get("schema_version")) is not int or receipt.get("schema_version") != 1 or receipt.get("call_sid") != row["call_sid"] or not isinstance(receipt.get("receipt_id"), str) or not 1 <= len(receipt["receipt_id"]) <= 1024:
+                    raise ValueError("Unconfirmed dashboard delivery receipt")
+                safe_receipt = {key: receipt[key] for key in ("schema_version", "persisted", "receipt_id", "call_sid", "call_id", "session_id", "transcript_id", "turn_id") if key in receipt}
+                serialized = json.dumps(safe_receipt, allow_nan=False)
+                if len(serialized) > 8192:
+                    raise ValueError("Invalid dashboard receipt budget")
+                connection.execute("UPDATE dashboard_events SET state='delivered',receipt=?,payload='{}',error=NULL,delivered_at=?,lease=NULL,leased_until=NULL WHERE event_id=? AND lease=?", (serialized, now, event_id, lease))
+            else:
+                allowed_errors = {"transport_unavailable", "invalid_receipt", "authentication_rejected", "payload_rejected", "destination_changed", "worker_failed"}
+                safe_error = error if error in allowed_errors else "worker_failed"
+                delay = min(300, 2 ** min(row["attempts"], 8))
+                connection.execute("UPDATE dashboard_events SET state=?,error=?,due=?,lease=NULL,leased_until=NULL WHERE event_id=? AND lease=?", ("dead" if permanent else "pending", safe_error, now + delay, event_id, lease))
+            return True
+    finally:
+        connection.close()
+
+
+def dashboard_event_journal_health():
+    import time
+    connection = _dashboard_event_outbox()
+    try:
+        result = {"pending": 0, "delivered": 0, "dead": 0, "leased": 0, "oldest_pending_seconds": 0, "errors": {}, "failed_events": []}
+        for row in connection.execute("SELECT state,count(*) AS n,min(created) AS oldest FROM dashboard_events GROUP BY state"):
+            result[row["state"]] = row["n"]
+            if row["state"] == "pending":
+                result["oldest_pending_seconds"] = max(0, time.time() - row["oldest"])
+        result["leased"] = connection.execute("SELECT count(*) FROM dashboard_events WHERE state='pending' AND leased_until>?", (time.time(),)).fetchone()[0]
+        result["errors"] = {row["error"]: row["n"] for row in connection.execute("SELECT error,count(*) AS n FROM dashboard_events WHERE state<>'delivered' AND error IS NOT NULL GROUP BY error")}
+        result["failed_events"] = [dict(row) for row in connection.execute("SELECT event_id,endpoint,error,attempts FROM dashboard_events WHERE state='dead' ORDER BY seq DESC LIMIT 50")]
+        return result
+    finally:
+        connection.close()
+
+
+def retry_dashboard_event(event_id, target):
+    import time
+    from uuid import UUID
+    UUID(event_id)
+    now = time.time()
+    connection = _dashboard_event_outbox()
+    try:
+        with connection:
+            changed = connection.execute("UPDATE dashboard_events SET state='pending',error=NULL,due=?,expires=?,lease=NULL,leased_until=NULL WHERE event_id=? AND target=? AND state='dead'", (now, now + 7 * 86400, event_id, target)).rowcount
+            return changed == 1
+    finally:
+        connection.close()

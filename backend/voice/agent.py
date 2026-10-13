@@ -319,6 +319,12 @@ class TranscriptJournal(FrameProcessor):
         expected = TranscriptionFrame if self._speaker == "user" else TTSTextFrame
         if direction == FrameDirection.DOWNSTREAM and isinstance(frame, expected) and frame.text.strip():
             self._ctx.transcript_events.append({"role": self._speaker, "content": frame.text.strip()})
+            sid = getattr(self._ctx, "_call_sid", "")
+            if sid:
+                from backend.karpathys import emitter, client
+                queued = await emitter.emit_turn_completed(sid, self._speaker, frame.text.strip(), turn_index=len(self._ctx.transcript_events) - 1)
+                if client.delivery_target() is not None and not queued:
+                    raise RuntimeError("Conversation journal unavailable")
             if self._speaker == "assistant":
                 separator = "" if getattr(frame, "includes_inter_frame_spaces", False) or not self._spoken_text else " "
                 self._spoken_text = (self._spoken_text + separator + frame.text)[-4096:]
@@ -693,7 +699,11 @@ async def run_sophia_agent(
             return
         logger.info("client connected call_sid={}", call_sid)
         from backend.karpathys import emitter
-        spawn(emitter.emit_call_created(call_sid, call_context))
+        queued = await emitter.emit_call_created(call_sid, call_context)
+        from backend.karpathys.client import delivery_target
+        if delivery_target() is not None and not queued:
+            await task.queue_frames([TTSSpeakFrame("I'm Sophia, an AI assistant. Our system is unavailable right now. Please try again later."), EndFrame()])
+            return
         if call_context.get("is_outbound") and call_ctx.lead_id:
             spawn(_monitor_call_capacity(task, call_ctx.lead_id, call_sid))
         call_ctx._opener_fired = True
@@ -705,7 +715,7 @@ async def run_sophia_agent(
         del transport, client
         logger.info("client disconnected call_sid={}", call_sid)
         from backend.karpathys import emitter
-        spawn(emitter.emit_call_ended(call_sid))
+        await emitter.emit_call_ended(call_sid)
         await task.cancel()
 
     runner = WorkerRunner(handle_sigint=False)
@@ -750,6 +760,13 @@ async def _handle_call_end(
     try:
         transcript = _build_transcript(call_ctx.transcript_events if call_ctx is not None else context.messages)
         disposition = call_ctx.disposition if call_ctx else None
+
+        from backend.karpathys import emitter
+        chunks = _build_transcript_chunks_from_text(transcript)
+        lead = call_context.get("lead")
+        if chunks:
+            await emitter.emit_transcript_completed(call_sid, None, lead.get("id") if lead else None, len(chunks), chunks)
+        await emitter.emit_call_completed(call_sid, disposition, call_ctx.turn_count if call_ctx else 0, len(transcript))
 
         if seller_memory and transcript:
             try:
@@ -811,13 +828,6 @@ async def _handle_call_end(
             call_ctx.turn_count if call_ctx else 0,
         )
 
-        from backend.karpathys import emitter
-        await emitter.emit_call_completed(
-            call_sid=call_sid,
-            disposition=disposition,
-            turn_count=call_ctx.turn_count if call_ctx else 0,
-            transcript_length=len(transcript),
-        )
 
     except Exception as error:
         logger.exception("handle_call_end error call_sid={} error={}", call_sid, str(error))
@@ -880,14 +890,6 @@ async def _persist_call_result(
         from backend.voice.events import TRANSCRIPT_COMPLETED, emit_event
         emit_event(TRANSCRIPT_COMPLETED, call_id_db, lead["id"], {"chunk_count": len(chunks)})
 
-        from backend.karpathys import emitter
-        await emitter.emit_transcript_completed(
-            call_sid=call_sid,
-            call_id_db=call_id_db,
-            lead_id=lead["id"],
-            chunk_count=len(chunks),
-            chunks=chunks,
-        )
 
     if disposition:
         await asyncio.to_thread(update_lead_for_disposition, lead["id"], disposition)
