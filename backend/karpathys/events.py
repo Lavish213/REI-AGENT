@@ -63,12 +63,14 @@ def transcript_completed(
     call_id_db: str | None,
     lead_id: str | None,
     chunk_count: int,
+    chunks: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "call_sid": call_sid,
         "call_id_db": call_id_db,
         "lead_id": lead_id,
         "chunk_count": chunk_count,
+        "chunks": chunks or [],
         "occurred_at": datetime.now(UTC).isoformat(),
     }
 

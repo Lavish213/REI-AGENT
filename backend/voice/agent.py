@@ -886,6 +886,7 @@ async def _persist_call_result(
             call_id_db=call_id_db,
             lead_id=lead["id"],
             chunk_count=len(chunks),
+            chunks=chunks,
         )
 
     if disposition:

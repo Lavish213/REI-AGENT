@@ -57,9 +57,10 @@ async def emit_transcript_completed(
     call_id_db: str | None,
     lead_id: str | None,
     chunk_count: int,
+    chunks: list[dict[str, Any]] | None = None,
 ) -> None:
     try:
-        payload = events.transcript_completed(call_sid, call_id_db, lead_id, chunk_count)
+        payload = events.transcript_completed(call_sid, call_id_db, lead_id, chunk_count, chunks)
         await client.post_event("transcript", payload)
     except Exception as error:
         logger.exception("emit_transcript_completed failed call_sid={} error={}", call_sid, str(error))
