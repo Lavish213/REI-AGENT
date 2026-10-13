@@ -1,7 +1,7 @@
 import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 
 function formatDate(iso: string | null) {
@@ -64,7 +64,7 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params
 
   const [callResp, chunksResp, eventsResp] = await Promise.all([
-    supabase
+    getSupabase()
       .from('calls')
       .select(`
         id, created_at, signalwire_call_id, direction, call_disposition,
@@ -80,13 +80,13 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
       .eq('id', id)
       .single(),
 
-    supabase
+    getSupabase()
       .from('transcript_chunks')
       .select('id, speaker, text, chunk_type, sequence_order, confidence')
       .eq('call_id', id)
       .order('sequence_order'),
 
-    supabase
+    getSupabase()
       .from('call_events')
       .select('event_type, payload, created_at')
       .eq('call_id', id)

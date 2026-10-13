@@ -2,7 +2,7 @@ import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 
 import { backendFetch } from '@/lib/backend'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import LiveActivity from '@/components/LiveActivity'
 
 
@@ -34,30 +34,30 @@ export default async function MorningBriefingPage() {
     pipelineData,
     liveEventsRes,
   ] = await Promise.all([
-    supabase
+    getSupabase()
       .from('leads')
       .select('id', { count: 'exact', head: true })
       .eq('is_hot_lead', true)
       .neq('stage', 'dead'),
-    supabase
+    getSupabase()
       .from('followups')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending'),
-    supabase
+    getSupabase()
       .from('calls')
       .select('id', { count: 'exact', head: true })
       .gte('created_at', todayStart),
-    supabase
+    getSupabase()
       .from('leads')
       .select('id', { count: 'exact', head: true })
       .eq('stage', 'walkthrough_booked'),
-    supabase
+    getSupabase()
       .from('calls')
       .select('id, created_at, call_disposition, score_overall, call_summary, leads(address)')
       .order('created_at', { ascending: false })
       .limit(8),
     fetchPipeline(),
-    supabase
+    getSupabase()
       .from('call_events')
       .select('id, event_type, payload, created_at, lead_id')
       .order('created_at', { ascending: false })

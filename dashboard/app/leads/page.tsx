@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 
 function formatCurrency(cents: number | null) {
   if (cents == null) return '—'
@@ -18,7 +18,7 @@ const stageBadge: Record<string, string> = {
 }
 
 export default async function LeadsPage() {
-  const { data: leads, error } = await supabase
+  const { data: leads, error } = await getSupabase()
     .from('leads')
     .select('id, address, distress_score, composite_score, arv, mao, stage, status, last_contact, callable, motivation_level, timeline_urgency, followup_urgency, is_hot_lead, call_summary')
     .order('followup_urgency', { ascending: false })

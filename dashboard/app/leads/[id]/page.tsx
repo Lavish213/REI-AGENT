@@ -1,7 +1,7 @@
 import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 
 
@@ -151,27 +151,27 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     eventsRes,
     offersRes,
   ] = await Promise.all([
-    supabase
+    getSupabase()
       .from('leads')
       .select('*, properties(*)')
       .eq('id', id)
       .single(),
 
-    supabase
+    getSupabase()
       .from('calls')
       .select('id, created_at, call_disposition, call_summary, score_overall, seller_name, seller_motivation, asking_price, appointment_interest, next_step, followup_priority, lead_score, distress_indicators, objections, property_condition, occupancy, timeline, extraction_confidence')
       .eq('lead_id', id)
       .order('created_at', { ascending: false })
       .limit(10),
 
-    supabase
+    getSupabase()
       .from('workflows')
       .select('id, state, previous_state, trigger_source, triggered_by, created_at')
       .eq('lead_id', id)
       .order('created_at', { ascending: false })
       .limit(20),
 
-    supabase
+    getSupabase()
       .from('followups')
       .select('*')
       .eq('lead_id', id)
@@ -180,14 +180,14 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       .order('created_at')
       .limit(15),
 
-    supabase
+    getSupabase()
       .from('call_events')
       .select('event_type, payload, created_at')
       .eq('lead_id', id)
       .order('created_at', { ascending: false })
       .limit(25),
 
-    supabase
+    getSupabase()
       .from('offers')
       .select('*')
       .eq('lead_id', id)

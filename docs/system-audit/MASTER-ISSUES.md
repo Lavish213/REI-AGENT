@@ -56,3 +56,10 @@ This supplements the existing REI and Bob forensic ledgers. Each status applies 
 - [ ] Real phone and production infrastructure gates.
 
 Nothing deployed, merged or connected to live callers. An overall A grade is not justified.
+
+
+## Build configuration repair — 2026-10-13
+
+SYS-34 (high): the dashboard instantiated its server Supabase client during module import. A clean production build without NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_KEY failed collecting /api/events with `supabaseUrl is required`; regression CI supplied dummy values and concealed the defect. Server pages/routes now obtain the client lazily at request time, and missing runtime configuration still fails without a fabricated database or acknowledgement. The shared client remains server-only. CI removes both values for the build, then uses isolated test values for HTTP fault checks.
+
+Local verification: the previously failing no-credentials production build and TypeScript compilation now pass; dashboard lint passes. Hosted regression/Vercel verification follows the published source and must pass before merge. No deployment credentials were changed, and no database migration/provider action was performed.

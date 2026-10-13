@@ -64,6 +64,6 @@ jobs:
         run: |
           npm ci --prefix dashboard
           npm audit --omit=dev --audit-level=high --prefix dashboard
-          npm run build --prefix dashboard
+          env -u NEXT_PUBLIC_SUPABASE_URL -u SUPABASE_SERVICE_KEY npm run build --prefix dashboard
           npm run lint --prefix dashboard
           npm run test:dashboard --prefix tests

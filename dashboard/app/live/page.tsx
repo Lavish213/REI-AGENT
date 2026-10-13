@@ -3,7 +3,7 @@ import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 
 import { backendFetch } from '@/lib/backend'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import LiveActivity from '@/components/LiveActivity'
 
 
@@ -29,7 +29,7 @@ function elapsed(startedAt: string | null): string {
 export default async function LivePage() {
   const [liveData, recentEventsRes] = await Promise.all([
     fetchLiveCalls(),
-    supabase
+    getSupabase()
       .from('call_events')
       .select('id, event_type, payload, created_at, lead_id')
       .order('created_at', { ascending: false })

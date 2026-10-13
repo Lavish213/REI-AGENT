@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 
 function formatDate(iso: string | null) {
   if (!iso) return '—'
@@ -21,7 +21,7 @@ function formatDuration(seconds: number | null) {
 }
 
 export default async function CallsPage() {
-  const { data: calls, error } = await supabase
+  const { data: calls, error } = await getSupabase()
     .from('calls')
     .select('id, created_at, duration_seconds, call_disposition, score_overall, call_summary, seller_name, motivation_level, followup_priority, lead_id, leads(address)')
     .order('created_at', { ascending: false })
