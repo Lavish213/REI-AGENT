@@ -13,9 +13,9 @@ This supplements the existing REI and Bob forensic ledgers. Each status applies 
 | SYS-07 | High | Dashboard services/api.ts | Arbitrary absolute destinations get bearer token; reject non-service paths/redirects, bound request/refresh, release queue in finally. | Recovered repair; fault tests required. |
 | SYS-08 | Critical | Dashboard package-lock.json | Baseline 1 critical and 4 high runtime advisories; graph upgraded to Next 16.4/ESLint 9 and patched dependencies. | Recovered runtime graph zero advisories; hosted frontend build/lint/type/fault/audit checks pass. |
 | SYS-09 | Critical | Dashboard tests/conftest.py | Hardcoded personal database reset/Homebrew path; require explicit disposable test DSN and portable SQLAlchemy reset. | Recovered repair; four rejection cases pass; full suite requires disposable PostgreSQL. |
-| SYS-10 | High | REI/dashboard ingestion boundary | Prefix mismatch, false acknowledgements, duplicate side effects and cross-database IDs. | Open: versioned persisted receipts, entity map and replay/fault checks. |
-| SYS-11 | High | Dashboard ingest.py / sophia_bridge.py | Latest lead session receives unrelated transcript; model classification can trigger follow-up without governance/idempotency. | Open: exact binding, approval and deduplication. |
-| SYS-12 | High | Dashboard migrations/models | Fresh install/provider enum/registration drift unverified. | Open: full PostgreSQL migration head/upgrade and independent concurrency testing. |
+| SYS-10 | High | REI/dashboard ingestion boundary | Prefix mismatch, false acknowledgements, duplicate side effects and cross-database IDs. | Repaired canonical routes, versioned persisted receipts, explicit external/local lead mapping and replay/conflict guards. Verified in Dashboard SQL and REI receipt tests; durable outage outbox/order recovery remains open. |
+| SYS-11 | High | Dashboard ingest.py / sophia_bridge.py | Latest lead session receives unrelated transcript; model classification can trigger follow-up without governance/idempotency. | Exact call sessions, persisted transcript chunks and dedup/conflict guards repaired. Dispositions are advisory pending approval; approved-action execution remains open. |
+| SYS-12 | High | Dashboard migrations/models | Fresh install/provider enum/registration drift unverified. | Fresh empty-schema initialization verified: frozen 44-table/46-enum snapshot, rebuild/model comparison/idempotency and preserved historical single head. Legacy data upgrades and independent crash/concurrency remain open. |
 | SYS-13 | High | Sophia agent.py | Model may omit AI disclosure or reveal property before identity; deterministic first utterance. | Recovered repair; unit rerun; actual phone opener not verified. |
 | SYS-14 | High | Sophia runtime prompt | Claims recording, lead source or human callback without evidence. | Recovered prompt repair; generated speech evaluation remains open. |
 | SYS-15 | High | Sophia tools.py / db.py | Past/naive appointments and unacknowledged writes claim success. | Partial: validation/ack repaired; availability reservation, cancellation/rescheduling/calendar delivery open. |
@@ -30,9 +30,14 @@ This supplements the existing REI and Bob forensic ledgers. Each status applies 
 | SYS-24 | Critical | REI context_tracker.py | STOP persistence receipt ignored; fixed success speech on failure. | Hosted CI 38281972038 passes 1,395 tests, 8 Bob/SQL contracts and 30 dashboard HTTP fault checks on recovered tree. |
 | SYS-25 | High | Dashboard handoff/call mutation identity | Caller-selected operator attribution and read-only roles mutating calls. | Recovered role/identity/participant ownership repair; six independent handoff rejection cases pass. |
 | SYS-26 | High | Full database harness | Embedded adapter loses transaction/error behavior; cannot count that run as green. | Resolved testing blocker: hosted CI 38282015032 passes 1,042 tests against disposable PostgreSQL/Redis. Production/migration gates remain open. |
-| SYS-27 | Medium | Visual audit | Original managed-browser blocker resolved using authorized local Playwright and hosted CI. | Partial: design contract, 23-item dashboard issue log, 31 rendered states across 16 routes, 0 automated violations and 7 interaction checks; Dashboard CI 38288551534 green. Populated production workflows and full cross-browser/a11y coverage remain open. See Dashboard docs/visual-audit/REPORT.md. |
+| SYS-27 | Medium | Visual audit | Original managed-browser blocker resolved using authorized local Playwright and hosted CI. | Partial: design contract, 23-item dashboard issue log, 37 rendered states across 16 routes, 0 automated violations and 14 interactions; Dashboard CI 38328169737 green, including paginated/populated work, notification failure/retry, transcript races and account storage isolation. Populated production workflows and full cross-browser/a11y coverage remain open. See Dashboard docs/visual-audit/REPORT.md. |
 | SYS-28 | High | Production voice/providers | Simulations do not prove accents/noise/muffled audio/duplex/hearing access, recovery, schedules, callbacks or durable volumes. | Open: approved real-call corpus, latency/turn metrics, provider outages and rollback drills. |
 | SYS-29 | Medium | Dashboard properties/page.tsx | Storage failure still displayed save/remove success. | Second review repair: success toast requires storage acknowledgement; frontend checks required. |
+
+| SYS-30 | Critical | Production Compose/Docker/env | Environment mappings overrode production env files; inherited public service ports/mounts, localhost browser builds, missing backend startup/domain wiring. | Repaired explicit required production configuration, private service ports, removed source mounts, build-time/same-origin browser config, authenticated Redis health and startup. Hosted production merge check passed; real containers/TLS/backup remain open. |
+| SYS-31 | High | WebsocketProvider / auth / realtime | Reusable JWT in query URL/logs; reconnection reused credentials. | Single-use Redis ticket <=20 seconds, atomic consumption, current active DB role, fresh reconnect and cancellation tests. Long-lived role/revocation policy after connect remains open. |
+| SYS-32 | High | Dashboard scheduled work / leads API | First page looked complete; aggregates covered loaded records; date writes insufficiently bounded. | Server pagination/month filters, full-set deal totals, timezone/past-date validation, acknowledged cancellation; 201/203-record browser and SQL checks passed. |
+| SYS-33 | High | Dashboard notifications/settings | Unscoped user IDs, absent server/team wiring and write-before-ack ambiguity. | Own/admin guards, readonly actual configuration/roster, commit-before-HTTP-ack/publication; SQL and populated role/fault checks passed. Internal durable notification outbox remains open. |
 
 ## Checklist
 
@@ -42,7 +47,7 @@ This supplements the existing REI and Bob forensic ledgers. Each status applies 
 - [x] Recovered dashboard full backend suite and REI regression/contract checks pass hosted CI.
 - [ ] Complete cross-project integration and migration gates green.
 - [x] Screenshot-backed design contract and tested dashboard repairs published in Dashboard PR #1.
-- [ ] Complete populated-workflow and production-connected dashboard verification.
+- [ ] Complete production-connected dashboard verification and manual multi-browser/accessibility coverage.
 - [ ] Independent complete second audit against all original findings.
 - [ ] Real phone and production infrastructure gates.
 
