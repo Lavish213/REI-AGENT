@@ -323,19 +323,29 @@ def get_leads_for_outbound(min_score: int = 50) -> list[dict]:
 
 
 def get_lead_with_property(lead_id: str) -> dict | None:
-    client = _get_client()
-    response = (
-        client.table("leads")
-        .select("*, properties!properties_lead_id_fkey(*)")
-        .eq("id", lead_id)
-        .limit(1)
-        .execute()
-    )
+    response = _get_client().table("leads").select("*").eq("id", lead_id).limit(1).execute()
     result = response.data[0] if response.data else None
-    if result and isinstance(result.get("properties"), list):
-        result["properties"] = result["properties"][0] if result["properties"] else {}
+    if result:
+        prop = get_property_by_id(result["property_id"]) if result.get("property_id") else None
+        if prop and prop.get("tenant_id") != result.get("tenant_id"):
+            raise ValueError("Canonical property tenant mismatch")
+        result["properties"] = prop or {}
     logger.debug("get_lead_with_property id={} found={}", lead_id, result is not None)
     return result
+
+
+def offer_subject(lead_id: str, property_id: str | None = None) -> dict:
+    lead = get_lead_with_property(lead_id)
+    if not lead:
+        raise LookupError("Lead not found")
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    prop = lead.get("properties") or {}
+    canonical = lead.get("property_id")
+    if lead.get("tenant_id") != tenant or prop.get("tenant_id") != tenant:
+        raise ValueError("Offer subject tenant mismatch")
+    if not canonical or prop.get("id") != canonical or (property_id is not None and property_id != canonical):
+        raise ValueError("Canonical offer property binding required")
+    return prop
 
 
 def update_lead_call_outcome(lead_id: str, outcome: str, call_sid: str, duration: int = 0) -> None:
@@ -952,12 +962,14 @@ def create_offer(
     notes: str | None = None,
     created_by: str = "operator",
 ) -> str | None:
-    """Create offer record. MAO = (arv_used * 0.70) - repair_estimate."""
+    for value in (arv_used, repair_estimate, offer_amount):
+        if value is not None and (type(value) is not int or not 0 <= value <= 10**14):
+            raise ValueError("Offer money must be bounded nonnegative integer cents")
+    if repair_estimate is None or arv_used == 0:
+        raise ValueError("Repair budget and positive valuation required")
     client = _get_client()
     now = datetime.now(timezone.utc).isoformat()
-    mao_calculated: int | None = None
-    if arv_used is not None:
-        mao_calculated = (arv_used * 70 // 100) - repair_estimate
+    mao_calculated = None if arv_used is None else max(0, arv_used * 70 // 100 - repair_estimate)
 
     response = client.table("offers").insert({
         "lead_id": lead_id,
@@ -1003,6 +1015,8 @@ def get_offers_for_lead(lead_id: str) -> list[dict]:
 
 
 def update_offer_status(offer_id: str, status: str, notes: str | None = None) -> None:
+    if status not in {"draft", "sent", "countered", "accepted", "rejected", "expired"}:
+        raise ValueError("Invalid offer status")
     client = _get_client()
     data: dict = {
         "offer_status": status,
@@ -1010,7 +1024,9 @@ def update_offer_status(offer_id: str, status: str, notes: str | None = None) ->
     }
     if notes is not None:
         data["notes"] = notes
-    client.table("offers").update(data).eq("id", offer_id).execute()
+    response = client.table("offers").update(data).eq("id", offer_id).execute()
+    if not isinstance(response.data, list) or len(response.data) != 1 or response.data[0].get("id") != offer_id or response.data[0].get("offer_status") != status:
+        raise RuntimeError("Offer status persistence was not confirmed")
     logger.info("update_offer_status id={} status={}", offer_id, status)
 
 

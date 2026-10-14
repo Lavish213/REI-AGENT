@@ -169,7 +169,7 @@ class TestLeadPropertyLinkage:
         app.include_router(router, prefix="/api")
         tc = TestClient(app)
 
-        with patch("backend.lib.db._get_client") as mock_get, \
+        with patch("backend.lib.db.offer_subject", return_value={"id": "prop-1", "estimated_arv": 30_000_000}) as mock_get, \
              patch("backend.lib.db.create_offer") as mock_create, \
              patch("backend.lib.db.get_offer_by_id") as mock_get_offer:
 
@@ -178,11 +178,13 @@ class TestLeadPropertyLinkage:
             lead_resp = MagicMock()
             lead_resp.data = [{"property_id": "prop-1", "properties": {"estimated_arv": 30_000_000}}]
             client.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = lead_resp
-            mock_get.return_value = client
+            mock_get.return_value = {"id": "prop-1", "estimated_arv": 30_000_000}
 
             mock_create.return_value = "offer-123"
             mock_get_offer.return_value = {
                 "id": "offer-123",
+                "lead_id": "lead-1",
+                "property_id": "prop-1",
                 "offer_status": "draft",
                 "mao_calculated": 18_500_000,
                 "offer_amount": 18_500_000,
