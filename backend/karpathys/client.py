@@ -33,7 +33,7 @@ async def send_event(endpoint: str, payload: dict[str, Any]) -> dict:
         logger.debug("karpathys url not set skipping event={}", endpoint)
         return {"receipt": None, "error": "transport_unavailable", "permanent": False}
 
-    allowed = {"call", "turn", "complete", "ended", "transcript", "failed", "sophia/disposition-action"}
+    allowed = {"call", "turn", "complete", "ended", "transcript", "failed", "business", "sophia/disposition-action"}
     base = urlsplit(_KARPATHYS_URL)
     if endpoint not in allowed or not _KARPATHYS_SECRET or base.scheme not in {"http", "https"} or not base.netloc or base.username or base.password or base.query or base.fragment or base.path not in {"", "/"}:
         return {"receipt": None, "error": "transport_unavailable", "permanent": False}

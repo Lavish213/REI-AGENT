@@ -43,8 +43,20 @@ async def recover_events(limit=20):
 
 
 async def recovery_loop():
+    cycles = 0
+    refresh_offset = 0
     while True:
         try:
+            if cycles % 12 == 0:
+                try:
+                    from backend.karpathys.business import publish_business
+                    lead_ids = await asyncio.to_thread(db.dashboard_lead_refresh_ids, refresh_offset)
+                    refresh_offset = refresh_offset + 100 if len(lead_ids) == 100 else 0
+                    for lead_id in lead_ids:
+                        await publish_business('lead:' + lead_id, lead_id)
+                except Exception as error:
+                    logger.warning("business_refresh_failed type={}", type(error).__name__)
+            cycles += 1
             await recover_events()
             health = await asyncio.to_thread(db.dashboard_event_journal_health)
             if health["dead"] or health["oldest_pending_seconds"] > 300:
