@@ -53,7 +53,10 @@ async def recovery_loop():
                     lead_ids = await asyncio.to_thread(db.dashboard_lead_refresh_ids, refresh_offset)
                     refresh_offset = refresh_offset + 100 if len(lead_ids) == 100 else 0
                     for lead_id in lead_ids:
-                        await publish_business('lead:' + lead_id, lead_id)
+                        try:
+                            await publish_business('lead:' + lead_id, lead_id)
+                        except Exception as error:
+                            logger.warning('business_lead_refresh_failed lead_id={} type={}', lead_id, type(error).__name__)
                 except Exception as error:
                     logger.warning("business_refresh_failed type={}", type(error).__name__)
             cycles += 1

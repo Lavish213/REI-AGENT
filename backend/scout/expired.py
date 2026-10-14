@@ -8,7 +8,7 @@ except ImportError:
     _HH_AVAILABLE = False
     logger.warning("homeharvest not installed — expired scraper disabled")
 
-from backend.lib.db import upsert_listing_candidate
+from backend.lib.db import persist_mls_candidate
 
 
 _LOCATION = "San Joaquin County, CA"
@@ -79,7 +79,8 @@ def _upsert_distress(row: dict, distress_type: str) -> None:
     if year_built is not None:
         payload["year_built"] = year_built
 
-    upsert_listing_candidate(payload)
+    if not persist_mls_candidate(payload):
+        return False
     logger.debug("listing_candidate_saved apn={} type={}", apn, distress_type)
     return True
 

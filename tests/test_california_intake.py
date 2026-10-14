@@ -41,7 +41,7 @@ def test_bound_state_guidance_strips_injected_notes_and_clears_on_rejected_brief
 def test_listing_identifier_cannot_be_used_as_parcel():
     from unittest.mock import patch
     from backend.scout.expired import _upsert_distress
-    with patch('backend.scout.expired.upsert_listing_candidate') as save:
+    with patch('backend.scout.expired.persist_mls_candidate') as save:
         assert _upsert_distress({'mls': '12345678', 'county': 'San Joaquin', 'state': 'CA'}, 'expired_listing') is False
         save.assert_not_called()
 
@@ -49,18 +49,18 @@ def test_listing_identifier_cannot_be_used_as_parcel():
 def test_new_listing_candidate_is_not_approved_deal_and_prices_are_cents():
     from unittest.mock import patch
     from backend.scout.expired import _upsert_distress
-    with patch('backend.scout.expired.upsert_listing_candidate') as save:
+    with patch('backend.scout.expired.persist_mls_candidate') as save:
         assert _upsert_distress({'apn': '00123456', 'county': 'San Joaquin', 'state': 'CA', 'list_price': 400000}, 'expired_listing')
         assert save.call_args.args[0]['last_list_price'] == 40000000
         assert save.call_args.args[0]['deal_viable'] is False
 
 
 @pytest.mark.parametrize('status,expected', [(202, True), (200, False), (204, False)])
-def test_email_requires_actual_provider_acceptance(status, expected):
+def test_email_requires_actual_provider_acceptance(status, expected, tmp_path):
     from unittest.mock import MagicMock, patch
     from backend.alerts.email import send_email
-    response = MagicMock(status_code=status)
-    with patch.dict('os.environ', {'SENDGRID_API_KEY': 'test-only'}), patch('httpx.post', return_value=response):
+    response = MagicMock(status_code=status, headers={'x-message-id': 'accepted-test'})
+    with patch.dict('os.environ', {'SENDGRID_API_KEY': 'test-only', 'OUTBOUND_ENABLED': 'true', 'COMMUNICATION_JOURNAL_PATH': str(tmp_path / 'communications.sqlite3')}), patch('httpx.post', return_value=response):
         assert send_email('owner@example.com', 'Review', 'Test') is expected
 
 

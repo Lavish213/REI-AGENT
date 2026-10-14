@@ -55,7 +55,7 @@ def _process_lead(lead: dict, now_utc: datetime, now_pt: datetime) -> None:
     if appt_dt.tzinfo is None:
         appt_dt = appt_dt.replace(tzinfo=timezone.utc)
 
-    if lead.get("opted_out") or lead.get("appointment_status") == "cancelled":
+    if lead.get("opted_out") or lead.get("appointment_status") in {"cancelled", "completed", "missed"} or lead.get("walkthrough_state") in {"completed", "cancelled", "missed"}:
         return
     appt_pt = appt_dt.astimezone(PACIFIC)
     first_name = _get_first_name(lead)

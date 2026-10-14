@@ -126,7 +126,7 @@ def test_real_assembler_call_preserves_cents_for_conflict_checks(monkeypatch):
     for query in [lead_query, prop_query]:
         for method in ['select', 'eq', 'limit']:
             getattr(query, method).return_value = query
-    lead_query.execute.return_value.data = [{'id': 'lead-1', 'price_floor': 28000000, 'disposition': 'WARM'}]
+    lead_query.execute.return_value.data = [{'id': 'lead-1', 'property_id': 'property', 'price_floor': 28000000, 'disposition': 'WARM'}]
     prop_query.execute.return_value.data = [{'id': 'property', 'estimated_arv': 42000000, 'mao': 26900000, 'arv_confidence': 'high'}]
     client.table.side_effect = lambda table: lead_query if table == 'leads' else prop_query
     monkeypatch.setattr(db, '_get_client', lambda: client)

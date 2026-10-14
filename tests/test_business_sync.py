@@ -71,9 +71,10 @@ def test_mls_new_lead_is_not_callable_and_confirmed(monkeypatch):
     monkeypatch.setattr(db, 'upsert_listing_candidate', lambda payload: 'property-1')
     reads = iter([None, {'id': 'saved-lead'}])
     monkeypatch.setattr(db, 'get_lead_by_property', lambda property_id: next(reads))
+    client.rpc.return_value.execute.return_value.data = 'saved-lead'
     assert db.persist_mls_candidate(candidate) == 'saved-lead'
-    payload = client.table.return_value.upsert.call_args.args[0]
-    assert payload['callable'] is False and payload['stage'] == 'new'
+    assert client.rpc.call_args.args[0] == 'create_canonical_lead'
+    assert client.rpc.call_args.args[1]['p_property_id'] == 'property-1'
 
 
 @pytest.mark.asyncio

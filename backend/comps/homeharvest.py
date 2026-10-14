@@ -21,7 +21,7 @@ def get_comps(
 
     try:
         df = scrape_property(
-            location=f"{city}, {state}",
+            location=f"{address}, {city}, {state}",
             listing_type="sold",
             past_days=90,
             radius=0.5,
@@ -51,7 +51,9 @@ def get_comps(
         logger.warning("homeharvest: all comps filtered out address={}", address)
         return _fallback(sqft)
 
-    price_col = "sold_price" if "sold_price" in df.columns else "list_price"
+    if "sold_price" not in df.columns:
+        return _fallback(sqft)
+    price_col = "sold_price"
     df = df[df[price_col].notna() & (df[price_col] > 0)]
     df = df[df["sqft"].notna() & (df["sqft"] > 0)]
 
@@ -123,9 +125,9 @@ def trigger_arv_computation(property_id: str, address: str, sqft: int | None = N
         if not prop or not prop.get("city") or not prop.get("state"):
             return
         result = get_comps(address, prop["city"], prop["state"], prop.get("beds"), prop.get("baths"), sqft)
-        if not result or result.get("confidence") == "low" or not result.get("arv_estimate"):
+        if not result or str(result.get("confidence")).lower() not in {"medium", "high"} or not result.get("arv_estimate"):
             return
         arv = int(result["arv_estimate"])
-        update_property_arv(property_id, arv, (arv * 70 // 100) - 2500000, result["confidence"])
+        update_property_arv(property_id, arv, max(0, (arv * 70 // 100) - 2500000), result["confidence"])
     except Exception as error:
         logger.warning("trigger_arv_computation failed property_id={} error={}", property_id, str(error))

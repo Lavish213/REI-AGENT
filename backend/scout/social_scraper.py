@@ -88,6 +88,12 @@ def scrape_craigslist_fsbo() -> list[dict]:
 
 
 def run_social_scraper() -> int:
-    leads = scrape_craigslist_fsbo()
-    logger.info("social_scraper run complete count={}", len(leads))
-    return len(leads)
+    from backend.lib.db import save_source_candidate
+    count = 0
+    for candidate in scrape_craigslist_fsbo():
+        try:
+            save_source_candidate('craigslist', candidate)
+            count += 1
+        except Exception as error:
+            logger.warning('candidate_persistence_failed source=craigslist type={}', type(error).__name__)
+    return count

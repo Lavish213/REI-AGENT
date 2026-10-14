@@ -161,6 +161,8 @@ def _handle_spam_report(lead_id: str, email: str) -> None:
 
 
 def _handle_unsubscribe(lead_id: str, email: str, method: str = "email_link") -> None:
+    from backend.lib.db import suppress_email_address
+    suppress_email_address(email)
     try:
         from backend.lib.db import _get_client, pause_lead_email
         client = _get_client()

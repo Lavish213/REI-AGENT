@@ -379,7 +379,7 @@ def test_nonascii_bearer_is_rejected_without_server_error(monkeypatch):
 def test_offer_quote_converts_cents_and_never_exceeds_ceiling():
     from backend.voice.tools import _get_offer_range
     lead = {"properties": {"estimated_arv": 35000000, "mao": 20000000, "arv_confidence": "high"}}
-    with patch("backend.lib.db.get_lead_with_property", return_value=lead):
+    with patch("backend.lib.db.approved_price_range", return_value=(190000, 200000)):
         result = _get_offer_range({"lead_id": "lead-test", "address": "100 Test Ave"})
     assert "$190,000" in result
     assert "$200,000" in result
@@ -389,7 +389,7 @@ def test_offer_quote_converts_cents_and_never_exceeds_ceiling():
 def test_offer_send_does_not_trust_model_supplied_price():
     from backend.voice.tools import _send_offer_summary
     lead = {"properties": {"estimated_arv": 35000000, "mao": 20000000, "arv_confidence": "high"}}
-    with patch("backend.lib.db.get_lead_with_property", return_value=lead), patch("backend.alerts.sms.send_sms", return_value=True) as send:
+    with patch("backend.lib.db.approved_price_range", return_value=(190000, 200000)), patch("backend.alerts.sms.send_sms", return_value=True) as send:
         _send_offer_summary({"lead_id": "lead-test", "seller_phone": "+15555550101", "offer_low": 9000000, "offer_high": 99999999})
     body = send.call_args.kwargs["body"]
     assert "$200,000" in body
@@ -397,7 +397,7 @@ def test_offer_send_does_not_trust_model_supplied_price():
 
 
 def test_human_approval_threshold_compares_cents_to_cents():
-    packet = {"safe_for_live_call": True, "action_permissions": {"get_offer_range": {"level": "quote_range"}}, "compliance_context": {"requires_human_approval_above": 30000000}}
+    packet = {"safe_for_live_call": True, "action_permissions": {"get_offer_range": {"level": "quote_range", "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}}, "compliance_context": {"requires_human_approval_above": 30000000}}
     ctx = CallContext(intel_packet=packet, last_price_mentioned=35000000)
     assert _preflight_gate("get_offer_range", RESOLVED, ctx)["blocked"]
     assert ctx.approval_pending == "approval-test"
@@ -430,7 +430,7 @@ async def test_ten_thousand_interruption_cycles_do_not_replay_stale_text():
 def test_server_bound_tools_and_saved_state(action, failure, monkeypatch):
     from backend.voice.tools import execute_tool
     lead = {"id": "lead-test", "tenant_id": "tenant-test", "owner_phone": "+15555550101", "properties": {"address": "100 Test Ave"}}
-    packet = {"safe_for_live_call": True, "action_permissions": {action: {"level": "book_appointment", "scope": "call"}}}
+    packet = {"safe_for_live_call": True, "action_permissions": {action: {"level": "book_appointment", "scope": "call", "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}}}
     ctx = CallContext(lead_id="lead-test", _call_sid="CA-test", intel_packet=packet)
     tomorrow = (datetime.now(PACIFIC) + timedelta(days=1)).strftime("%Y-%m-%d")
     args = {"date": tomorrow, "time": "10:00", "confirmed": True, "lead_id": "attacker", "address": "attacker address", "seller_phone": "+15555550999"}

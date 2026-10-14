@@ -5,79 +5,8 @@ from loguru import logger
 
 
 def blast_deal(property_id: str, operator_notes: str = "") -> dict:
-    from backend.lib.db import _get_client
-    client = _get_client()
-
-    prop_resp = (
-        client.table("properties")
-        .select("address, city, state, arv, mao, distress_type, bedrooms, bathrooms, sqft")
-        .eq("id", property_id)
-        .limit(1)
-        .execute()
-    )
-    if not prop_resp.data:
-        logger.warning("deal_blast property not found property_id={}", property_id)
-        return {"sms": 0, "email": 0}
-
-    prop = prop_resp.data[0]
-    address = prop.get("address", "")
-    city = prop.get("city", "Stockton")
-    arv = prop.get("arv", 0)
-    mao = prop.get("mao", 0)
-    beds = prop.get("bedrooms", "?")
-    baths = prop.get("bathrooms", "?")
-    sqft = prop.get("sqft", "?")
-
-    buyers_resp = (
-        client.table("cash_buyers")
-        .select("id, owner_name, owner_phone, owner_email, max_price, preferred_cities, opted_out")
-        .eq("opted_out", False)
-        .execute()
-    )
-    buyers = buyers_resp.data or []
-    eligible = _filter_eligible_buyers(buyers, city, mao)
-    logger.info("deal_blast property_id={} eligible_buyers={}", property_id, len(eligible))
-
-    sms_count = 0
-    email_count = 0
-    now = datetime.now(timezone.utc).isoformat()
-
-    for buyer in eligible:
-        buyer_id = buyer["id"]
-        name_parts = (buyer.get("owner_name") or "").strip().split()
-        first = name_parts[0] if name_parts else "there"
-        phone = buyer.get("owner_phone", "")
-        email = buyer.get("owner_email", "")
-
-        idem_key = f"deal_blast:{property_id}:{buyer_id}"
-        existing = client.table("deal_blast_sends").select("id").eq("idempotency_key", idem_key).limit(1).execute()
-        if existing.data:
-            continue
-
-        if phone:
-            sent = _send_buyer_sms(phone, first, address, city, mao, arv, beds, baths, sqft, operator_notes, buyer_id)
-            if sent:
-                sms_count += 1
-
-        if email:
-            sent = _send_buyer_email(email, first, address, city, mao, arv, beds, baths, sqft, operator_notes, property_id)
-            if sent:
-                email_count += 1
-
-        try:
-            client.table("deal_blast_sends").insert({
-                "property_id": property_id,
-                "buyer_id": buyer_id,
-                "idempotency_key": idem_key,
-                "sms_sent": phone != "",
-                "email_sent": email != "",
-                "sent_at": now,
-            }).execute()
-        except Exception as e:
-            logger.warning("deal_blast log failed buyer_id={} error={}", buyer_id, str(e))
-
-    logger.info("deal_blast complete property_id={} sms={} email={}", property_id, sms_count, email_count)
-    return {"sms": sms_count, "email": email_count}
+    logger.warning("deal_blast_blocked property_id={} reason=missing_verified_buyer_campaign_authority", property_id)
+    return {"sms": 0, "email": 0, "status": "blocked", "reason": "Buyer campaigns require verified property pricing and campaign authority"}
 
 
 def _filter_eligible_buyers(buyers: list[dict], city: str, mao: int) -> list[dict]:
@@ -96,8 +25,8 @@ def _filter_eligible_buyers(buyers: list[dict], city: str, mao: int) -> list[dic
 
 def _send_buyer_sms(to, first_name, address, city, mao, arv, beds, baths, sqft, operator_notes, buyer_id) -> bool:
     from backend.alerts.sms import send_sms
-    mao_fmt = f"${mao:,}" if mao else "TBD"
-    arv_fmt = f"${arv:,}" if arv else "TBD"
+    mao_fmt = f"${mao / 100:,.2f}" if mao else "TBD"
+    arv_fmt = f"${arv / 100:,.2f}" if arv else "TBD"
     notes = f" Note: {operator_notes}" if operator_notes else ""
     body = (
         f"Hey {first_name} — Sophia from SJ House Buyers. "
@@ -112,8 +41,8 @@ def _send_buyer_sms(to, first_name, address, city, mao, arv, beds, baths, sqft, 
 
 def _send_buyer_email(to, first_name, address, city, mao, arv, beds, baths, sqft, operator_notes, property_id) -> bool:
     from backend.alerts.email import send_email
-    mao_fmt = f"${mao:,}" if mao else "TBD"
-    arv_fmt = f"${arv:,}" if arv else "TBD"
+    mao_fmt = f"${mao / 100:,.2f}" if mao else "TBD"
+    arv_fmt = f"${arv / 100:,.2f}" if arv else "TBD"
     agent_ph = os.environ.get("AGENT_PHONE", "")
     from_name = os.environ.get("BUSINESS_NAME", "San Joaquin House Buyers")
     subject = f"New Deal Available — {address}, {city}"
@@ -129,9 +58,9 @@ def _send_buyer_email(to, first_name, address, city, mao, arv, beds, baths, sqft
         + (f"\nNotes: {operator_notes}\n" if operator_notes else "")
         + f"\nReply or call/text {agent_ph} to move forward.\n\n— Sophia\n{from_name}"
     )
-    sg_id = send_email(to=to, subject=subject, body_plain=body_plain)
+    sg_id = send_email(to=to, subject=subject, body=body_plain)
     logger.info("deal_blast_email to={} sent={}", to, sg_id is not None)
-    return sg_id is not None
+    return bool(sg_id)
 
 
 def upsert_cash_buyer(data: dict) -> str | None:

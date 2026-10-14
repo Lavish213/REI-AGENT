@@ -48,9 +48,9 @@ class TestPreflightGate:
 
     def test_blocked_permission_level(self):
         from backend.voice.tools import _preflight_gate
-        packet = {"safe_for_live_call": True, "action_permissions": {"get_offer_range": {"level": "blocked", "scope": "call", "granted_by": "bob"}}}
+        packet = {"safe_for_live_call": True, "action_permissions": {"get_offer_range": {"level": "blocked", "scope": "call", "granted_by": "bob", "expires_at": "2099-01-01T00:00:00+00:00"}}}
         ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet=packet)
-        with patch("backend.lib.db.write_tool_gate_log"):
+        with patch("backend.lib.db.write_tool_gate_log"), patch("backend.lib.db.approved_price_range", return_value=(190000, 200000)):
             result = _preflight_gate("get_offer_range", _resolved(), ctx)
         assert result["blocked"]
 
@@ -58,7 +58,7 @@ class TestPreflightGate:
         from backend.voice.tools import _preflight_gate
         packet = {"safe_for_live_call": True, "action_permissions": {"get_offer_range": {"level": "ask_only", "scope": "call", "granted_by": "system"}}}
         ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet=packet)
-        with patch("backend.lib.db.write_tool_gate_log"):
+        with patch("backend.lib.db.write_tool_gate_log"), patch("backend.lib.db.approved_price_range", return_value=(190000, 200000)):
             result = _preflight_gate("get_offer_range", _resolved(), ctx)
         assert result["blocked"]
         assert "Alanzo" in result["message"] or "follow" in result["message"].lower()
@@ -68,16 +68,16 @@ class TestPreflightGate:
         from backend.contracts.intel_packet import DEFAULT_DENY_PERMISSIONS
         monkeypatch.setenv("OUTBOUND_ENABLED", "true")
         ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet={"safe_for_live_call": True, "action_permissions": DEFAULT_DENY_PERMISSIONS})
-        with patch("backend.lib.db.write_tool_gate_log"):
+        with patch("backend.lib.db.write_tool_gate_log"), patch("backend.lib.db.approved_price_range", return_value=(190000, 200000)):
             result = _preflight_gate("get_offer_range", _resolved(), ctx)
         assert result["blocked"]
 
     def test_granted_permission_passes(self, monkeypatch):
         from backend.voice.tools import _preflight_gate
         monkeypatch.setenv("OUTBOUND_ENABLED", "true")
-        packet = {"safe_for_live_call": True, "action_permissions": {"get_offer_range": {"level": "quote_range", "scope": "call", "granted_by": "bob"}}}
+        packet = {"safe_for_live_call": True, "action_permissions": {"get_offer_range": {"level": "quote_range", "scope": "call", "granted_by": "bob", "expires_at": "2099-01-01T00:00:00+00:00"}}}
         ctx = _make_ctx(lead_id="test123", fallback_mode=False, conflict_active=False, intel_packet=packet)
-        with patch("backend.lib.db.write_tool_gate_log"):
+        with patch("backend.lib.db.write_tool_gate_log"), patch("backend.lib.db.approved_price_range", return_value=(190000, 200000)):
             result = _preflight_gate("get_offer_range", _resolved(), ctx)
         assert not result["blocked"]
 
@@ -128,7 +128,7 @@ class TestPacketSchema:
         future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         assert is_permission_expired({"expires_at": past})
         assert not is_permission_expired({"expires_at": future})
-        assert not is_permission_expired({})
+        assert is_permission_expired({})
 
 
 class TestKillSwitch:

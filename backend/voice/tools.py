@@ -347,6 +347,22 @@ def _preflight_gate(tool_name: str, resolved, call_ctx) -> dict:
     threshold = compliance.get("requires_human_approval_above")
     if threshold is not None and (type(threshold) is not int or threshold <= 0):
         return {"blocked": True, "message": "Verified approval threshold is invalid."}
+    if tool_name in {'get_offer_range', 'send_offer_summary', 'collect_and_send_email', 'send_followup_email'}:
+        from backend.lib.db import approved_price_range
+        try:
+            approved = approved_price_range(lead_id, call_sid, tool_name)
+        except Exception:
+            approved = None
+        if approved is None:
+            try:
+                approval_id = create_approval_request(lead_id=lead_id, call_sid=call_sid, approval_type="price_review", requested_action=tool_name, risk_reason="Exact property and price require dated operator approval", priority="high")
+                if call_ctx:
+                    call_ctx.approval_pending = approval_id
+            except Exception as error:
+                logger.warning("price_approval_request_unavailable error={}", str(error))
+            return {'blocked': True, 'message': 'No current operator-approved price is available. Ask Alanzo to approve this exact property and amount.'}
+        write_tool_gate_log(lead_id, call_sid, tool_name, level, 'allowed', 'dated_operator_price_approval', packet_version)
+        return {'blocked': False, 'level': level}
     if threshold and call_ctx:
         price = getattr(call_ctx, "last_price_mentioned", None)
         if price and price > threshold:
@@ -551,27 +567,13 @@ def _honor_stop_request(inp: dict, resolved, call_ctx=None) -> str:
     return "Understood — your number has been removed from our contact list. Take care."
 
 
-def _verified_offer_range(lead_id: str, call_ctx=None) -> tuple[int, int] | None:
-    from backend.lib.db import get_lead_with_property
+def _verified_offer_range(lead_id: str, call_ctx=None, action='get_offer_range') -> tuple[int, int] | None:
+    from backend.lib.db import approved_price_range
     try:
-        lead = get_lead_with_property(lead_id) or {}
-        prop = lead.get("properties") or {}
-        if isinstance(prop, list):
-            prop = prop[0] if prop else {}
-        ceiling = prop.get("mao")
-        if type(ceiling) is not int or ceiling <= 0 or prop.get("arv_confidence") not in {"medium", "high"}:
-            return None
-        packet = getattr(call_ctx, "intel_packet", None) or {}
-        strategy = packet.get("strategy_context") or {}
-        approved_max = strategy.get("max_offer")
-        if approved_max is not None:
-            if type(approved_max) is not int or approved_max <= 0:
-                return None
-            ceiling = min(ceiling, approved_max)
-        low, high = ceiling * 95 // 100 // 100, ceiling // 100
-        return (low, high) if 0 < low <= high else None
+        call_sid = getattr(call_ctx, '_call_sid', '') or getattr(call_ctx, 'call_sid', '')
+        return approved_price_range(lead_id, call_sid, action)
     except Exception as error:
-        logger.warning("offer_authority_unavailable error={}", str(error))
+        logger.warning('offer_authority_unavailable type={}', type(error).__name__)
         return None
 
 
@@ -585,7 +587,7 @@ def _send_offer_summary(inp: dict, call_ctx=None) -> str:
         seller_phone = getattr(call_ctx, "seller_phone", "")
     if not seller_phone:
         return "What is the best number to text that to?"
-    verified = _verified_offer_range(lead_id, call_ctx)
+    verified = _verified_offer_range(lead_id, call_ctx, 'send_offer_summary')
     if not verified:
         return "No verified offer is available. Have Alanzo approve pricing first."
     offer_low, offer_high = verified
@@ -612,7 +614,7 @@ def _collect_and_send_email(inp: dict, call_ctx=None) -> str:
     lead_id = inp.get("lead_id", "") or getattr(call_ctx, "lead_id", "")
     if not email:
         return "What email address should I send that to?"
-    verified = _verified_offer_range(lead_id, call_ctx)
+    verified = _verified_offer_range(lead_id, call_ctx, 'collect_and_send_email')
     if not verified:
         return "No verified offer is available. Ask the owner to approve pricing first."
     offer_low, offer_high = verified
@@ -851,7 +853,7 @@ def _send_followup_email(inp, call_ctx=None):
     address = inp.get("address", "").strip()
     if not to:
         return "No verified seller email is available. Ask for a human follow-up."
-    verified = _verified_offer_range(lead_id, call_ctx)
+    verified = _verified_offer_range(lead_id, call_ctx, 'send_followup_email')
     if not verified:
         return "No verified offer is available. Ask the owner to approve pricing first."
     offer_low, offer_high = verified

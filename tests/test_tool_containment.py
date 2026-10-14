@@ -255,8 +255,8 @@ class TestFailClosed:
     def test_expired_permission_denies(self):
         assert intel_packet.is_permission_expired({"expires_at": "2020-01-01T00:00:00Z"}) is True
 
-    def test_absent_expiry_is_not_expired(self):
-        assert intel_packet.is_permission_expired({}) is False
+    def test_absent_expiry_denies(self):
+        assert intel_packet.is_permission_expired({}) is True
 
     def test_migrated_packet_is_not_safe_for_live_call(self):
         migrated = intel_packet.migrate_packet({"lead_id": "x", "seller_profile": {}})

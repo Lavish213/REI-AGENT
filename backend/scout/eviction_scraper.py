@@ -84,6 +84,12 @@ def scrape_eviction_filings() -> list[dict]:
 
 
 def run_eviction_scraper() -> int:
-    leads = scrape_eviction_filings()
-    logger.info("eviction_scraper run complete count={}", len(leads))
-    return len(leads)
+    from backend.lib.db import save_source_candidate
+    count = 0
+    for candidate in scrape_eviction_filings():
+        try:
+            save_source_candidate('court_eviction', candidate)
+            count += 1
+        except Exception as error:
+            logger.warning('candidate_persistence_failed source=court_eviction type={}', type(error).__name__)
+    return count
