@@ -142,7 +142,7 @@ def trigger_from_call_outcome(
                 from datetime import datetime
                 prop = appt_lead.get("properties") or {}
                 appt_dt = datetime.fromisoformat(appt_lead["appointment_at"].replace("Z", "+00:00"))
-                send_walkthrough_confirmation_email(appt_lead, prop, appt_dt)
+                send_walkthrough_confirmation_email(appt_lead["owner_email"], appt_lead.get("owner_name") or "there", prop.get("address") or "Address requires confirmation", appt_dt.astimezone(__import__("zoneinfo").ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M %Z"))
         except Exception as appt_err:
             logger.warning("appointment_email failed lead_id={} error={}", lead_id, str(appt_err))
 

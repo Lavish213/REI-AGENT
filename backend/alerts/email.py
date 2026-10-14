@@ -88,12 +88,24 @@ def _is_in_hours() -> bool:
 
 
 def send_email(to: str, subject: str, body: str) -> bool:
+    if os.environ.get("OUTBOUND_ENABLED", "false").lower() != "true":
+        return False
+    from backend.lib import db
+    try:
+        if db.email_address_is_suppressed(to):
+            return False
+    except Exception as error:
+        logger.error("email_suppression_unavailable error={}", str(error))
+        return False
     sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
     if not sendgrid_key or sendgrid_key.startswith("placeholder"):
         logger.warning("SendGrid not configured skipping email to={}", to)
         return False
 
     try:
+        identity, claimed, receipt = db.claim_message_intent("email", to, subject, body)
+        if not claimed:
+            return bool(receipt)
         import httpx
         response = httpx.post(
             "https://api.sendgrid.com/v3/mail/send",
@@ -118,6 +130,7 @@ def send_email(to: str, subject: str, body: str) -> bool:
         response.raise_for_status()
         if response.status_code != 202:
             return False
+        db.accept_message_intent(identity, response.headers.get("x-message-id"))
         logger.info("email accepted to={} subject={}", to, subject)
         return True
     except Exception as e:
@@ -152,13 +165,14 @@ def _process_email_lead(lead: dict) -> None:
     prop = lead.get("properties") or {}
     now_utc = datetime.now(timezone.utc)
 
-    if lead.get("drip_started_at"):
+    if lead.get("email_started_at"):
         started = datetime.fromisoformat(
-            lead["drip_started_at"].replace("Z", "+00:00")
+            lead["email_started_at"].replace("Z", "+00:00")
         )
         days_elapsed = (now_utc - started).days
     else:
-        days_elapsed = 0
+        logger.warning('email_sequence_missing_anchor lead_id={}', lead_id)
+        return
 
     next_step: tuple[int, str, str] | None = None
     for day, subject_tmpl, body_tmpl in EMAIL_SEQUENCES:

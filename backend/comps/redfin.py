@@ -44,56 +44,8 @@ def _search_address(address: str, city: str, state: str) -> str | None:
 
 
 def _get_comps_from_region(region_url: str, beds: int | None, baths: float | None, sqft: int | None) -> list[dict]:
-    url = f"{REDFIN_BASE}/stingray/api/gis-csv"
-
-    bed_min = max((beds or 1) - 1, 1)
-    bed_max = (beds or 3) + 1
-    sqft_min = int((sqft or 1000) * 0.7)
-    sqft_max = int((sqft or 1000) * 1.3)
-
-    params = {
-        "al": 1,
-        "market": "norcal",
-        "num_beds": bed_min,
-        "max_num_beds": bed_max,
-        "min_sqft": sqft_min,
-        "max_sqft": sqft_max,
-        "status": 9,
-        "sold_within_days": MONTHS_BACK * 30,
-        "v": 8,
-    }
-
-    try:
-        with httpx.Client(headers=REDFIN_HEADERS, timeout=15) as client:
-            response = client.get(url, params=params)
-            response.raise_for_status()
-
-            import csv
-            import io
-            reader = csv.DictReader(io.StringIO(response.text))
-            comps = []
-            for row in reader:
-                price_str = row.get("PRICE", "").replace("$", "").replace(",", "").strip()
-                sqft_str = row.get("SQUARE FEET", "").replace(",", "").strip()
-                try:
-                    price = int(float(price_str)) if price_str else None
-                    sqft_val = int(float(sqft_str)) if sqft_str else None
-                    if price and sqft_val:
-                        comps.append({
-                            "address": row.get("ADDRESS", ""),
-                            "sold_price": price,
-                            "sqft": sqft_val,
-                            "beds": int(float(row.get("BEDS", 0) or 0)),
-                            "baths": float(row.get("BATHS", 0) or 0),
-                            "sold_date": row.get("SOLD DATE", ""),
-                            "price_per_sqft": int(price / sqft_val),
-                        })
-                except (ValueError, ZeroDivisionError):
-                    continue
-            return comps
-    except Exception as e:
-        logger.error("redfin comps fetch failed error={}", str(e))
-        return []
+    logger.warning('legacy_redfin_comps_disabled_missing_verified_region_contract')
+    return []
 
 
 def get_comps(

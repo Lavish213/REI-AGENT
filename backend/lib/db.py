@@ -1,8 +1,84 @@
 import os
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+import re
 
 from loguru import logger
 from supabase import create_client, Client, ClientOptions
+
+TABLES = frozenset({'leads', 'properties', 'calls', 'contacts', 'comps', 'offers', 'sms_messages', 'email_sends', 'email_events', 'followups', 'campaigns', 'deal_blast_sends', 'phone_pool_health', 'dnc_list', 'cash_buyers', 'intel_packets', 'packet_events', 'decision_records', 'bob_feedback_events', 'transcript_chunks', 'call_events', 'approval_requests', 'operator_queries', 'tool_gate_log', 'workflows', 'traces', 'eval_runs', 'latency_benchmarks', 'compliance_log', 'suppression_events', 'source_candidates', 'email_suppressions'})
+
+
+class ScopedQuery:
+    def __init__(self, raw, table, tenant):
+        self.raw = raw
+        self.name = table
+        self.tenant = tenant
+        self.query = raw.table(table)
+        self.hydrate = False
+        self.operation = None
+
+    def __getattr__(self, name):
+        if name == 'not_':
+            self.query = self.query.not_
+            return self
+        def chain(*args, **kwargs):
+            if name == 'eq' and args and args[0] == 'tenant_id' and args[1] != self.tenant:
+                raise ValueError('Tenant query mismatch')
+            if name == 'select':
+                self.operation = 'select'
+                columns = args[0] if args else '*'
+                if 'properties!properties_lead_id_fkey' in columns:
+                    self.hydrate = True
+                    columns = re.sub(r',?\s*properties!properties_lead_id_fkey\([^)]*\)', '', columns).strip(', ') or '*'
+                    if columns != '*':
+                        columns += ',property_id,tenant_id'
+                    args = (columns,) + args[1:]
+            if name in {'insert', 'upsert'}:
+                self.operation = name
+                rows = args[0] if isinstance(args[0], list) else [args[0]]
+                payload = []
+                for row in rows:
+                    if row.get('tenant_id', self.tenant) != self.tenant:
+                        raise ValueError('Tenant write mismatch')
+                    payload.append({**row, 'tenant_id': self.tenant})
+                args = (payload if isinstance(args[0], list) else payload[0],) + args[1:]
+            if name in {'update', 'delete'}:
+                self.operation = name
+                if name == 'update' and isinstance(args[0], dict) and args[0].get('tenant_id', self.tenant) != self.tenant:
+                    raise ValueError('Tenant update mismatch')
+            self.query = getattr(self.query, name)(*args, **kwargs)
+            if name in {'select', 'update', 'delete'}:
+                self.query = self.query.eq('tenant_id', self.tenant)
+            return self
+        return chain
+
+    def execute(self):
+        response = self.query.execute()
+        if self.operation in {'update', 'delete'} and not response.data:
+            raise RuntimeError('Scoped mutation persistence was not confirmed')
+        if self.hydrate:
+            rows = response.data or []
+            identities = sorted({row['property_id'] for row in rows if row.get('property_id')})
+            properties = []
+            for start in range(0, len(identities), 200):
+                properties.extend(self.raw.table('properties').select('*').eq('tenant_id', self.tenant).in_('id', identities[start:start+200]).execute().data or [])
+            by_id = {row['id']: row for row in properties}
+            for row in rows:
+                row['properties'] = by_id.get(row.get('property_id'), {})
+        return response
+
+
+class TenantClient:
+    def __init__(self, raw):
+        self.raw = raw
+
+    def table(self, name):
+        return ScopedQuery(self.raw, name, os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')) if name in TABLES else self.raw.table(name)
+
+    def __getattr__(self, name):
+        return getattr(self.raw, name)
+
 
 _client: Client | None = None
 
@@ -14,7 +90,7 @@ def _get_client() -> Client:
         key = os.environ["SUPABASE_SERVICE_KEY"]
         _client = create_client(url, key, options=ClientOptions(postgrest_client_timeout=10))
         logger.info("Supabase client initialized")
-    return _client
+    return TenantClient(_client)
 
 
 def get_supabase() -> Client:
@@ -59,16 +135,11 @@ def get_new_properties_since(hours: int) -> list[dict]:
 
 
 def insert_lead(property_id: str) -> str:
-    client = _get_client()
-    response = (
-        client.table("leads")
-        .insert({"property_id": property_id, "stage": "new"})
-        .execute()
-    )
-    lead_id = response.data[0]["id"]
-    client.table("properties").update({"lead_id": lead_id}).eq("id", property_id).execute()
-    logger.info("insert_lead property_id={} lead_id={}", property_id, lead_id)
-    return lead_id
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    result = _get_client().rpc('create_canonical_lead', {'p_tenant_id': tenant, 'p_property_id': property_id}).execute().data
+    if not isinstance(result, str) or not result:
+        raise RuntimeError('Canonical lead creation was not confirmed')
+    return result
 
 
 def get_lead_by_property(property_id: str) -> dict | None:
@@ -185,14 +256,9 @@ def get_comps_by_property(property_id: str) -> list[dict]:
 
 
 def update_property_arv(property_id: str, arv: int, mao: int, confidence: str) -> None:
-    client = _get_client()
-    client.table("properties").update({
-        "estimated_arv": arv,
-        "mao": mao,
-        "arv_confidence": confidence,
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }).eq("id", property_id).execute()
-    logger.info("update_property_arv id={} arv={} mao={}", property_id, arv, mao)
+    if type(arv) is not int or type(mao) is not int or not 0 < arv <= 10**14 or not 0 <= mao <= 10**14:
+        raise ValueError('Bounded diagnostic integer cents required')
+    _get_client().table('properties').update({'valuation_diagnostic': {'arv_cents': arv, 'screening_mao_cents': mao, 'confidence': str(confidence).lower(), 'method': 'unreviewed_ppsf_diagnostic', 'observed_at': datetime.now(timezone.utc).isoformat(), 'quote_authorized': False, 'offer_authorized': False}}).eq('id', property_id).execute()
 
 
 def get_active_drip_leads() -> list[dict]:
@@ -577,7 +643,7 @@ def start_email_drip_for_lead(lead_id: str, started_at: str) -> None:
         "email_day": -1,
         "email_paused": False,
         "email_completed": False,
-        "last_email_at": started_at,
+        "email_started_at": started_at,
     }).eq("id", lead_id).execute()
     logger.info("start_email_drip_for_lead lead_id={}", lead_id)
 
@@ -1273,16 +1339,29 @@ def get_pending_approval(lead_id: str, call_sid: str) -> dict | None:
         return None
 
 
-def resolve_approval_request(approval_id, approved_by, status, answer=""):
+def resolve_approval_request(approval_id, approved_by, status, answer="", pricing=None):
     from datetime import datetime, timezone
     if status not in {"approved", "rejected"}:
         raise ValueError("An explicit approved or rejected decision is required")
     now = datetime.now(timezone.utc).isoformat()
+    current = _get_client().table('approval_requests').select('*').eq('id', approval_id).eq('status', 'pending').gt('expires_at', now).limit(1).execute().data or []
+    if len(current) != 1:
+        raise ValueError('Approval is missing, expired, or already resolved')
+    context = dict(current[0].get('context_snapshot') or {})
+    context['answer'] = answer
+    if pricing is not None:
+        if status != 'approved' or not isinstance(pricing, dict):
+            raise ValueError('Explicit approved pricing required')
+        low, high = pricing.get('offer_low_cents'), pricing.get('offer_high_cents')
+        if type(low) is not int or type(high) is not int or not 0 < low <= high <= 10**14 or low % 100 or high % 100:
+            raise ValueError('Bounded whole-dollar integer-cent price range required')
+        prop = offer_subject(current[0]['lead_id'])
+        context.update({'property_id': prop['id'], 'offer_low_cents': low, 'offer_high_cents': high})
     response = _get_client().table("approval_requests").update({
         "status": status,
         "approved_by": approved_by,
         "resolved_at": now,
-        "context_snapshot": {"answer": answer},
+        "context_snapshot": context,
     }).eq("id", approval_id).eq("status", "pending").gt("expires_at", now).execute()
     if not response.data:
         raise ValueError("Approval is missing, expired, or already resolved")
@@ -1358,7 +1437,7 @@ def save_callback(lead_id: str, callback_at: str, notes: str) -> None:
 def get_operator_user(access_token: str):
     response = _get_client().auth.get_user(access_token)
     user = response.user
-    if user and (user.app_metadata or {}).get("role") in ("operator", "admin"):
+    if user and (user.app_metadata or {}).get("role") in ("operator", "admin") and (user.app_metadata or {}).get("tenant_id") == os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001"):
         return user
     return None
 
@@ -1965,14 +2044,7 @@ def persist_mls_candidate(candidate):
     existing = get_lead_by_property(property_id)
     if existing:
         return existing['id']
-    from uuid import uuid5, NAMESPACE_URL
-    lead_id = str(uuid5(NAMESPACE_URL, tenant + ':mls:' + property_id))
-    _get_client().table('leads').upsert({'id': lead_id, 'tenant_id': tenant, 'property_id': property_id, 'stage': 'new', 'callable': False}, on_conflict='id', ignore_duplicates=True).execute()
-    saved = get_lead_by_property(property_id)
-    if not saved:
-        raise RuntimeError('MLS lead persistence was not confirmed')
-    _get_client().table('properties').update({'lead_id': saved['id']}).eq('id', property_id).execute()
-    return saved['id']
+    return insert_lead(property_id)
 
 
 def dashboard_business_source(lead_id):
@@ -1989,3 +2061,99 @@ def dashboard_business_source(lead_id):
 def dashboard_lead_refresh_ids(offset=0):
     rows = _get_client().table("leads").select("id").eq("tenant_id", os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")).order("id").range(offset, offset + 99).execute().data
     return [row['id'] for row in rows if row.get('id')]
+
+
+def approved_price_range(lead_id, call_sid, action):
+    if not lead_id or not call_sid:
+        return None
+    lead = get_lead_with_property(lead_id)
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    if not lead or lead.get('tenant_id') != tenant or not lead.get('property_id'):
+        return None
+    rows = _get_client().table('approval_requests').select('*').eq('lead_id', lead_id).eq('call_sid', call_sid).eq('requested_action', action).eq('status', 'approved').gt('expires_at', datetime.now(timezone.utc).isoformat()).limit(2).execute().data or []
+    if len(rows) != 1:
+        return None
+    row = rows[0]
+    try:
+        expiry = datetime.fromisoformat(row['expires_at'].replace('Z', '+00:00'))
+        resolved = datetime.fromisoformat(row['resolved_at'].replace('Z', '+00:00'))
+        if expiry.tzinfo is None or resolved.tzinfo is None or not resolved <= datetime.now(timezone.utc) < expiry:
+            return None
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+    values = row.get('context_snapshot') or {}
+    if not isinstance(values, dict):
+        return None
+    low, high = values.get('offer_low_cents'), values.get('offer_high_cents')
+    if row.get('tenant_id') != tenant or not row.get('approved_by') or values.get('property_id') != lead['property_id'] or type(low) is not int or type(high) is not int or not 0 < low <= high <= 10**14 or low % 100 or high % 100:
+        return None
+    return low // 100, high // 100
+
+
+def save_source_candidate(source, candidate):
+    import hashlib
+    import json
+    from uuid import uuid5, NAMESPACE_URL
+    if not isinstance(candidate, dict) or len(json.dumps(candidate)) > 64000:
+        raise ValueError('Bounded source candidate required')
+    ref = candidate.get('social_post_url') or candidate.get('case_number') or candidate.get('source_ref')
+    if not isinstance(ref, str) or not 0 < len(ref) <= 1000:
+        raise ValueError('Attributable source reference required')
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    identity = str(uuid5(NAMESPACE_URL, tenant + ':' + source + ':' + ref))
+    fingerprint = hashlib.sha256(json.dumps(candidate, sort_keys=True).encode()).hexdigest()
+    result = _get_client().table('source_candidates').upsert({'id': identity, 'tenant_id': tenant, 'source': source, 'source_ref': ref, 'payload': candidate, 'fingerprint': fingerprint, 'observed_at': datetime.now(timezone.utc).isoformat(), 'status': 'needs_property_review', 'contact_authorized': False, 'offer_authorized': False}, on_conflict='id').execute()
+    if not result.data:
+        raise RuntimeError('Source candidate persistence was not confirmed')
+    return identity
+
+
+@contextmanager
+def _communication_journal():
+    from pathlib import Path
+    connection = _private_journal_connection(Path(os.environ.get("COMMUNICATION_JOURNAL_PATH", "/data/sophia/communications.sqlite3")), (
+        "CREATE TABLE IF NOT EXISTS message_intents (id TEXT PRIMARY KEY, state TEXT NOT NULL, receipt TEXT, payload TEXT NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS email_blocks (tenant TEXT NOT NULL, email TEXT NOT NULL, PRIMARY KEY(tenant,email))",
+    ))
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
+
+
+def claim_message_intent(channel, recipient, subject, body, lead_id=""):
+    import hashlib
+    import json
+    payload = json.dumps([os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001"), channel, recipient, subject, body, lead_id], separators=(",", ":"))
+    identity = hashlib.sha256(payload.encode()).hexdigest()
+    with _communication_journal() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute("SELECT state,receipt FROM message_intents WHERE id=?", (identity,)).fetchone()
+        if row:
+            return identity, False, row["receipt"] if row["state"] == "accepted" else None
+        connection.execute("INSERT INTO message_intents(id,state,payload) VALUES(?,'sending',?)", (identity, payload))
+    return identity, True, None
+
+
+def accept_message_intent(identity, receipt):
+    if not isinstance(receipt, str) or not receipt.strip():
+        raise ValueError("Provider receipt required")
+    with _communication_journal() as connection:
+        result = connection.execute("UPDATE message_intents SET state='accepted',receipt=? WHERE id=? AND state='sending'", (receipt, identity))
+        if result.rowcount != 1:
+            raise RuntimeError("Message receipt persistence not confirmed")
+
+
+def suppress_email_address(email):
+    if not isinstance(email, str) or "@" not in email or len(email) > 320:
+        raise ValueError("Valid email required")
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    with _communication_journal() as connection:
+        connection.execute("INSERT OR IGNORE INTO email_blocks(tenant,email) VALUES(?,?)", (tenant, email.strip().lower()))
+
+
+def email_address_is_suppressed(email):
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    with _communication_journal() as connection:
+        return connection.execute("SELECT 1 FROM email_blocks WHERE tenant=? AND email=?", (tenant, email.strip().lower())).fetchone() is not None

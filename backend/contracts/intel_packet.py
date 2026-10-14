@@ -110,7 +110,7 @@ def get_permission_level(packet: dict, tool_name: str) -> str:
 def is_permission_expired(perm: dict) -> bool:
     from datetime import datetime, timezone
     if "expires_at" not in perm:
-        return False
+        return True
     expires_at = perm.get("expires_at")
     if not isinstance(expires_at, str) or not expires_at.strip():
         return True

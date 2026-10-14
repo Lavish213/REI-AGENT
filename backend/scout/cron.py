@@ -111,7 +111,7 @@ def run_scout() -> None:
                     if realestateapi_key:
                         try:
                             from backend.lib.batchdata import enrich_lead_realestateapi
-                            lead_id_for_enrich = prop.get("lead_id") or prop.get("id")
+                            lead_id_for_enrich = lead_id
                             if lead_id_for_enrich:
                                 enrich_lead_realestateapi(lead_id_for_enrich)
                         except Exception as enrich_err:
@@ -154,17 +154,10 @@ if __name__ == "__main__":
 
 
 def run_scout_cycle() -> None:
-    logger.info("scout_cycle starting")
-    try:
-        run_rss_scraper()
-    except Exception as e:
-        logger.warning("scout rss_scraper failed error={}", str(e))
-    try:
-        run_expired_scraper()
-    except Exception as e:
-        logger.warning("scout expired_scraper failed error={}", str(e))
-    try:
-        run_eviction_scraper()
-    except Exception as e:
-        logger.warning("scout eviction_scraper failed error={}", str(e))
-    logger.info("scout_cycle complete")
+    logger.info('scout_cycle starting')
+    for source in (run_scout, run_rss_scraper, run_expired_scraper, run_social_scraper, run_eviction_scraper, run_crmls_scraper):
+        try:
+            source()
+        except Exception as error:
+            logger.warning('scout_source_failed source={} type={}', source.__name__, type(error).__name__)
+    logger.info('scout_cycle complete')

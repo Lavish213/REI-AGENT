@@ -37,6 +37,8 @@ def _status_callback_url() -> str | None:
 
 
 def send_sms(to: str, body: str, lead_id: str = "", bypass_hours: bool = False) -> bool:
+    if os.environ.get("OUTBOUND_ENABLED", "false").lower() != "true":
+        return False
     try:
         to = _e164(to)
     except ValueError:
@@ -56,19 +58,26 @@ def send_sms(to: str, body: str, lead_id: str = "", bypass_hours: bool = False) 
         logger.warning("send_sms blocked outside TCPA hours to={}", to)
         return False
     try:
+        identity, claimed, receipt = db.claim_message_intent("sms", to, "", body, lead_id)
+        if not claimed:
+            return bool(receipt)
         kwargs = {"From": _from_number(), "To": to, "Body": body}
         callback = _status_callback_url()
         if callback:
             kwargs["StatusCallback"] = callback
         message = signalwire_post("Messages.json", kwargs)
-        insert_sms({
+        db.accept_message_intent(identity, message["sid"])
+        try:
+            insert_sms({
             "lead_id": lead_id or None,
             "direction": "outbound",
             "body": body,
             "signalwire_message_id": message["sid"],
             "delivery_status": message.get("status", "queued"),
             "sent_at": datetime.now(timezone.utc).isoformat(),
-        })
+            })
+        except Exception as error:
+            logger.error("sms_accepted_logging_pending sid={} error={}", message["sid"], str(error))
         if lead_id:
             try:
                 from backend.lib.db import update_sms_contact_time

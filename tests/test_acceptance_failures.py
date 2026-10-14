@@ -1,3 +1,4 @@
+from starlette.requests import Request
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -66,7 +67,7 @@ async def test_approval_route_requires_explicit_decision():
     from fastapi import HTTPException
     from backend.api.routes.intel import resolve_approval
     with pytest.raises(HTTPException) as exc:
-        await resolve_approval('id', {})
+        await resolve_approval('id', {}, Request({'type': 'http'}))
     assert exc.value.status_code == 422
 
 
@@ -120,7 +121,7 @@ async def test_approval_route_reports_resolution_failure(monkeypatch, error, cod
     from backend.api.routes.intel import resolve_approval
     monkeypatch.setattr(db, 'resolve_approval_request', MagicMock(side_effect=error))
     with pytest.raises(HTTPException) as exc:
-        await resolve_approval('id', {'status': 'approved'})
+        await resolve_approval('id', {'status': 'approved'}, Request({'type': 'http'}))
     assert exc.value.status_code == code
 
 
@@ -129,8 +130,8 @@ async def test_approval_route_uses_server_actor(monkeypatch):
     from backend.api.routes.intel import resolve_approval
     resolve = MagicMock(return_value={'id': 'id'})
     monkeypatch.setattr(db, 'resolve_approval_request', resolve)
-    await resolve_approval('id', {'status': 'rejected', 'approved_by': 'forged-owner'})
-    assert resolve.call_args.args[1] == 'dashboard'
+    await resolve_approval('id', {'status': 'rejected', 'approved_by': 'forged-owner'}, Request({'type': 'http'}))
+    assert resolve.call_args.args[1] == 'shared_operator'
 
 
 @pytest.mark.parametrize('phone', ['', '+12095550123'])

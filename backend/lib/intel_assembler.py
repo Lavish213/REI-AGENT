@@ -56,25 +56,19 @@ def assemble_intel_packet(lead_id: str) -> dict:
         "id,owner_first_name,owner_name,owner_email,owner_phone,disposition,"
         "motivation_level,timeline_urgency,hot_topics,call_summary,price_floor,"
         "next_best_action,drip_sequence,call_attempts,call_summaries,"
-        "objections_raised,competitor_mentions"
+        "objections_raised,competitor_mentions,property_id,last_contact_at"
     ).eq("id", lead_id).limit(1).execute()
     lead = lead_resp.data[0] if lead_resp.data else {}
 
-    prop_resp = client.table("properties").select(
-        "id,address,city,state,zip,distress_type,distress_score,"
-        "estimated_arv,mao,arv_confidence,beds,baths,sqft,year_built,"
-        "equity_pct,lien_amount,tax_delinquent_amount,auction_date"
-    ).eq("lead_id", lead_id).limit(1).execute()
-    if not prop_resp.data:
-        lead_data = client.table("leads").select("property_id").eq("id", lead_id).limit(1).execute()
-        pid = (lead_data.data[0].get("property_id") if lead_data.data else None)
-        if pid:
-            prop_resp = client.table("properties").select(
-                "id,address,city,state,zip,distress_type,distress_score,"
-                "estimated_arv,mao,arv_confidence,beds,baths,sqft,year_built,"
-                "equity_pct,lien_amount,tax_delinquent_amount,auction_date"
-            ).eq("id", pid).limit(1).execute()
-    prop = prop_resp.data[0] if prop_resp.data else {}
+    pid = lead.get("property_id")
+    prop = {}
+    if pid:
+        prop_resp = client.table("properties").select(
+            "id,address,city,state,zip,distress_type,distress_score,"
+            "estimated_arv,mao,arv_confidence,beds,baths,sqft,year_built,"
+            "equity_pct,lien_amount,tax_delinquent_amount,auction_date,updated_at"
+        ).eq("id", pid).limit(1).execute()
+        prop = prop_resp.data[0] if prop_resp.data else {}
 
     motivation = lead.get("motivation_level")
     call_summary = lead.get("call_summary") or ""
@@ -89,23 +83,23 @@ def assemble_intel_packet(lead_id: str) -> dict:
     arv_confidence = prop.get("arv_confidence", "low")
 
     seller_profile = {
-        "motivation": {"value": motivation, "source": "transcript_intel", "updated_at": now},
-        "timeline": {"value": timeline, "source": "transcript_intel", "updated_at": now},
-        "hot_topics": {"value": hot_topics, "source": "transcript_intel", "updated_at": now},
-        "call_summary": {"value": call_summary, "source": "transcript_intel", "updated_at": now},
-        "objections": {"value": objections, "source": "transcript_intel", "updated_at": now},
-        "disposition": {"value": disposition, "source": "call_ctx", "updated_at": now},
-        "call_attempts": {"value": lead.get("call_attempts", 0), "source": "db", "updated_at": now},
+        "motivation": {"value": motivation, "source": "transcript_intel", "updated_at": lead.get("last_contact_at")},
+        "timeline": {"value": timeline, "source": "transcript_intel", "updated_at": lead.get("last_contact_at")},
+        "hot_topics": {"value": hot_topics, "source": "transcript_intel", "updated_at": lead.get("last_contact_at")},
+        "call_summary": {"value": call_summary, "source": "transcript_intel", "updated_at": lead.get("last_contact_at")},
+        "objections": {"value": objections, "source": "transcript_intel", "updated_at": lead.get("last_contact_at")},
+        "disposition": {"value": disposition, "source": "call_ctx", "updated_at": lead.get("last_contact_at")},
+        "call_attempts": {"value": lead.get("call_attempts", 0), "source": "db", "updated_at": lead.get("last_contact_at")},
     }
 
     property_profile = {
-        "address": {"value": prop.get("address"), "source": "db", "updated_at": now},
-        "arv": {"value": arv_cents, "unit": "USD_cents", "source": "comps", "updated_at": now, "confidence": arv_confidence},
-        "mao": {"value": mao_cents, "unit": "USD_cents", "source": "comps", "updated_at": now},
-        "distress_type": {"value": prop.get("distress_type"), "source": "db", "updated_at": now},
-        "distress_score": {"value": prop.get("distress_score"), "source": "db", "updated_at": now},
-        "equity_pct": {"value": prop.get("equity_pct"), "source": "db", "updated_at": now},
-        "auction_date": {"value": prop.get("auction_date"), "source": "db", "updated_at": now},
+        "address": {"value": prop.get("address"), "source": "db", "updated_at": lead.get("last_contact_at")},
+        "arv": {"value": arv_cents, "unit": "USD_cents", "source": "unverified_cached_property", "updated_at": prop.get("updated_at"), "confidence": arv_confidence},
+        "mao": {"value": mao_cents, "unit": "USD_cents", "source": "comps", "updated_at": lead.get("last_contact_at")},
+        "distress_type": {"value": prop.get("distress_type"), "source": "db", "updated_at": lead.get("last_contact_at")},
+        "distress_score": {"value": prop.get("distress_score"), "source": "db", "updated_at": lead.get("last_contact_at")},
+        "equity_pct": {"value": prop.get("equity_pct"), "source": "db", "updated_at": lead.get("last_contact_at")},
+        "auction_date": {"value": prop.get("auction_date"), "source": "db", "updated_at": lead.get("last_contact_at")},
     }
 
     bob_packet = existing or {}

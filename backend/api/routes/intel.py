@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from loguru import logger
 
@@ -67,7 +67,7 @@ async def get_packet_events(lead_id: str, limit: int = 50):
 
 
 @router.post("/intel/approvals/{approval_id}/resolve")
-async def resolve_approval(approval_id: str, body: dict):
+async def resolve_approval(approval_id: str, body: dict, request: Request):
     from backend.lib.db import resolve_approval_request
     status = body.get("status")
     if status not in {"approved", "rejected"}:
@@ -76,7 +76,8 @@ async def resolve_approval(approval_id: str, body: dict):
     if not isinstance(answer, str):
         raise HTTPException(status_code=422, detail="Answer must be text")
     try:
-        await run_in_threadpool(resolve_approval_request, approval_id, "dashboard", status, answer)
+        actor = getattr(request.state, 'operator', None)
+        await run_in_threadpool(resolve_approval_request, approval_id, str(actor.id) if actor else 'shared_operator', status, answer, body.get('pricing'))
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except Exception as error:
