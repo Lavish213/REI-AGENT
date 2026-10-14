@@ -77,3 +77,18 @@ def test_touch_respects_authority_and_cooldown(journal, monkeypatch):
     lead['callable'] = False
     assert speed_to_lead._run_touch('lead',2)['status'] == 'skipped'
     call.assert_not_called()
+
+
+def test_inbound_adapter_signature_covers_exact_body_and_fresh_timestamp(monkeypatch):
+    import hashlib
+    import hmac
+    import time
+    monkeypatch.setenv('INBOUND_EMAIL_ADAPTER_SECRET','x'*32)
+    body = b'{"event_id":"synthetic"}'
+    stamp = str(int(time.time()))
+    signature = hmac.new(b'x'*32,stamp.encode()+b'.'+body,hashlib.sha256).hexdigest()
+    assert inbound_email.verify_adapter(body,stamp,signature)
+    assert not inbound_email.verify_adapter(body+b' ',stamp,signature)
+    assert not inbound_email.verify_adapter(body,str(int(stamp)-301),signature)
+    monkeypatch.delenv('INBOUND_EMAIL_ADAPTER_SECRET')
+    assert not inbound_email.verify_adapter(body,stamp,signature)
