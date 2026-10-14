@@ -623,7 +623,7 @@ def _collect_and_send_email(inp: dict, call_ctx=None) -> str:
     try:
         from backend.alerts.email import send_offer_summary_email
         sent = send_offer_summary_email(to=email, first_name=first_name, address=address, offer_low=offer_low, offer_high=offer_high, lead_id=lead_id)
-        return "Sent! Check your inbox." if sent else "Had trouble with that email. Can I text you instead?"
+        return "Email accepted for delivery; inbox delivery is not yet confirmed." if sent else "Had trouble with that email. Can I text you instead?"
     except Exception as e:
         logger.exception("collect_and_send_email failed error={}", str(e))
         return "Had trouble sending. Can I text you instead?"
