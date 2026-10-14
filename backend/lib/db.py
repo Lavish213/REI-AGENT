@@ -6,7 +6,7 @@ import re
 from loguru import logger
 from supabase import create_client, Client, ClientOptions
 
-TABLES = frozenset({'leads', 'properties', 'calls', 'contacts', 'comps', 'offers', 'sms_messages', 'email_sends', 'email_events', 'followups', 'campaigns', 'deal_blast_sends', 'phone_pool_health', 'dnc_list', 'cash_buyers', 'intel_packets', 'packet_events', 'decision_records', 'bob_feedback_events', 'transcript_chunks', 'call_events', 'approval_requests', 'operator_queries', 'tool_gate_log', 'workflows', 'traces', 'eval_runs', 'latency_benchmarks', 'compliance_log', 'suppression_events', 'source_candidates', 'email_suppressions'})
+TABLES = frozenset({'leads', 'properties', 'calls', 'contacts', 'comps', 'offers', 'sms_messages', 'email_sends', 'email_events', 'followups', 'campaigns', 'deal_blast_sends', 'phone_pool_health', 'dnc_list', 'cash_buyers', 'intel_packets', 'packet_events', 'decision_records', 'bob_feedback_events', 'transcript_chunks', 'call_events', 'approval_requests', 'operator_queries', 'tool_gate_log', 'workflows', 'traces', 'eval_runs', 'latency_benchmarks', 'compliance_log', 'suppression_events', 'source_candidates', 'email_suppressions', 'email_reply_events'})
 
 
 class ScopedQuery:
@@ -2055,7 +2055,7 @@ def dashboard_business_source(lead_id):
     prop = lead.get('properties') or {}
     if lead.get('tenant_id') != tenant or not isinstance(prop, dict) or prop.get('tenant_id') != tenant:
         raise ValueError('Business evidence tenant binding required')
-    return {"lead": lead, "offers": get_offers_for_lead(lead_id)[:20]}
+    return {"lead": lead, "offers": get_offers_for_lead(lead_id)[:20], "followups": _get_client().table('followups').select('id,state,scheduled_at,followup_type').eq('lead_id', lead_id).order('scheduled_at').limit(20).execute().data or [], "email_replies": _get_client().table('email_reply_events').select('id,body,created_at').eq('lead_id', lead_id).order('created_at', desc=True).limit(20).execute().data or []}
 
 
 def dashboard_lead_refresh_ids(offset=0):
@@ -2157,3 +2157,181 @@ def email_address_is_suppressed(email):
     tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
     with _communication_journal() as connection:
         return connection.execute("SELECT 1 FROM email_blocks WHERE tenant=? AND email=?", (tenant, email.strip().lower())).fetchone() is not None
+
+
+@contextmanager
+def _workflow_journal():
+    from pathlib import Path
+    connection = _private_journal_connection(Path(os.environ.get("WORKFLOW_JOURNAL_PATH", "/data/sophia/workflows.sqlite3")), (
+        "CREATE TABLE IF NOT EXISTS durable_jobs (id TEXT PRIMARY KEY, tenant TEXT NOT NULL, lead_id TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, due REAL NOT NULL, state TEXT NOT NULL DEFAULT 'pending', lease TEXT, claimed REAL, error TEXT)",
+        "CREATE INDEX IF NOT EXISTS durable_jobs_due ON durable_jobs(tenant,state,due)",
+        "CREATE TABLE IF NOT EXISTS email_threads (token TEXT PRIMARY KEY, tenant TEXT NOT NULL, lead_id TEXT NOT NULL, email TEXT NOT NULL, created REAL NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS inbound_email (id TEXT PRIMARY KEY, tenant TEXT NOT NULL, lead_id TEXT NOT NULL, fingerprint TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, state TEXT NOT NULL DEFAULT 'pending', error TEXT)",
+    ))
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
+
+
+def stage_speed_touches(lead_id, schedule):
+    import json
+    from uuid import NAMESPACE_URL, uuid5
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    if not lead_id or len(schedule) != 5:
+        raise ValueError("Canonical lead and five bounded touches required")
+    with _workflow_journal() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        for number, due in enumerate(schedule, 1):
+            if not isinstance(due, datetime) or due.tzinfo is None:
+                raise ValueError("Dated schedule required")
+            identity = str(uuid5(NAMESPACE_URL, f"{tenant}:speed:{lead_id}:{number}"))
+            connection.execute("INSERT OR IGNORE INTO durable_jobs(id,tenant,lead_id,kind,payload,due) VALUES(?,?,?,'speed_touch',?,?)", (identity, tenant, lead_id, json.dumps({"touch": number}), due.timestamp()))
+
+
+def claim_workflow_job(now=None):
+    import time
+    import json
+    from uuid import uuid4
+    now = time.time() if now is None else now
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    with _workflow_journal() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("UPDATE durable_jobs SET state='quarantined',error='Worker outcome unknown; reconcile provider before retry' WHERE tenant=? AND state='processing' AND claimed<?", (tenant, now - 600))
+        row = connection.execute("SELECT * FROM durable_jobs WHERE tenant=? AND state='pending' AND due<=? ORDER BY due,id LIMIT 1", (tenant, now)).fetchone()
+        if row is None:
+            return None
+        lease = str(uuid4())
+        connection.execute("UPDATE durable_jobs SET state='processing',lease=?,claimed=? WHERE id=? AND state='pending'", (lease, now, row["id"]))
+        return {**dict(row), "payload": json.loads(row["payload"]), "lease": lease}
+
+
+def finish_workflow_job(identity, lease, state, error=None, due=None):
+    if state not in {"completed", "skipped", "pending", "quarantined"}:
+        raise ValueError("Invalid job outcome")
+    with _workflow_journal() as connection:
+        result = connection.execute("UPDATE durable_jobs SET state=?,error=?,due=COALESCE(?,due),lease=NULL WHERE id=? AND lease=? AND state='processing'", (state, error, due, identity, lease))
+        return result.rowcount == 1
+
+
+def workflow_journal_health():
+    import time
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    with _workflow_journal() as connection:
+        jobs = {row["state"]: row["n"] for row in connection.execute("SELECT state,count(*) AS n FROM durable_jobs WHERE tenant=? GROUP BY state", (tenant,))}
+        email = {row["state"]: row["n"] for row in connection.execute("SELECT state,count(*) AS n FROM inbound_email WHERE tenant=? GROUP BY state", (tenant,))}
+        oldest = connection.execute("SELECT min(due) FROM durable_jobs WHERE tenant=? AND state='pending'", (tenant,)).fetchone()[0]
+    return {"jobs": jobs, "email": email, "oldest_due_seconds": max(0, time.time() - oldest) if oldest is not None else 0, "requires_review": jobs.get("quarantined", 0) + email.get("quarantined", 0), "review_owner_configured": bool(os.environ.get("WORKFLOW_REVIEW_OWNER_ID"))}
+
+
+def register_email_thread(lead_id, email):
+    import secrets
+    import time
+    lead = get_lead_with_property(lead_id)
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    address = email.strip().lower()
+    if not lead or lead.get("tenant_id") != tenant or (lead.get("owner_email") or "").strip().lower() != address:
+        raise ValueError("Canonical email identity required")
+    with _workflow_journal() as connection:
+        row = connection.execute("SELECT token FROM email_threads WHERE tenant=? AND lead_id=? AND email=? ORDER BY created DESC LIMIT 1", (tenant, lead_id, address)).fetchone()
+        if row:
+            return row["token"]
+        token = secrets.token_hex(24)
+        connection.execute("INSERT INTO email_threads VALUES(?,?,?,?,?)", (token, tenant, lead_id, address, time.time()))
+    return token
+
+
+def stage_inbound_email(payload):
+    import hashlib
+    import json
+    import time
+    from uuid import NAMESPACE_URL, uuid5
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    if not isinstance(payload, dict) or set(payload) != {"event_id", "thread_token", "sender", "sender_verified", "text"}:
+        raise ValueError("Bound provider event required")
+    if payload["sender_verified"] is not True:
+        raise ValueError("Authenticated provider sender proof required")
+    for field, limit in (("event_id", 200), ("thread_token", 48), ("sender", 320), ("text", 10000)):
+        if not isinstance(payload[field], str) or not 0 < len(payload[field]) <= limit:
+            raise ValueError("Bounded email fields required")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    fingerprint = hashlib.sha256(encoded.encode()).hexdigest()
+    identity = str(uuid5(NAMESPACE_URL, tenant + ":email:" + payload["event_id"]))
+    with _workflow_journal() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        thread = connection.execute("SELECT lead_id,email FROM email_threads WHERE tenant=? AND token=?", (tenant, payload["thread_token"])).fetchone()
+        if thread is None or thread['email'] != payload['sender'].strip().lower():
+            raise ValueError("Verified thread and sender binding required")
+        existing = connection.execute("SELECT fingerprint,state FROM inbound_email WHERE id=?", (identity,)).fetchone()
+        if existing:
+            if existing["fingerprint"] != fingerprint:
+                raise ValueError("Conflicting provider event replay")
+            return {"receipt_id": identity, "duplicate": True, "state": existing['state']}
+        connection.execute("INSERT INTO inbound_email(id,tenant,lead_id,fingerprint,payload,created) VALUES(?,?,?,?,?,?)", (identity, tenant, thread['lead_id'], fingerprint, encoded, time.time()))
+    return {"receipt_id": identity, "duplicate": False, "state": "pending"}
+
+
+def recover_inbound_email(limit=20):
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("Bounded recovery batch required")
+    import json
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    with _workflow_journal() as connection:
+        rows = [dict(row) for row in connection.execute("SELECT * FROM inbound_email WHERE tenant=? AND state='pending' ORDER BY created LIMIT ?", (tenant, limit))]
+    delivered = 0
+    for row in rows:
+        payload = json.loads(row['payload'])
+        try:
+            result = _get_client().rpc('apply_inbound_email', {'p_id': row['id'], 'p_tenant': tenant, 'p_lead': row['lead_id'], 'p_sender': payload['sender'].strip().lower(), 'p_text': payload['text'], 'p_fingerprint': row['fingerprint']}).execute().data
+            if result != row['id']:
+                raise RuntimeError('Reply persistence not confirmed')
+            with _workflow_journal() as connection:
+                connection.execute("UPDATE inbound_email SET state='applied',error=NULL WHERE id=? AND state='pending'", (row['id'],))
+            delivered += 1
+        except Exception as error:
+            with _workflow_journal() as connection:
+                connection.execute("UPDATE inbound_email SET error=? WHERE id=?", (type(error).__name__, row['id']))
+            logger.warning('inbound_email_recovery_pending event_id={} type={}', row['id'], type(error).__name__)
+    return {"applied": delivered, "pending": len(rows) - delivered}
+
+
+def apply_source_callback(payload):
+    import hashlib
+    import json
+    from uuid import UUID
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    if not isinstance(payload, dict) or set(payload) != {'id', 'tenant_id', 'lead_id', 'property_id', 'expected_updated_at', 'at'} or payload['tenant_id'] != tenant:
+        raise ValueError('Bound source command required')
+    for field in ('id', 'lead_id', 'property_id'):
+        UUID(payload[field])
+    for field in ('expected_updated_at', 'at'):
+        if datetime.fromisoformat(payload[field].replace('Z', '+00:00')).tzinfo is None:
+            raise ValueError('Dated source command required')
+    fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    result = _get_client().rpc('apply_source_callback', {'p_id': payload['id'], 'p_tenant': tenant, 'p_lead': payload['lead_id'], 'p_property': payload['property_id'], 'p_expected': payload['expected_updated_at'], 'p_at': payload['at'], 'p_fingerprint': fingerprint}).execute().data
+    if result != payload['id']:
+        raise RuntimeError('Source command persistence unconfirmed')
+    return {'schema_version': 1, 'persisted': True, 'receipt_id': result, 'lead_id': payload['lead_id'], 'action': 'schedule_callback'}
+
+
+def workflow_review_queue(limit=50):
+    if type(limit) is not int or not 1 <= limit <= 50:
+        raise ValueError('Bounded review queue required')
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _workflow_journal() as connection:
+        return [dict(row) for row in connection.execute("SELECT id,lead_id,kind,due,claimed,error FROM durable_jobs WHERE tenant=? AND state='quarantined' ORDER BY due LIMIT ?", (tenant, limit))]
+
+
+def reconcile_workflow_job(identity, decision, actor_id, reason):
+    from uuid import UUID
+    UUID(identity)
+    UUID(actor_id)
+    if decision != 'skipped' or not isinstance(reason, str) or not 10 <= len(reason) <= 1000:
+        raise ValueError('Explicit operator skip and reconciliation reason required; uncertain sends cannot be retried')
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _workflow_journal() as connection:
+        result = connection.execute("UPDATE durable_jobs SET state='skipped',error=? WHERE id=? AND tenant=? AND state='quarantined'", (actor_id + ':' + reason, identity, tenant))
+        if result.rowcount != 1:
+            raise ValueError('Quarantined job not found')
+    return {'id': identity, 'state': 'skipped', 'actor_id': actor_id}

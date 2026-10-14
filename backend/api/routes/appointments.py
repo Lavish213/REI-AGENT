@@ -31,3 +31,14 @@ async def set_availability(slot: AvailabilitySlot):
         raise HTTPException(400, "Provide a future slot lasting 15 minutes to 3 hours")
     await run_in_threadpool(add_walkthrough_availability, slot.starts_at.isoformat(), slot.ends_at.isoformat())
     return {"saved": True}
+
+
+@router.post("/operations/callback")
+async def source_callback_command(body: dict):
+    from backend.lib.db import apply_source_callback
+    try:
+        return await run_in_threadpool(apply_source_callback, body)
+    except (ValueError, TypeError) as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(409, "Source command could not be applied; refresh and review") from error

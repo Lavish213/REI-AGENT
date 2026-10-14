@@ -30,6 +30,12 @@ def valid_signalwire_signature(key: str, signature: str, url: str, body: bytes) 
 class OperatorAuthentication(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
+        if path == "/api/operations/callback":
+            secret = os.environ.get("SOURCE_COMMAND_SECRET", "")
+            supplied = request.headers.get("x-source-command-secret", "")
+            if len(secret) < 32 or not hmac.compare_digest(secret.encode(), supplied.encode()):
+                return JSONResponse({"detail": "Source service authentication required"}, status_code=401)
+            return await call_next(request)
         if path == "/api/ingest/bob/brief-created":
             secret = os.environ.get("KARPATHYS_WEBHOOK_SECRET", "")
             supplied = request.headers.get("x-karpathys-secret", "")
@@ -45,7 +51,7 @@ class OperatorAuthentication(BaseHTTPMiddleware):
             return await call_next(request)
         if path == "/healthz":
             return JSONResponse({"status": "ok"})
-        if path in ("/api/email/webhook", "/api/email/unsubscribe"):
+        if path in ("/api/email/webhook", "/api/email/unsubscribe", "/api/email/inbound"):
             return await call_next(request)
         supplied = request.headers.get("authorization", "")
         token = supplied.removeprefix("Bearer ") if supplied.startswith("Bearer ") else ""

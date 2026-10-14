@@ -238,3 +238,22 @@ p{{color:#888882;font-size:14px;margin:0;}}</style>
   <p>San Joaquin House Buyers · Stockton, CA</p>
 </div>
 </body></html>"""
+
+
+@router.post("/email/inbound")
+async def inbound_email(request: Request):
+    import asyncio
+    from fastapi import HTTPException
+    from backend.alerts.inbound_email import verify_adapter, accept_reply
+    if len(os.environ.get("INBOUND_EMAIL_ADAPTER_SECRET", "")) < 32:
+        raise HTTPException(503, "Verified inbound provider adapter is not configured")
+    body = await request.body()
+    if not verify_adapter(body, request.headers.get("X-Email-Timestamp", ""), request.headers.get("X-Email-Signature", "")):
+        raise HTTPException(403, "Invalid inbound provider authentication")
+    try:
+        payload = await request.json()
+        return await asyncio.to_thread(accept_reply, payload)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(503, "Reply was not durably accepted") from error

@@ -10,7 +10,6 @@ from backend.lib.db import (
     update_lead_speed_to_lead,
     start_lead_drip,
 )
-from backend.alerts.sms import send_drip_sms
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
 _scheduler: BackgroundScheduler | None = None
@@ -71,89 +70,21 @@ def _get_first_name(lead: dict, prop: dict) -> str:
     return parts[0] if parts else "there"
 
 
-def _run_touch(lead_id: str, touch_number: int) -> None:
+def _run_touch(lead_id: str, touch_number: int) -> dict:
     lead = get_lead_with_property(lead_id)
-    if not lead:
-        logger.warning("stl touch lead_not_found lead_id={} touch={}", lead_id, touch_number)
-        return
-
-    if lead.get("opted_out") or lead.get("dnc_blocked"):
-        logger.info("stl touch skipped opted_out lead_id={} touch={}", lead_id, touch_number)
-        return
-
-    if lead.get("speed_to_lead_completed"):
-        return
-
-    from datetime import date as _date
-    last_called = lead.get("last_called_at") or ""
-    if last_called and last_called[:10] == _date.today().isoformat() and touch_number == 1:
-        logger.info("stl same_day_dedup skipping lead_id={}", lead_id)
-        return
-
-    if touch_number > 1 and _contact_made(lead):
-        logger.info("stl contact_made skipping touch={} lead_id={}", touch_number, lead_id)
-        return
-
-    prop = lead.get("properties") or {}
-    phone = lead.get("owner_phone")
-    first_name = _get_first_name(lead, prop)
-    address = prop.get("address", "your property")
-    current_attempts = lead.get("speed_to_lead_attempts") or 0
-
-    if touch_number == 1:
-        update_lead_speed_to_lead(lead_id, current_attempts + 1, completed=False)
-        if _is_calling_hours() and phone:
-            from backend.voice.outbound import call_lead
-            result = call_lead(lead_id, bypass_cooldown=True)
-            logger.info("stl touch=1 call lead_id={} success={}", lead_id, result.get("success"))
-        elif phone:
-            body = (
-                f"Hey — I'm guessing you're probably not thinking about selling {address}. "
-                "Am I right? - Sophia, SJ House Buyers"
-            )
-            send_drip_sms(to=phone, body=body, lead_id=lead_id)
-            logger.info("stl touch=1 sms sent lead_id={}", lead_id)
-
-    elif touch_number == 2:
-        update_lead_speed_to_lead(lead_id, current_attempts + 1, completed=False)
-        if phone:
-            from backend.voice.outbound import call_lead
-            result = call_lead(lead_id, bypass_cooldown=True)
-            logger.info("stl touch=2 vm_call lead_id={} success={}", lead_id, result.get("success"))
-
-    elif touch_number == 3:
-        update_lead_speed_to_lead(lead_id, current_attempts + 1, completed=False)
-        if _is_calling_hours() and phone:
-            from backend.voice.outbound import call_lead
-            result = call_lead(lead_id, bypass_cooldown=True)
-            logger.info("stl touch=3 call lead_id={} success={}", lead_id, result.get("success"))
-
-    elif touch_number == 4:
-        update_lead_speed_to_lead(lead_id, current_attempts + 1, completed=False)
-        if phone:
-            from backend.voice.outbound import call_lead
-            result = call_lead(lead_id, bypass_cooldown=True)
-            logger.info("stl touch=4 call lead_id={} success={}", lead_id, result.get("success"))
-            body = (
-                f"Hey {first_name} — I'm assuming you've probably already "
-                f"figured out what you're doing with {address}. "
-                "Am I right? If not just reply back. - Sophia"
-            )
-            send_drip_sms(to=phone, body=body, lead_id=lead_id)
-            logger.info("stl touch=4 sms sent lead_id={}", lead_id)
-
-    elif touch_number == 5:
-        update_lead_speed_to_lead(lead_id, current_attempts + 1, completed=True)
-        if phone:
-            from backend.voice.outbound import call_lead
-            result = call_lead(lead_id, bypass_cooldown=True)
-            logger.info("stl touch=5 vm_call lead_id={} success={}", lead_id, result.get("success"))
-
-        now = datetime.now(timezone.utc).isoformat()
+    if not lead or lead.get("opted_out") or lead.get("dnc_blocked") or lead.get("speed_to_lead_completed") or _contact_made(lead):
+        return {"status": "skipped"}
+    if not lead.get("owner_phone") or lead.get("callable") is not True:
+        return {"status": "skipped", "reason": "contact_authority_unavailable"}
+    from backend.voice.outbound import call_lead
+    result = call_lead(lead_id, bypass_cooldown=False)
+    if result.get("success") is not True:
+        return {"status": "skipped", "reason": result.get("reason") or result.get("error") or "call_not_accepted"}
+    update_lead_speed_to_lead(lead_id, (lead.get("speed_to_lead_attempts") or 0) + 1, completed=touch_number == 5)
+    if touch_number == 5:
         from backend.alerts.drip import get_sequence_name
-        sequence = get_sequence_name(prop.get("distress_type"))
-        start_lead_drip(lead_id, sequence, now, initial_day=-1)
-        logger.info("stl entering_drip lead_id={} sequence={}", lead_id, sequence)
+        start_lead_drip(lead_id, get_sequence_name((lead.get("properties") or {}).get("distress_type")), datetime.now(timezone.utc).isoformat(), initial_day=-1)
+    return {"status": "completed"}
 
 
 def run_speed_to_lead(lead_id: str) -> None:
@@ -173,59 +104,40 @@ def run_speed_to_lead(lead_id: str) -> None:
         logger.debug("stl score_too_low lead_id={}", lead_id)
         return
 
-    _run_touch(lead_id, 1)
+    from backend.lib import db
+    now = datetime.now(timezone.utc)
+    db.stage_speed_touches(lead_id, [now, now + timedelta(minutes=30), now + timedelta(hours=2), _next_10am_pt(), _next_1pm_day2_pt()])
+    recover_speed_touches()
 
-    if _scheduler is None:
-        logger.warning("stl scheduler not running lead_id={} touches 2-5 skipped", lead_id)
-        return
 
-    now_utc = datetime.now(timezone.utc)
-    touch2_at = now_utc + timedelta(minutes=30)
-    touch3_at = now_utc + timedelta(hours=2)
-    touch4_at = _next_10am_pt()
-    touch5_at = _next_1pm_day2_pt()
-    prefix = f"stl_{lead_id}"
-
-    _scheduler.add_job(
-        _run_touch,
-        "date",
-        run_date=touch2_at,
-        args=[lead_id, 2],
-        id=f"{prefix}_t2",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _run_touch,
-        "date",
-        run_date=touch3_at,
-        args=[lead_id, 3],
-        id=f"{prefix}_t3",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _run_touch,
-        "date",
-        run_date=touch4_at,
-        args=[lead_id, 4],
-        id=f"{prefix}_t4",
-        replace_existing=True,
-    )
-    _scheduler.add_job(
-        _run_touch,
-        "date",
-        run_date=touch5_at,
-        args=[lead_id, 5],
-        id=f"{prefix}_t5",
-        replace_existing=True,
-    )
-    logger.info(
-        "stl scheduled lead_id={} t2={} t3={} t4={} t5={}",
-        lead_id,
-        touch2_at.isoformat(),
-        touch3_at.isoformat(),
-        touch4_at.isoformat(),
-        touch5_at.isoformat(),
-    )
+def recover_speed_touches(limit=20):
+    from backend.lib import db
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("Bounded recovery batch required")
+    db.recover_inbound_email()
+    outcomes = {"completed": 0, "skipped": 0, "deferred": 0, "quarantined": 0}
+    for _ in range(limit):
+        job = db.claim_workflow_job()
+        if job is None:
+            break
+        try:
+            if not _is_calling_hours():
+                db.finish_workflow_job(job['id'], job['lease'], 'pending', due=_next_9am_pt().timestamp())
+                outcomes['deferred'] += 1
+                continue
+            lead = get_lead_with_property(job['lead_id'])
+            if not lead or lead.get('opted_out') or lead.get('dnc_blocked') or lead.get('speed_to_lead_completed') or _contact_made(lead):
+                state = 'skipped'
+            else:
+                state = _run_touch(job['lead_id'], job['payload']['touch'])['status']
+            if not db.finish_workflow_job(job['id'], job['lease'], state):
+                raise RuntimeError("Workflow outcome ownership lost")
+            outcomes[state] += 1
+        except Exception as error:
+            db.finish_workflow_job(job['id'], job['lease'], 'quarantined', type(error).__name__)
+            outcomes['quarantined'] += 1
+            logger.error("speed_touch_quarantined job_id={} type={}", job['id'], type(error).__name__)
+    return outcomes
 
 
 def start_speed_to_lead_scheduler(
@@ -234,11 +146,13 @@ def start_speed_to_lead_scheduler(
     global _scheduler
     if existing_scheduler is not None:
         _scheduler = existing_scheduler
+        _scheduler.add_job(recover_speed_touches, "interval", seconds=30, id="durable_speed_recovery", replace_existing=True, max_instances=1)
         logger.info("stl using_existing_scheduler")
         return _scheduler
     if _scheduler is not None:
         return _scheduler
     _scheduler = BackgroundScheduler(timezone="America/Los_Angeles")
+    _scheduler.add_job(recover_speed_touches, "interval", seconds=30, id="durable_speed_recovery", replace_existing=True, max_instances=1)
     _scheduler.start()
     logger.info("stl scheduler started")
     return _scheduler
