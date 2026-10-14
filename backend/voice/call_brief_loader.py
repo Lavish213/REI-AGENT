@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 import math
+from decimal import Decimal
 from loguru import logger
 
 _PHASE_TO_STAGE = {'VERIFY': 'STAGE_1_QUALIFY', 'LIGHT_DISCOVERY': 'STAGE_2_DISCOVER', 'QUALIFY': 'STAGE_3_PRECLOSE', 'NEXT_STEP': 'STAGE_4_CLOSE', 'WRAP': 'STAGE_5_WRAP'}
@@ -51,6 +52,7 @@ def load_brief_into_ctx(call_ctx, brief):
     call_ctx.bob_avoid = []
     call_ctx.bob_escalation_rules = []
     call_ctx.bob_opener_hint = None
+    call_ctx.bob_valuation = {}
     if not _valid_brief(brief, getattr(call_ctx, 'lead_id', '')):
         if brief:
             logger.warning('call_brief_rejected lead_id={}', getattr(call_ctx, 'lead_id', ''))
@@ -62,5 +64,44 @@ def load_brief_into_ctx(call_ctx, brief):
     call_ctx.bob_avoid = list(brief['avoid'])
     call_ctx.bob_escalation_rules = list(brief['escalation_rules'])
     call_ctx.bob_opener_hint = brief.get('opener_hint')
+    evidence = brief.get('evidence')
+    report = evidence.get('valuation') if isinstance(evidence, dict) else None
+    call_ctx.bob_valuation = validated_valuation(report, call_ctx.lead_id)
     logger.info('call_brief_loaded lead_id={} phase={} box={}', call_ctx.lead_id, brief['phase'], brief['missing_box'])
     return True
+
+
+def validated_valuation(report, lead_id):
+    if not isinstance(report, dict) or report.get('schema_version') != '1.0' or report.get('lead_id') != lead_id:
+        return {}
+    if report.get('quote_authorized') is not False or report.get('offer_authorized') is not False:
+        return {}
+    if report.get('status') != 'ready_advisory' or report.get('method') != 'evidence_adjusted_sales_comparison' or report.get('purpose') not in {'as_is', 'after_repair'}:
+        return {}
+    count = report.get('comparable_count')
+    values = [report.get(key) for key in ('supported_low_cents', 'point_cents', 'supported_high_cents')]
+    if type(count) is not int or not 3 <= count <= 50 or any(type(value) is not int or not 0 < value <= 10**14 for value in values):
+        return {}
+    if not values[0] <= values[1] <= values[2]:
+        return {}
+    try:
+        effective = datetime.strptime(report['as_of'], '%Y-%m-%d').date()
+        age = (datetime.now(timezone.utc).date() - effective).days
+        if not 0 <= age <= 30 or effective.isoformat() != report['as_of']:
+            return {}
+    except (KeyError, TypeError, ValueError):
+        return {}
+    return {key: report[key] for key in ('schema_version', 'lead_id', 'status', 'method', 'purpose', 'as_of', 'comparable_count', 'supported_low_cents', 'point_cents', 'supported_high_cents', 'quote_authorized', 'offer_authorized')}
+
+
+def valuation_guidance(report, lead_id, identity_confirmed=False, property_confirmed=False):
+    safe = validated_valuation(report, lead_id)
+    if not safe:
+        return ''
+    if identity_confirmed is not True or property_confirmed is not True:
+        return 'BOB INTERNAL VALUATION: Research evidence is available. Verify this caller and property before discussing it. This does not authorize any price quote or offer.'
+    point = Decimal(safe['point_cents']) / 100
+    low = Decimal(safe['supported_low_cents']) / 100
+    high = Decimal(safe['supported_high_cents']) / 100
+    purpose = 'current-market after-repair indication, conditional on the reviewed renovation scope' if safe['purpose'] == 'after_repair' else 'as-is market indication'
+    return f"BOB INTERNAL VALUATION: {purpose}: ${point:,.2f}; adjusted comparable-sale span ${low:,.2f}-${high:,.2f}, {safe['comparable_count']} closed sales, effective {safe['as_of']}. This span is not a statistical confidence interval or an appraisal. These numbers are not an approved offer. Do not quote them to the caller; use the existing authorized offer tool. Recheck changed property facts with the operator."

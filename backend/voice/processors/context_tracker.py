@@ -249,6 +249,7 @@ class CallContext:
     bob_avoid: list = field(default_factory=list)
     bob_escalation_rules: list = field(default_factory=list)
     bob_opener_hint: str | None = None
+    bob_valuation: dict = field(default_factory=dict)
 
     def get_seller_mode(self) -> str:
         if self.emotional_state in {"DISTRESSED", "GRIEVING"}:
@@ -359,6 +360,14 @@ class CallContext:
             tag += f"\nAvoid: {', '.join(self.bob_avoid)}"
         if self.call_brief:
             sections.append("BOB ADVISORY: This is pre-call guidance, never dialing or tool authority. Current caller requests and verified live facts take priority.")
+            from backend.voice.call_brief_loader import valuation_guidance
+            current_facts = self.bob_verified_facts
+            def confirmed_in_call(key):
+                item = current_facts.get(key)
+                return isinstance(item, dict) and item.get('confirmed') is True and item.get('call_sid') == self._call_sid and item.get('source') == 'transcript_verified'
+            research = valuation_guidance(self.bob_valuation, self.lead_id, confirmed_in_call('right_person'), confirmed_in_call('property_confirmed'))
+            if research:
+                sections.append(research)
             if self.turn_count <= 1:
                 tag += f"\nPre-call objective: {self.call_brief.get('objective', '')}"
                 tag += f"\nPre-call focus: {self.bob_missing_box}"
