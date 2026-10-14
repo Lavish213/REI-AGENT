@@ -140,6 +140,7 @@ class TestOfferStatusTransitions:
             mock_get.return_value = client
 
             from backend.lib.db import update_offer_status
+            client.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [{"id": "offer-1", "offer_status": "sent"}]
             update_offer_status("offer-1", "sent")
 
             call_kwargs = client.table.return_value.update.call_args[0][0]
@@ -152,6 +153,7 @@ class TestOfferStatusTransitions:
             mock_get.return_value = client
 
             from backend.lib.db import update_offer_status
+            client.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [{"id": "offer-1", "offer_status": "countered"}]
             update_offer_status("offer-1", "countered", notes="Seller countered at $220k")
 
             call_kwargs = client.table.return_value.update.call_args[0][0]
