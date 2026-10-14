@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from backend.karpathys import client
 from backend.karpathys.outbox import enqueue_event
 from backend.lib import db
+from loguru import logger
 from backend.voice.call_brief_loader import _valid_brief, validated_valuation
 
 
@@ -50,3 +51,11 @@ async def publish_business(call_sid, lead_id):
     snapshot = build_snapshot(lead_id, source)
     revision = hashlib.sha256(json.dumps(snapshot, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return await enqueue_event('business', {'call_sid': call_sid, 'lead_id': lead_id, 'revision': revision, 'snapshot': snapshot, 'lead_name': label(source['lead'].get('owner_name'), 200) or 'Unverified seller', 'address': snapshot['address'], 'occurred_at': datetime.now(timezone.utc).isoformat()})
+
+
+async def refresh_business(call_sid, lead_id):
+    try:
+        return await publish_business(call_sid, lead_id)
+    except Exception as error:
+        logger.warning('business_snapshot_queue_failed type={}', type(error).__name__)
+        return False

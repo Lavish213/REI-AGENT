@@ -219,13 +219,12 @@ def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_t
         except Exception as error:
             logger.exception("tool execution failed tool={} error={}", tool_name, str(error))
             result = {"success": False, "error": str(error)}
-        if call_ctx is not None and getattr(call_ctx, "lead_id", None) and getattr(call_ctx, "_call_sid", None):
-            try:
-                from backend.karpathys.business import publish_business
-                await publish_business(call_ctx._call_sid, call_ctx.lead_id)
-            except Exception as error:
-                logger.warning("business_snapshot_queue_failed type={}", type(error).__name__)
         await params.result_callback(result)
+        if call_ctx is not None and getattr(call_ctx, "lead_id", None) and getattr(call_ctx, "_call_sid", None):
+            from backend.karpathys.business import refresh_business
+            pending = getattr(call_ctx, '_business_refresh_task', None)
+            if pending is None or pending.done():
+                call_ctx._business_refresh_task = asyncio.create_task(refresh_business(call_ctx._call_sid, call_ctx.lead_id))
         if call_ctx is not None and getattr(call_ctx, "call_should_end", False):
             logger.info("tool_handler call_should_end=True — cancelling task tool={}", tool_name)
             if call_ctx._task_ref is not None:
@@ -706,11 +705,8 @@ async def run_sophia_agent(
         logger.info("client connected call_sid={}", call_sid)
         from backend.karpathys import emitter
         queued = await emitter.emit_call_created(call_sid, call_context)
-        try:
-            from backend.karpathys.business import publish_business
-            await publish_business(call_sid, call_ctx.lead_id)
-        except Exception as error:
-            logger.warning("business_snapshot_queue_failed type={}", type(error).__name__)
+        from backend.karpathys.business import refresh_business
+        spawn(refresh_business(call_sid, call_ctx.lead_id))
         from backend.karpathys.client import delivery_target
         if delivery_target() is not None and not queued:
             await task.queue_frames([TTSSpeakFrame("I'm Sophia, an AI assistant. Our system is unavailable right now. Please try again later."), EndFrame()])

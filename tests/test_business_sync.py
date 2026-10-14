@@ -74,3 +74,23 @@ def test_mls_new_lead_is_not_callable_and_confirmed(monkeypatch):
     assert db.persist_mls_candidate(candidate) == 'saved-lead'
     payload = client.table.return_value.upsert.call_args.args[0]
     assert payload['callable'] is False and payload['stage'] == 'new'
+
+
+@pytest.mark.asyncio
+async def test_slow_dashboard_refresh_does_not_delay_spoken_tool_result(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from backend.voice.agent import _make_tool_handler
+    gate = asyncio.Event()
+    async def slow(call_sid, lead_id):
+        await gate.wait()
+    monkeypatch.setattr('backend.voice.agent.execute_tool', lambda *args: 'Confirmed tool result')
+    monkeypatch.setattr(business, 'refresh_business', slow)
+    ctx = SimpleNamespace(lead_id='lead', _call_sid='sid', call_should_end=False)
+    callback = AsyncMock()
+    params = SimpleNamespace(arguments={}, result_callback=callback)
+    await asyncio.wait_for(_make_tool_handler('book_appointment', ctx)(params), timeout=0.5)
+    callback.assert_awaited_once_with('Confirmed tool result')
+    gate.set()
+    await ctx._business_refresh_task
