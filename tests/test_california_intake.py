@@ -53,3 +53,20 @@ def test_new_listing_candidate_is_not_approved_deal_and_prices_are_cents():
         assert _upsert_distress({'apn': '00123456', 'county': 'San Joaquin', 'state': 'CA', 'list_price': 400000}, 'expired_listing')
         assert save.call_args.args[0]['last_list_price'] == 40000000
         assert save.call_args.args[0]['deal_viable'] is False
+
+
+@pytest.mark.parametrize('status,expected', [(202, True), (200, False), (204, False)])
+def test_email_requires_actual_provider_acceptance(status, expected):
+    from unittest.mock import MagicMock, patch
+    from backend.alerts.email import send_email
+    response = MagicMock(status_code=status)
+    with patch.dict('os.environ', {'SENDGRID_API_KEY': 'test-only'}), patch('httpx.post', return_value=response):
+        assert send_email('owner@example.com', 'Review', 'Test') is expected
+
+
+def test_collect_email_does_not_claim_inbox_delivery():
+    from unittest.mock import patch
+    from backend.voice.tools import _collect_and_send_email
+    with patch('backend.voice.tools._verified_offer_range', return_value=(100000, 120000)), patch('backend.alerts.email.send_offer_summary_email', return_value=True):
+        result = _collect_and_send_email({'email': 'owner@example.com', 'lead_id': 'lead'})
+    assert 'accepted for delivery' in result and 'not yet confirmed' in result

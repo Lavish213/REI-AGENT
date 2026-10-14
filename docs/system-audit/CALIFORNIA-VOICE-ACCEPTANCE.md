@@ -17,6 +17,22 @@ The useful targets are semantic turn completion plus VAD, true interruption vers
 
 ## Evidence and unverified operations
 
-2,538 Python tests pass locally; final hosted results are recorded in CI. 12 actual Python producer/consumer/embedded PostgreSQL roundtrip checks pass, including county/state context, retracted ownership, suppression and cent-correct advisory prices. SQL scheduling tests validate reservation collisions/idempotency, generation-owned callbacks and provider event handling. Eleven dashboard evidence checks reject wrong-lead, stale, malformed and authorized-as-research input. Dashboard production build passes.
+2,542 Python tests pass locally; final hosted results are recorded in CI. 12 actual Python producer/consumer/embedded PostgreSQL roundtrip checks pass, including county/state context, retracted ownership, suppression and cent-correct advisory prices. SQL scheduling tests validate reservation collisions/idempotency, generation-owned callbacks and provider event handling. Eleven dashboard evidence checks reject wrong-lead, stale, malformed and authorized-as-research input. Dashboard production build passes.
 
 No seller call, text, email, calendar reservation, paid data access or live migration was performed. Provider credentials, current contact/quote permissions, email acceptance/delivery, audio latency/interruption quality, live calendar conflicts and hosted dashboard persistence remain production acceptance requirements. The 1,000 extra MLS tests establish that asking prices never become valuation; they are not 1,000 generated conversations or proof of all-site lead coverage. No 10/10 live grade is warranted.
+
+
+## Final process assessment
+
+| Process | Measured result | Grade supported by evidence |
+| --- | --- | --- |
+| Bob mathematical/source contracts | 3,439 Python tests and 53 SQL checks | Pass; arithmetic/source handling only |
+| Bob historical prediction | Existing Ames mean error approximately 6.60% | B on the documented custom rubric; no local California grade |
+| Real-source lead research | 15 dated tax-notice candidates matched to official parcel records | Candidates only; current status and deal quality unverified |
+| Sophia deterministic conversation policy | 33 of 33 replay variants pass | Pass for policy; zero model-generated conversations |
+| Sophia tools/providers/workflows | 2,542 full Python tests; scheduling SQL and failure recovery pass | Pass for regression; live delivery/audio not graded |
+| Bob→Sophia→database | 12 actual producer/consumer/PostgreSQL checks | Pass locally; reviewed prices do not grant quote authority |
+| REI dashboard | Production build, lint, 11 evidence checks and 30 HTTP fault checks | Pass locally; hosted acceptance separate |
+| Karpathys dashboard | TypeScript, build, lint and 28 frontend checks | Pass locally; hosted CI checks source pins and HTTP receipts |
+
+Email follow-up templates no longer assert unsupported market speed or promise an easy close. The SendGrid API requires its documented HTTP 202 acceptance response. Sophia reports provider acceptance without promising arrival in the inbox. Four new tests cover alternate successful HTTP statuses and truthful email-tool wording. Source: https://www.twilio.com/docs/sendgrid/api-reference/mail-send/mail-send . No email was sent in this evaluation.

@@ -20,7 +20,7 @@ EMAIL_SEQUENCES: list[tuple[int, str, str]] = [
         "Interested in {address}",
         (
             "Hi {first_name} — I'm Sophia, the AI assistant for San Joaquin House Buyers, contacting you about "
-            "on {address}. We pay cash, close fast, and buy as-is. Worth a quick conversation?\n\n"
+            "{address}. The team can review an as-is cash purchase if that would be useful. Open to a conversation?\n\n"
             "- Sophia\n"
             "San Joaquin House Buyers\n"
             "{phone}"
@@ -28,11 +28,10 @@ EMAIL_SEQUENCES: list[tuple[int, str, str]] = [
     ),
     (
         7,
-        "Market update for {neighborhood}",
+        "Checking in about {address}",
         (
             "Hey {first_name} — Sophia again with San Joaquin House Buyers.\n\n"
-            "Properties in {neighborhood} have been moving quickly lately. "
-            "Your place on {address} might be in a stronger position than you think.\n\n"
+            "If you are considering selling {address}, the team can review the property and discuss options.\n\n"
             "Still open to a quick conversation?\n\n"
             "- Sophia\n"
             "{phone}"
@@ -54,8 +53,7 @@ EMAIL_SEQUENCES: list[tuple[int, str, str]] = [
         "Last note from me",
         (
             "Hey {first_name} — Sophia, last note from me on {address}.\n\n"
-            "If a fast cash offer, easy close, and no hassle ever sounds right — "
-            "just reply and I'll get you a number. Hope you're doing well.\n\n"
+            "If you would like the team to review the property, you can reply here. No pressure to continue.\n\n"
             "- Sophia\n"
             "San Joaquin House Buyers\n"
             "{phone}"
@@ -118,7 +116,9 @@ def send_email(to: str, subject: str, body: str) -> bool:
             timeout=10,
         )
         response.raise_for_status()
-        logger.info("email sent to={} subject={}", to, subject)
+        if response.status_code != 202:
+            return False
+        logger.info("email accepted to={} subject={}", to, subject)
         return True
     except Exception as e:
         logger.error("email failed to={} error={}", to, str(e))
