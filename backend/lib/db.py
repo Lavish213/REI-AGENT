@@ -1963,9 +1963,13 @@ def dashboard_business_source(lead_id):
     lead = get_lead_with_property(lead_id)
     if not lead:
         raise ValueError("Missing canonical lead")
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    prop = lead.get('properties') or {}
+    if lead.get('tenant_id') != tenant or not isinstance(prop, dict) or prop.get('tenant_id') != tenant:
+        raise ValueError('Business evidence tenant binding required')
     return {"lead": lead, "offers": get_offers_for_lead(lead_id)[:20]}
 
 
 def dashboard_lead_refresh_ids(offset=0):
-    rows = _get_client().table("leads").select("id").order("id").range(offset, offset + 99).execute().data
+    rows = _get_client().table("leads").select("id").eq("tenant_id", os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")).order("id").range(offset, offset + 99).execute().data
     return [row['id'] for row in rows if row.get('id')]

@@ -107,3 +107,12 @@ def test_same_record_can_refresh_observation_without_changing_prices(monkeypatch
     second = business.build_snapshot('lead-1', source())
     assert first['observation_hour'] != second['observation_hour']
     assert first['offers'] == second['offers']
+
+
+def test_business_source_cannot_read_another_tenants_offers(monkeypatch):
+    monkeypatch.setattr(db, 'get_lead_with_property', lambda lead: {'id': lead, 'tenant_id': 'other', 'properties': {'tenant_id': 'other'}})
+    offers = MagicMock()
+    monkeypatch.setattr(db, 'get_offers_for_lead', offers)
+    with pytest.raises(ValueError, match='tenant'):
+        db.dashboard_business_source('lead-1')
+    offers.assert_not_called()
