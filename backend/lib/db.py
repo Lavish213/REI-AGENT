@@ -2102,8 +2102,8 @@ def save_source_candidate(source, candidate):
     tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
     identity = str(uuid5(NAMESPACE_URL, tenant + ':' + source + ':' + ref))
     fingerprint = hashlib.sha256(json.dumps(candidate, sort_keys=True).encode()).hexdigest()
-    result = _get_client().table('source_candidates').upsert({'id': identity, 'tenant_id': tenant, 'source': source, 'source_ref': ref, 'payload': candidate, 'fingerprint': fingerprint, 'observed_at': datetime.now(timezone.utc).isoformat(), 'status': 'needs_property_review', 'contact_authorized': False, 'offer_authorized': False}, on_conflict='id').execute()
-    if not result.data:
+    result = _get_client().rpc('persist_source_candidate', {'p_id': identity, 'p_tenant': tenant, 'p_source': source, 'p_ref': ref, 'p_payload': candidate, 'p_fingerprint': fingerprint}).execute().data
+    if result != identity:
         raise RuntimeError('Source candidate persistence was not confirmed')
     return identity
 
@@ -2335,3 +2335,28 @@ def reconcile_workflow_job(identity, decision, actor_id, reason):
         if result.rowcount != 1:
             raise ValueError('Quarantined job not found')
     return {'id': identity, 'state': 'skipped', 'actor_id': actor_id}
+
+
+def list_source_candidates(page=1):
+    if type(page) is not int or not 1 <= page <= 100000:
+        raise ValueError('Bounded candidate page required')
+    return _get_client().table('source_candidates').select('id,source,source_ref,payload,status,observed_at,reviewed_lead_id,review_reason').order('observed_at', desc=True).range((page - 1) * 50, page * 50 - 1).execute().data or []
+
+
+def review_source_candidate(identity, actor_id, decision, reason, lead_id=None):
+    from uuid import UUID
+    UUID(identity)
+    UUID(actor_id)
+    if decision not in {'dismissed', 'linked_to_reviewed_lead'} or not isinstance(reason, str) or not 10 <= len(reason) <= 1000:
+        raise ValueError('Explicit bounded candidate review required')
+    if decision == 'linked_to_reviewed_lead':
+        UUID(lead_id)
+        lead = get_lead_with_property(lead_id)
+        if not lead or not lead.get('property_id') or not (lead.get('properties') or {}).get('apn'):
+            raise ValueError('Existing canonical parcel-reviewed lead required')
+    elif lead_id is not None:
+        raise ValueError('Dismissal cannot link a lead')
+    result = _get_client().table('source_candidates').update({'status': decision, 'reviewed_lead_id': lead_id, 'reviewed_by': actor_id, 'review_reason': reason}).eq('id', identity).eq('status', 'needs_property_review').execute().data
+    if len(result or []) != 1:
+        raise ValueError('Candidate missing or already reviewed')
+    return {'id': identity, 'status': decision, 'lead_id': lead_id, 'contact_authorized': False, 'offer_authorized': False}

@@ -42,3 +42,21 @@ async def source_callback_command(body: dict):
         raise HTTPException(422, str(error)) from error
     except Exception as error:
         raise HTTPException(409, "Source command could not be applied; refresh and review") from error
+
+
+@router.get("/operations/candidates")
+async def source_candidates(page: int = 1):
+    from backend.lib.db import list_source_candidates
+    try:
+        return {'items': await run_in_threadpool(list_source_candidates, page), 'page': page}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@router.post("/operations/candidates/{identity}/review")
+async def source_candidate_review(identity: str, body: dict):
+    from backend.lib.db import review_source_candidate
+    try:
+        return await run_in_threadpool(review_source_candidate, identity, body['actor_id'], body['decision'], body['reason'], body.get('lead_id'))
+    except (KeyError, ValueError, TypeError) as error:
+        raise HTTPException(422, 'Explicit candidate review required') from error

@@ -52,3 +52,20 @@ DECLARE current_lead public.leads; receipt public.source_command_receipts; BEGIN
 END; $$;
 REVOKE ALL ON FUNCTION public.apply_source_callback(uuid,uuid,uuid,uuid,timestamptz,timestamptz,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.apply_source_callback(uuid,uuid,uuid,uuid,timestamptz,timestamptz,text) TO service_role;
+
+ALTER TABLE public.source_candidates ADD COLUMN IF NOT EXISTS reviewed_lead_id uuid REFERENCES public.leads(id), ADD COLUMN IF NOT EXISTS reviewed_by uuid, ADD COLUMN IF NOT EXISTS review_reason text;
+
+CREATE OR REPLACE FUNCTION public.persist_source_candidate(p_id uuid,p_tenant uuid,p_source text,p_ref text,p_payload jsonb,p_fingerprint text)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE result uuid; BEGIN
+ INSERT INTO public.source_candidates(id,tenant_id,source,source_ref,payload,fingerprint,observed_at,status,contact_authorized,offer_authorized)
+ VALUES(p_id,p_tenant,p_source,p_ref,p_payload,p_fingerprint,now(),'needs_property_review',false,false)
+ ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,fingerprint=excluded.fingerprint,observed_at=now(),
+ status=CASE WHEN source_candidates.fingerprint=excluded.fingerprint THEN source_candidates.status ELSE 'needs_property_review' END
+ WHERE source_candidates.tenant_id=excluded.tenant_id AND source_candidates.source=excluded.source AND source_candidates.source_ref=excluded.source_ref
+ RETURNING id INTO result;
+ IF result IS NULL THEN RAISE EXCEPTION 'Source candidate identity conflict'; END IF;
+ RETURN result;
+END; $$;
+REVOKE ALL ON FUNCTION public.persist_source_candidate(uuid,uuid,text,text,jsonb,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.persist_source_candidate(uuid,uuid,text,text,jsonb,text) TO service_role;
