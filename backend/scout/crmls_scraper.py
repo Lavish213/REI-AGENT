@@ -1,4 +1,5 @@
 import os
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -6,17 +7,15 @@ from loguru import logger
 
 CRMLS_API_BASE = "https://api.crmls.org/reso/odata"
 
-SAN_JOAQUIN_CITIES = [
-    "Stockton", "Lodi", "Manteca", "Tracy", "Turlock",
-    "Modesto", "Ripon", "Escalon", "Lathrop", "Holt",
-]
-
 _SELECT_FIELDS = ",".join([
     "ListingId",
     "UnparsedAddress",
     "City",
     "StateOrProvince",
     "ListPrice",
+    "PreviousListPrice",
+    "CountyOrParish",
+    "PropertyType",
     "BedroomsTotal",
     "BathroomsTotalInteger",
     "LivingArea",
@@ -44,8 +43,19 @@ def _build_headers(api_key: str) -> dict:
 
 
 def _item_to_prop(item: dict, distress_type: str) -> dict:
-    list_price = item.get("ListPrice") or 0
-    list_price_cents = round(list_price * 100)
+    county = item.get("CountyOrParish")
+    if not isinstance(county, str) or county.strip().lower() not in {"san joaquin", "san joaquin county"} or item.get("StateOrProvince") != "CA" or item.get("PropertyType") != "Residential":
+        return {}
+    try:
+        price = Decimal(str(item.get("ListPrice")))
+        if not price.is_finite() or price <= 0 or price > 10**12 or price * 100 != (price * 100).to_integral_value():
+            return {}
+        if distress_type == "price_reduction":
+            prior = Decimal(str(item.get("PreviousListPrice")))
+            if not prior.is_finite() or prior <= price:
+                return {}
+    except (InvalidOperation, ValueError, TypeError):
+        return {}
     days_on_market = item.get("DaysOnMarket") or 0
 
     return {
@@ -53,7 +63,7 @@ def _item_to_prop(item: dict, distress_type: str) -> dict:
         "city": item.get("City", ""),
         "state": item.get("StateOrProvince", "CA"),
         "county": "San Joaquin",
-        "estimated_value": list_price_cents,
+        "estimated_value": None,
         "beds": item.get("BedroomsTotal"),
         "baths": item.get("BathroomsTotalInteger"),
         "sqft": item.get("LivingArea"),
@@ -92,7 +102,9 @@ def fetch_expired_listings(days_back: int = 7) -> list[dict]:
             resp.raise_for_status()
             data = resp.json()
             for item in data.get("value", []):
-                leads.append(_item_to_prop(item, "expired_listing"))
+                prop = _item_to_prop(item, "expired_listing")
+                if prop:
+                    leads.append(prop)
     except Exception as e:
         logger.error("crmls_scraper fetch_expired failed error={}", str(e))
 
@@ -131,7 +143,9 @@ def fetch_price_reduced_listings(days_back: int = 7) -> list[dict]:
             resp.raise_for_status()
             data = resp.json()
             for item in data.get("value", []):
-                leads.append(_item_to_prop(item, "price_reduction"))
+                prop = _item_to_prop(item, "price_reduction")
+                if prop:
+                    leads.append(prop)
     except Exception as e:
         logger.error("crmls_scraper fetch_price_reduced failed error={}", str(e))
 
@@ -170,7 +184,9 @@ def fetch_withdrawn_listings(days_back: int = 7) -> list[dict]:
             resp.raise_for_status()
             data = resp.json()
             for item in data.get("value", []):
-                leads.append(_item_to_prop(item, "withdrawn_listing"))
+                prop = _item_to_prop(item, "withdrawn_listing")
+                if prop:
+                    leads.append(prop)
     except Exception as e:
         logger.error("crmls_scraper fetch_withdrawn failed error={}", str(e))
 

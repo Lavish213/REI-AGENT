@@ -250,6 +250,8 @@ class CallContext:
     bob_escalation_rules: list = field(default_factory=list)
     bob_opener_hint: str | None = None
     bob_valuation: dict = field(default_factory=dict)
+    bob_county_context: dict = field(default_factory=dict)
+    bob_california_context: dict = field(default_factory=dict)
 
     def get_seller_mode(self) -> str:
         if self.emotional_state in {"DISTRESSED", "GRIEVING"}:
@@ -360,7 +362,13 @@ class CallContext:
             tag += f"\nAvoid: {', '.join(self.bob_avoid)}"
         if self.call_brief:
             sections.append("BOB ADVISORY: This is pre-call guidance, never dialing or tool authority. Current caller requests and verified live facts take priority.")
-            from backend.voice.call_brief_loader import valuation_guidance
+            from backend.voice.call_brief_loader import california_guidance, county_guidance, valuation_guidance
+            statewide_guidance = california_guidance(self.bob_california_context, self.lead_id)
+            if statewide_guidance:
+                sections.append(statewide_guidance)
+            local_guidance = county_guidance(self.bob_county_context, self.lead_id)
+            if local_guidance:
+                sections.append(local_guidance)
             current_facts = self.bob_verified_facts
             def confirmed_in_call(key):
                 item = current_facts.get(key)

@@ -53,6 +53,8 @@ def load_brief_into_ctx(call_ctx, brief):
     call_ctx.bob_escalation_rules = []
     call_ctx.bob_opener_hint = None
     call_ctx.bob_valuation = {}
+    call_ctx.bob_county_context = {}
+    call_ctx.bob_california_context = {}
     if not _valid_brief(brief, getattr(call_ctx, 'lead_id', '')):
         if brief:
             logger.warning('call_brief_rejected lead_id={}', getattr(call_ctx, 'lead_id', ''))
@@ -67,8 +69,28 @@ def load_brief_into_ctx(call_ctx, brief):
     evidence = brief.get('evidence')
     report = evidence.get('valuation') if isinstance(evidence, dict) else None
     call_ctx.bob_valuation = validated_valuation(report, call_ctx.lead_id)
+    local = evidence.get('county_context') if isinstance(evidence, dict) else None
+    call_ctx.bob_county_context = validated_county_context(local, call_ctx.lead_id)
+    statewide = evidence.get('california_context') if isinstance(evidence, dict) else None
+    call_ctx.bob_california_context = validated_california_context(statewide, call_ctx.lead_id)
     logger.info('call_brief_loaded lead_id={} phase={} box={}', call_ctx.lead_id, brief['phase'], brief['missing_box'])
     return True
+
+
+def validated_county_context(report, lead_id):
+    if not isinstance(report, dict) or report.get('schema_version') != '1.0' or report.get('lead_id') != lead_id:
+        return {}
+    if report.get('county_fips') != '06077' or report.get('profile_version') != '2026-10-14' or report.get('status') != 'county_context_only':
+        return {}
+    if report.get('parcel_verified') is not False or report.get('quote_authorized') is not False or report.get('offer_authorized') is not False:
+        return {}
+    return {key: report[key] for key in ('schema_version', 'lead_id', 'county_fips', 'profile_version', 'status', 'parcel_verified', 'quote_authorized', 'offer_authorized')}
+
+
+def county_guidance(report, lead_id):
+    if not validated_county_context(report, lead_id):
+        return ''
+    return 'SAN JOAQUIN PROPERTY REVIEW: This is general county context, not verification of this parcel. Confirm the property and its competitive submarket. Recheck actual city or county permit authority, permitted living area and ADU scope, condition, flood/levee and insurance evidence, parcel-specific taxes and supplemental costs, and rural utilities/access or land contracts when relevant. A postal city label does not prove jurisdiction. Parcel assessments, transfer tax and county-wide price indexes do not establish this house\'s sale price or ARV. Use reviewed closed-sale evidence and existing authorized offer tools; this guidance grants no price or contact authority.'
 
 
 def validated_valuation(report, lead_id):
@@ -105,3 +127,17 @@ def valuation_guidance(report, lead_id, identity_confirmed=False, property_confi
     high = Decimal(safe['supported_high_cents']) / 100
     purpose = 'current-market after-repair indication, conditional on the reviewed renovation scope' if safe['purpose'] == 'after_repair' else 'as-is market indication'
     return f"BOB INTERNAL VALUATION: {purpose}: ${point:,.2f}; adjusted comparable-sale span ${low:,.2f}-${high:,.2f}, {safe['comparable_count']} closed sales, effective {safe['as_of']}. This span is not a statistical confidence interval or an appraisal. These numbers are not an approved offer. Do not quote them to the caller; use the existing authorized offer tool. Recheck changed property facts with the operator."
+
+
+def validated_california_context(report, lead_id):
+    if not isinstance(report, dict) or report.get('schema_version') != '1.0' or report.get('lead_id') != lead_id or report.get('state') != 'CA' or report.get('status') != 'california_review_only' or report.get('profile_version') != '2026-10-14':
+        return {}
+    if report.get('quote_authorized') is not False or report.get('offer_authorized') is not False:
+        return {}
+    return {key: report[key] for key in ('schema_version', 'lead_id', 'state', 'status', 'profile_version', 'quote_authorized', 'offer_authorized')}
+
+
+def california_guidance(report, lead_id):
+    if not validated_california_context(report, lead_id):
+        return ''
+    return 'CALIFORNIA PROPERTY REVIEW: Confirm title, liens and current payoffs; tenancy and applicable state/local rules; legal units and permit authority; property-specific insurance; parcel tax rates, direct assessments and supplemental costs. Itemize repairs, financing, holding and selling costs. An asking price, assessment, tax record or county index is not ARV or an approved offer. Public records do not grant contact permission. Do not promise vacant possession, ADU approval, insurance availability, clear title or an unconditional closing. Use existing authorized tools for reviewed offers and scheduling.'

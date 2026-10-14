@@ -55,30 +55,37 @@ def _extract_apns_from_pdf(pdf_bytes: bytes) -> list[str]:
 
 
 def _fetch_parcel(apn_clean: str, client: httpx.Client) -> dict[str, Any] | None:
+    if not isinstance(apn_clean, str) or not re.fullmatch(r'[0-9]{8}', apn_clean) or apn_clean == '00000000':
+        return None
     params = {
         "where": f"APN='{apn_clean}'",
         "outFields": "*",
         "returnGeometry": "false",
         "f": "json",
+        "resultRecordCount": 2,
     }
     try:
         resp = client.get(SJMAP_QUERY_URL, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         features = data.get("features") or []
-        if not features:
+        if not isinstance(features, list) or len(features) != 1:
             logger.debug("sjmap no result apn={}", apn_clean)
             return None
-        return features[0].get("attributes") or {}
+        attrs = features[0].get("attributes")
+        if not isinstance(attrs, dict) or attrs.get('APN') != apn_clean:
+            return None
+        return attrs
     except Exception as e:
         logger.warning("sjmap fetch failed apn={} error={}", apn_clean, str(e))
         return None
 
 
 def _to_property(attrs: dict[str, Any], apn_clean: str) -> dict[str, Any]:
-    land = attrs.get("LAND_VALUE") or 0
-    improvement = attrs.get("IMPROVEMENT_VALUE") or 0
-    assessed_cents = int((land + improvement) * 100) if (land + improvement) > 0 else None
+    land = attrs.get("LAND_VALUE")
+    improvement = attrs.get("IMPROVEMENT_VALUE")
+    known = all(type(value) is int and 0 <= value <= 10**12 for value in (land, improvement))
+    assessed_cents = (land + improvement) * 100 if known else None
 
     apn_dash = (attrs.get("APN_DASH") or "").strip()
     apn_stored = apn_dash.replace("-", "").upper() if apn_dash else apn_clean.upper()
