@@ -37,6 +37,14 @@ const { PGlite } = require('@electric-sql/pglite');
   assert.equal((await callback()).rows[0].id,command);
   assert.equal((await callback()).rows[0].id,command);
   await assert.rejects(db.query("select apply_source_callback(gen_random_uuid(),'00000000-0000-0000-0000-000000000001',$1,'00000000-0000-0000-0000-000000000010',$2,now()+interval '1 day','stale')",[first,version]), /version/i);
+  const candidate='00000000-0000-0000-0000-000000000090';
+  const saveCandidate = fp => db.query("select persist_source_candidate($1,'00000000-0000-0000-0000-000000000001','rss','source-ref','{}',$2)",[candidate,fp]);
+  await saveCandidate('first');
+  await db.query("update source_candidates set status='dismissed' where id=$1",[candidate]);
+  await saveCandidate('first');
+  assert.equal((await db.query('select status from source_candidates where id=$1',[candidate])).rows[0].status,'dismissed');
+  await saveCandidate('changed');
+  assert.deepEqual((await db.query('select status,contact_authorized,offer_authorized from source_candidates where id=$1',[candidate])).rows[0],{status:'needs_property_review',contact_authorized:false,offer_authorized:false});
   console.log('Workflow recovery migration: inbound sender binding, reply replay, email pause, callback replay and stale version refusal passed');
   console.log('Lockdown migration: repeat apply, 100 replays, tenant isolation and function permissions passed');
  } finally { await db.close(); }

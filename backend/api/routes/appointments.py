@@ -57,6 +57,6 @@ async def source_candidates(page: int = 1):
 async def source_candidate_review(identity: str, body: dict):
     from backend.lib.db import review_source_candidate
     try:
-        return await run_in_threadpool(review_source_candidate, identity, body['actor_id'], body['decision'], body['reason'], body.get('lead_id'))
+        return await run_in_threadpool(review_source_candidate, identity, body['actor_id'], body['decision'], body['reason'], body['fingerprint'], body.get('lead_id'))
     except (KeyError, ValueError, TypeError) as error:
         raise HTTPException(422, 'Explicit candidate review required') from error

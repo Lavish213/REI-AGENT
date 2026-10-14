@@ -2340,13 +2340,15 @@ def reconcile_workflow_job(identity, decision, actor_id, reason):
 def list_source_candidates(page=1):
     if type(page) is not int or not 1 <= page <= 100000:
         raise ValueError('Bounded candidate page required')
-    return _get_client().table('source_candidates').select('id,source,source_ref,payload,status,observed_at,reviewed_lead_id,review_reason').order('observed_at', desc=True).range((page - 1) * 50, page * 50 - 1).execute().data or []
+    return _get_client().table('source_candidates').select('id,source,source_ref,payload,status,observed_at,fingerprint,reviewed_lead_id,review_reason').order('observed_at', desc=True).range((page - 1) * 50, page * 50 - 1).execute().data or []
 
 
-def review_source_candidate(identity, actor_id, decision, reason, lead_id=None):
+def review_source_candidate(identity, actor_id, decision, reason, fingerprint, lead_id=None):
     from uuid import UUID
     UUID(identity)
     UUID(actor_id)
+    if not isinstance(fingerprint, str) or len(fingerprint) != 64:
+        raise ValueError('Observed source fingerprint required')
     if decision not in {'dismissed', 'linked_to_reviewed_lead'} or not isinstance(reason, str) or not 10 <= len(reason) <= 1000:
         raise ValueError('Explicit bounded candidate review required')
     if decision == 'linked_to_reviewed_lead':
@@ -2356,7 +2358,7 @@ def review_source_candidate(identity, actor_id, decision, reason, lead_id=None):
             raise ValueError('Existing canonical parcel-reviewed lead required')
     elif lead_id is not None:
         raise ValueError('Dismissal cannot link a lead')
-    result = _get_client().table('source_candidates').update({'status': decision, 'reviewed_lead_id': lead_id, 'reviewed_by': actor_id, 'review_reason': reason}).eq('id', identity).eq('status', 'needs_property_review').execute().data
+    result = _get_client().table('source_candidates').update({'status': decision, 'reviewed_lead_id': lead_id, 'reviewed_by': actor_id, 'review_reason': reason}).eq('id', identity).eq('fingerprint', fingerprint).eq('status', 'needs_property_review').execute().data
     if len(result or []) != 1:
         raise ValueError('Candidate missing or already reviewed')
     return {'id': identity, 'status': decision, 'lead_id': lead_id, 'contact_authorized': False, 'offer_authorized': False}
