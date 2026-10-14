@@ -1,0 +1,76 @@
+from unittest.mock import MagicMock
+
+import pytest
+
+from backend.karpathys import business, client
+from backend.lib import db
+from backend.scout import crmls_scraper
+
+
+def source():
+    return {'lead': {'id': 'lead-1', 'property_id': 'property-1', 'properties': {'id': 'property-1', 'apn': '00123456', 'address': '123 Synthetic Street'}, 'appointment_at': None, 'appointment_status': 'cancelled'}, 'offers': [{'id': 'offer-1', 'lead_id': 'lead-1', 'offer_status': 'draft', 'offer_amount': 25000000, 'repair_estimate': 2000000}]}
+
+
+def test_snapshot_preserves_recorded_cents_and_cancellation_without_authority():
+    result = business.build_snapshot('lead-1', source())
+    assert result['offers'][0]['amount_cents'] == 25000000
+    assert result['appointment']['status'] == 'cancelled'
+    assert result['valuation'] is None and result['offer_authorized'] is False
+
+
+def test_snapshot_rejects_cross_property_binding():
+    value = source();value['lead']['properties']['id'] = 'wrong'
+    with pytest.raises(ValueError):
+        business.build_snapshot('lead-1', value)
+
+
+@pytest.mark.asyncio
+async def test_business_journal_is_independent_of_calls_and_replay_safe(tmp_path, monkeypatch):
+    monkeypatch.setenv('KARPATHYS_OUTBOX_PATH', str(tmp_path / 'business.sqlite'))
+    monkeypatch.setattr(client, '_KARPATHYS_URL', 'https://test.example.invalid')
+    monkeypatch.setattr(client, '_KARPATHYS_SECRET', 'synthetic-only')
+    monkeypatch.setattr(db, 'dashboard_business_source', lambda lead_id: source())
+    assert await business.publish_business('lead:lead-1', 'lead-1')
+    assert await business.publish_business('lead:lead-1', 'lead-1')
+    event = db.claim_dashboard_event(client.delivery_target())
+    assert event['endpoint'] == 'business'
+    assert event['payload']['snapshot']['offers'][0]['amount_cents'] == 25000000
+    assert db.dashboard_event_journal_health()['pending'] == 1
+
+
+def test_mls_runner_saves_candidates_and_returns_saved_count(monkeypatch):
+    monkeypatch.setattr(crmls_scraper, 'fetch_expired_listings', lambda: [{'apn': '00123456'}])
+    monkeypatch.setattr(crmls_scraper, 'fetch_price_reduced_listings', lambda: [])
+    monkeypatch.setattr(crmls_scraper, 'fetch_withdrawn_listings', lambda: [])
+    save = MagicMock(return_value='lead-id')
+    monkeypatch.setattr(db, 'persist_mls_candidate', save)
+    assert crmls_scraper.run_crmls_scraper() == 1
+    save.assert_called_once()
+
+
+def test_mls_missing_parcel_never_writes_or_grants_contact(monkeypatch):
+    get = MagicMock()
+    monkeypatch.setattr(db, '_get_client', get)
+    assert db.persist_mls_candidate({'county': 'San Joaquin', 'state': 'CA', 'address': 'Street'}) is None
+    get.assert_not_called()
+
+
+def test_mls_existing_property_lead_is_reused(monkeypatch):
+    candidate = {'apn': '00123456', 'county': 'San Joaquin', 'state': 'CA', 'address': 'Street', 'last_list_price': 40000000}
+    save = MagicMock(return_value='property-1')
+    monkeypatch.setattr(db, 'upsert_listing_candidate', save)
+    monkeypatch.setattr(db, 'get_lead_by_property', lambda property_id: {'id': 'existing-lead'})
+    assert db.persist_mls_candidate(candidate) == 'existing-lead'
+    assert save.call_args.args[0]['tenant_id'] == '00000000-0000-0000-0000-000000000001'
+
+
+def test_mls_new_lead_is_not_callable_and_confirmed(monkeypatch):
+    candidate = {'apn': '00123456', 'county': 'San Joaquin', 'state': 'CA', 'address': 'Street'}
+    client = MagicMock()
+    monkeypatch.setattr(db, '_get_client', lambda: client)
+    monkeypatch.setattr(db, 'upsert_listing_candidate', lambda payload: 'property-1')
+    reads = iter([None, {'id': 'saved-lead'}])
+    monkeypatch.setattr(db, 'get_lead_by_property', lambda property_id: next(reads))
+    assert db.persist_mls_candidate(candidate) == 'saved-lead'
+    payload = client.table.return_value.upsert.call_args.args[0]
+    assert payload['callable'] is False and payload['stage'] == 'new'

@@ -9,6 +9,7 @@ CRMLS_API_BASE = "https://api.crmls.org/reso/odata"
 
 _SELECT_FIELDS = ",".join([
     "ListingId",
+    "ParcelNumber",
     "UnparsedAddress",
     "City",
     "StateOrProvince",
@@ -57,8 +58,18 @@ def _item_to_prop(item: dict, distress_type: str) -> dict:
     except (InvalidOperation, ValueError, TypeError):
         return {}
     days_on_market = item.get("DaysOnMarket") or 0
+    if type(days_on_market) is not int or not 0 <= days_on_market <= 10000:
+        return {}
+    apn = str(item.get("ParcelNumber") or "").strip().replace("-", "")
+    if len(apn) != 8 or not apn.isascii() or not apn.isdigit() or apn == "00000000":
+        apn = None
 
     return {
+        "apn": apn,
+        "_source_listing_id": str(item.get("ListingId") or ""),
+        "last_list_price": int(price * 100),
+        "distress_score": min(100, 50 + _dom_bonus(days_on_market)),
+        "deal_viable": False,
         "address": item.get("UnparsedAddress", ""),
         "city": item.get("City", ""),
         "state": item.get("StateOrProvince", "CA"),
@@ -70,6 +81,7 @@ def _item_to_prop(item: dict, distress_type: str) -> dict:
         "year_built": item.get("YearBuilt"),
         "distress_type": distress_type,
         "dom_bonus": _dom_bonus(days_on_market),
+        "days_on_market": days_on_market,
         "status": "new",
     }
 
@@ -206,4 +218,13 @@ def run_crmls_scraper() -> int:
         len(withdrawn),
         total,
     )
-    return total
+    from backend.lib.db import persist_mls_candidate
+    saved = 0
+    for prop in expired + reduced + withdrawn:
+        try:
+            if persist_mls_candidate(prop):
+                saved += 1
+        except Exception as error:
+            logger.warning("mls_candidate_persistence_failed type={}", type(error).__name__)
+    logger.info("crmls_candidates_saved={} withheld={}", saved, total - saved)
+    return saved

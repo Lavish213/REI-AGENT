@@ -1646,7 +1646,7 @@ def stage_dashboard_event(endpoint, payload, target):
     import json
     import time
     from uuid import uuid5, NAMESPACE_URL
-    allowed = {"call", "turn", "complete", "ended", "transcript", "failed", "sophia/disposition-action"}
+    allowed = {"call", "turn", "complete", "ended", "transcript", "failed", "business", "sophia/disposition-action"}
     if endpoint not in allowed or not isinstance(payload, dict) or not isinstance(target, str) or len(target) != 64:
         raise ValueError("Invalid dashboard event")
     sid = payload.get("call_sid")
@@ -1657,6 +1657,11 @@ def stage_dashboard_event(endpoint, payload, target):
         if payload.get("speaker") not in {"user", "seller", "sophia", "assistant", "system"} or type(payload.get("turn_index")) is not int or not 0 <= payload["turn_index"] <= 10000:
             raise ValueError("Invalid dashboard turn identity")
         suffix = f":{payload['speaker']}:{payload['turn_index']}"
+    if endpoint == "business":
+        revision = payload.get("revision")
+        if not isinstance(revision, str) or len(revision) != 64 or any(c not in "0123456789abcdef" for c in revision):
+            raise ValueError("Invalid business snapshot revision")
+        suffix = ":" + revision
     stable = json.dumps({key: value for key, value in payload.items() if key != "occurred_at"}, sort_keys=True, separators=(",", ":"), allow_nan=False)
     fingerprint = hashlib.sha256(stable.encode()).hexdigest()
     serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
@@ -1695,7 +1700,7 @@ def claim_dashboard_event(target):
             connection.execute("UPDATE dashboard_events SET state='dead',error='delivery_expired',lease=NULL,leased_until=NULL WHERE state='pending' AND expires<=? AND (leased_until IS NULL OR leased_until<=?)", (now, now))
             connection.execute("UPDATE dashboard_events SET state='dead',error='destination_changed',lease=NULL,leased_until=NULL WHERE state='pending' AND target<>? AND (leased_until IS NULL OR leased_until<=?)", (target, now))
             connection.execute("UPDATE dashboard_events SET state='dead',error='call_creation_failed' WHERE state='pending' AND endpoint<>'call' AND (leased_until IS NULL OR leased_until<=?) AND EXISTS (SELECT 1 FROM dashboard_events root WHERE root.target=dashboard_events.target AND root.call_sid=dashboard_events.call_sid AND root.endpoint='call' AND root.state='dead')", (now,))
-            row = connection.execute("SELECT e.* FROM dashboard_events e WHERE e.target=? AND e.state='pending' AND e.due<=? AND (e.leased_until IS NULL OR e.leased_until<=?) AND NOT EXISTS (SELECT 1 FROM dashboard_events active WHERE active.target=e.target AND active.call_sid=e.call_sid AND active.leased_until>? AND active.state='pending') AND (e.endpoint='call' OR EXISTS (SELECT 1 FROM dashboard_events root WHERE root.target=e.target AND root.call_sid=e.call_sid AND root.endpoint='call' AND root.state='delivered')) AND (e.endpoint='call' OR NOT EXISTS (SELECT 1 FROM dashboard_events prior WHERE prior.target=e.target AND prior.call_sid=e.call_sid AND prior.endpoint<>'call' AND prior.state='pending' AND prior.seq<e.seq)) ORDER BY e.seq LIMIT 1", (target, now, now, now)).fetchone()
+            row = connection.execute("SELECT e.* FROM dashboard_events e WHERE e.target=? AND e.state='pending' AND e.due<=? AND (e.leased_until IS NULL OR e.leased_until<=?) AND NOT EXISTS (SELECT 1 FROM dashboard_events active WHERE active.target=e.target AND active.call_sid=e.call_sid AND active.leased_until>? AND active.state='pending') AND (e.endpoint IN ('call','business') OR EXISTS (SELECT 1 FROM dashboard_events root WHERE root.target=e.target AND root.call_sid=e.call_sid AND root.endpoint='call' AND root.state='delivered')) AND (e.endpoint='call' OR NOT EXISTS (SELECT 1 FROM dashboard_events prior WHERE prior.target=e.target AND prior.call_sid=e.call_sid AND prior.endpoint<>'call' AND prior.state='pending' AND prior.seq<e.seq)) ORDER BY e.seq LIMIT 1", (target, now, now, now)).fetchone()
             if row is None:
                 return None
             token = str(uuid4())
@@ -1927,3 +1932,40 @@ def upsert_listing_candidate(data: dict):
         client.table("properties").update(update).eq("id", existing.data[0]["id"]).execute()
         return existing.data[0]["id"]
     return upsert_property(data)
+
+
+def persist_mls_candidate(candidate):
+    import re
+    apn = candidate.get("apn")
+    if not isinstance(apn, str) or not re.fullmatch(r"[0-9]{8}", apn) or apn == "00000000" or candidate.get("county") != "San Joaquin" or candidate.get("state") != "CA" or not candidate.get("address"):
+        return None
+    payload = {key: candidate[key] for key in ("apn", "address", "city", "state", "county", "beds", "baths", "sqft", "year_built", "distress_type", "distress_score", "deal_viable", "last_list_price") if key in candidate}
+    payload["days_on_market"] = candidate.get("days_on_market", 0)
+    payload["price_reduced"] = candidate.get("distress_type") == "price_reduction"
+    from uuid import UUID
+    tenant = str(UUID(os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")))
+    payload["tenant_id"] = tenant
+    property_id = upsert_listing_candidate(payload)
+    existing = get_lead_by_property(property_id)
+    if existing:
+        return existing['id']
+    from uuid import uuid5, NAMESPACE_URL
+    lead_id = str(uuid5(NAMESPACE_URL, tenant + ':mls:' + property_id))
+    _get_client().table('leads').upsert({'id': lead_id, 'tenant_id': tenant, 'property_id': property_id, 'stage': 'new', 'callable': False}, on_conflict='id', ignore_duplicates=True).execute()
+    saved = get_lead_by_property(property_id)
+    if not saved:
+        raise RuntimeError('MLS lead persistence was not confirmed')
+    _get_client().table('properties').update({'lead_id': saved['id']}).eq('id', property_id).execute()
+    return saved['id']
+
+
+def dashboard_business_source(lead_id):
+    lead = get_lead_with_property(lead_id)
+    if not lead:
+        raise ValueError("Missing canonical lead")
+    return {"lead": lead, "offers": get_offers_for_lead(lead_id)[:20]}
+
+
+def dashboard_lead_refresh_ids(offset=0):
+    rows = _get_client().table("leads").select("id").order("id").range(offset, offset + 99).execute().data
+    return [row['id'] for row in rows if row.get('id')]
