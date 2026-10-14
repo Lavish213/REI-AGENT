@@ -50,7 +50,7 @@ async def publish_business(call_sid, lead_id):
     source = await asyncio.to_thread(db.dashboard_business_source, lead_id)
     snapshot = build_snapshot(lead_id, source)
     revision = hashlib.sha256(json.dumps(snapshot, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-    return await enqueue_event('business', {'call_sid': call_sid, 'lead_id': lead_id, 'revision': revision, 'snapshot': snapshot, 'lead_name': label(source['lead'].get('owner_name'), 200) or 'Unverified seller', 'address': snapshot['address'], 'occurred_at': datetime.now(timezone.utc).isoformat()})
+    return await enqueue_event('business', {'call_sid': call_sid, 'lead_id': lead_id, 'revision': revision, 'snapshot': snapshot, 'lead_name': label(source['lead'].get('owner_name'), 200) or 'Unverified seller', 'phone': label(source['lead'].get('owner_phone'), 40), 'email': label(source['lead'].get('owner_email'), 320), 'address': snapshot['address'], 'occurred_at': datetime.now(timezone.utc).isoformat()})
 
 
 async def refresh_business(call_sid, lead_id):

@@ -93,13 +93,13 @@ def assemble_intel_packet(lead_id: str) -> dict:
     }
 
     property_profile = {
-        "address": {"value": prop.get("address"), "source": "db", "updated_at": lead.get("last_contact_at")},
+        "address": {"value": prop.get("address"), "source": "db", "updated_at": prop.get("updated_at")},
         "arv": {"value": arv_cents, "unit": "USD_cents", "source": "unverified_cached_property", "updated_at": prop.get("updated_at"), "confidence": arv_confidence},
-        "mao": {"value": mao_cents, "unit": "USD_cents", "source": "comps", "updated_at": lead.get("last_contact_at")},
-        "distress_type": {"value": prop.get("distress_type"), "source": "db", "updated_at": lead.get("last_contact_at")},
-        "distress_score": {"value": prop.get("distress_score"), "source": "db", "updated_at": lead.get("last_contact_at")},
-        "equity_pct": {"value": prop.get("equity_pct"), "source": "db", "updated_at": lead.get("last_contact_at")},
-        "auction_date": {"value": prop.get("auction_date"), "source": "db", "updated_at": lead.get("last_contact_at")},
+        "mao": {"value": mao_cents, "unit": "USD_cents", "source": "unverified_cached_property", "updated_at": prop.get("updated_at")},
+        "distress_type": {"value": prop.get("distress_type"), "source": "db", "updated_at": prop.get("updated_at")},
+        "distress_score": {"value": prop.get("distress_score"), "source": "db", "updated_at": prop.get("updated_at")},
+        "equity_pct": {"value": prop.get("equity_pct"), "source": "db", "updated_at": prop.get("updated_at")},
+        "auction_date": {"value": prop.get("auction_date"), "source": "db", "updated_at": prop.get("updated_at")},
     }
 
     bob_packet = existing or {}
