@@ -94,3 +94,16 @@ async def test_slow_dashboard_refresh_does_not_delay_spoken_tool_result(monkeypa
     callback.assert_awaited_once_with('Confirmed tool result')
     gate.set()
     await ctx._business_refresh_task
+
+
+def test_same_record_can_refresh_observation_without_changing_prices(monkeypatch):
+    from datetime import datetime, timezone
+    first = business.build_snapshot('lead-1', source())
+    class Later(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2099, 1, 1, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(business, 'datetime', Later)
+    second = business.build_snapshot('lead-1', source())
+    assert first['observation_hour'] != second['observation_hour']
+    assert first['offers'] == second['offers']
