@@ -1,4 +1,5 @@
 from loguru import logger
+from decimal import Decimal, InvalidOperation
 
 try:
     from homeharvest import scrape_property
@@ -7,19 +8,18 @@ except ImportError:
     _HH_AVAILABLE = False
     logger.warning("homeharvest not installed — expired scraper disabled")
 
-from backend.lib.db import _get_client as _db
+from backend.lib.db import upsert_listing_candidate
 
 
 _LOCATION = "San Joaquin County, CA"
-_EXPIRED_DOM = 60
-_PRICE_DROP_PCT = 5.0
 
 
 def _upsert_distress(row: dict, distress_type: str) -> None:
-    client = _db()
-    apn = str(row.get("mls") or row.get("property_url") or "").strip()
-    if not apn:
-        return
+    apn = str(row.get("apn") or "").strip().replace("-", "")
+    county = str(row.get("county") or "").strip().lower()
+    if len(apn) != 8 or not apn.isascii() or not apn.isdigit() or apn == "00000000" or county not in {"san joaquin", "san joaquin county"} or row.get("state") != "CA":
+        logger.warning("listing_candidate_missing_canonical_parcel_or_county")
+        return False
 
     def _safe_str(val, default="") -> str:
         if val is None or str(val) in ("nan", "<NA>", "NA", "None"):
@@ -29,45 +29,31 @@ def _upsert_distress(row: dict, distress_type: str) -> None:
     def _safe_int(val, default=0) -> int:
         try:
             return int(val) if val is not None and str(val) not in ("nan", "<NA>", "NA", "None") else default
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):
             return default
 
     def _safe_float(val) -> float | None:
         try:
             return float(val) if val is not None and str(val) not in ("nan", "<NA>", "NA", "None") else None
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):
             return None
 
     address = _safe_str(row.get("street"))
     city = _safe_str(row.get("city"))
     state = _safe_str(row.get("state"), "CA")
     zip_code = _safe_str(row.get("zip_code"))
-    list_price = _safe_int(row.get("list_price"))
+    try:
+        price = Decimal(str(row.get("list_price")))
+        if not price.is_finite() or price <= 0 or price > 10**12 or price * 100 != (price * 100).to_integral_value():
+            return False
+        list_price_cents = int(price * 100)
+    except (InvalidOperation, ValueError, TypeError):
+        return False
     dom = _safe_int(row.get("days_on_market"))
     beds = _safe_int(row.get("beds")) or None
     baths = _safe_float(row.get("full_baths"))
     sqft = _safe_int(row.get("sqft")) or None
     year_built = _safe_int(row.get("year_built")) or None
-
-    existing = (
-        client.table("properties")
-        .select("id, last_list_price, price_reduced")
-        .eq("apn", apn)
-        .limit(1)
-        .execute()
-    )
-
-    price_reduced = False
-    if existing.data:
-        last_price = existing.data[0].get("last_list_price") or 0
-        if last_price > 0 and list_price > 0:
-            drop_pct = (last_price - list_price) / last_price * 100
-            if drop_pct >= _PRICE_DROP_PCT:
-                price_reduced = True
-                logger.info(
-                    "price_reduced apn={} prev={} curr={} drop={:.1f}%",
-                    apn, last_price, list_price, drop_pct,
-                )
 
     payload = {
         "apn": apn,
@@ -77,10 +63,11 @@ def _upsert_distress(row: dict, distress_type: str) -> None:
         "zip": zip_code,
         "distress_type": distress_type,
         "distress_score": 57,
-        "deal_viable": True,
+        "deal_viable": False,
         "days_on_market": dom,
-        "last_list_price": list_price,
-        "price_reduced": price_reduced,
+        "last_list_price": list_price_cents,
+        "price_reduced": False,
+        "county": "San Joaquin",
     }
 
     if beds is not None:
@@ -92,8 +79,9 @@ def _upsert_distress(row: dict, distress_type: str) -> None:
     if year_built is not None:
         payload["year_built"] = year_built
 
-    client.table("properties").upsert(payload, on_conflict="apn").execute()
-    logger.debug("upserted apn={} distress_type={} price_reduced={}", apn, distress_type, price_reduced)
+    upsert_listing_candidate(payload)
+    logger.debug("listing_candidate_saved apn={} type={}", apn, distress_type)
+    return True
 
 
 def run_expired_scraper() -> None:
@@ -123,17 +111,12 @@ def run_expired_scraper() -> None:
     fsbo_count = 0
 
     for _, row in df.iterrows():
-        dom = row.get("days_on_market")
-        raw_agent = row.get("agent_name")
-        agent = "" if (raw_agent is None or str(raw_agent) in ("nan", "<NA>", "NA")) else str(raw_agent).strip()
-        is_fsbo = not agent
-
+        status = str(row.get("status") or "").strip().lower()
+        is_fsbo = row.get("is_fsbo") is True
         if is_fsbo:
-            _upsert_distress(row, "fsbo")
-            fsbo_count += 1
-        elif dom is not None and int(dom) >= _EXPIRED_DOM:
-            _upsert_distress(row, "expired_listing")
-            expired_count += 1
+            fsbo_count += int(bool(_upsert_distress(row, "fsbo")))
+        elif status == "expired":
+            expired_count += int(bool(_upsert_distress(row, "expired_listing")))
 
     logger.info(
         "run_expired_scraper complete expired={} fsbo={}",

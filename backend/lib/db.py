@@ -1917,3 +1917,13 @@ def _private_journal_connection(path, statements):
         raise
     finally:
         os.close(lock)
+
+
+def upsert_listing_candidate(data: dict):
+    client = _get_client()
+    existing = client.table("properties").select("id").eq("apn", data["apn"]).limit(1).execute()
+    if existing.data:
+        update = {key: data[key] for key in ("days_on_market", "last_list_price", "price_reduced")}
+        client.table("properties").update(update).eq("id", existing.data[0]["id"]).execute()
+        return existing.data[0]["id"]
+    return upsert_property(data)

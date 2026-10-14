@@ -1,3 +1,4 @@
+import { bobEvidence } from '@/lib/bob-evidence'
 import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 
@@ -204,6 +205,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const events = eventsRes.data ?? []
   const offers = offersRes.data ?? []
   const latestCall = calls[0] ?? null
+  const bob = bobEvidence(lead.call_brief, id)
 
   const address = prop.address ?? lead.address ?? '—'
   const hasHotIndicator = lead.is_hot_lead || lead.escalated
@@ -449,6 +451,20 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
         {/* ─── Right: 1/3 wide ─── */}
         <div className="space-y-4">
+
+          <section className="bg-gray-800 rounded-lg p-4 space-y-2">
+            <h2 className="text-sm font-semibold text-gray-300">Bob research and readiness</h2>
+            {bob ? <>
+              <p className="text-xs text-gray-400">Phase: {bob.phase} · Missing: {bob.missing}</p>
+              <p className="text-xs text-gray-400">Expires: {formatDate(bob.expires)}</p>
+              {bob.pricing ? <>
+                <p className="text-sm text-gray-200">{bob.pricing.purpose === 'after_repair' ? 'Reviewed ARV advisory' : 'Reviewed as-is advisory'}: {formatCurrency(bob.pricing.point)}</p>
+                <p className="text-xs text-gray-400">Adjusted sale span: {formatCurrency(bob.pricing.low)} – {formatCurrency(bob.pricing.high)}</p>
+                <p className="text-xs text-gray-400">{bob.pricing.count} reviewed sales · Effective {bob.pricing.asOf}</p>
+              </> : <p className="text-xs text-amber-300">No current reviewed valuation available.</p>}
+            </> : <p className="text-xs text-amber-300">Bob brief unavailable, expired or invalid. Recompute before relying on research.</p>}
+            <p className="text-xs text-gray-400">Research does not authorize a call or an offer. Approved offers and saved appointments appear separately below.</p>
+          </section>
 
           {/* Appointment + Walkthrough */}
           <section className="bg-gray-800 rounded-lg p-4">
