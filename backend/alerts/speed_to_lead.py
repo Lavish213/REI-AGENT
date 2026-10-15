@@ -115,6 +115,7 @@ def recover_speed_touches(limit=20):
     if type(limit) is not int or not 1 <= limit <= 100:
         raise ValueError("Bounded recovery batch required")
     db.recover_inbound_email()
+    db.recover_email_resumptions()
     outcomes = {"completed": 0, "skipped": 0, "deferred": 0, "quarantined": 0}
     for _ in range(limit):
         job = db.claim_workflow_job()
