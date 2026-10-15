@@ -92,7 +92,7 @@ def send_email(to: str, subject: str, body: str, lead_id: str = "") -> bool:
         return False
     from backend.lib import db
     try:
-        if db.email_address_is_suppressed(to):
+        if db.email_address_is_suppressed(to) or (lead_id and db.local_lead_reply_hold(lead_id)["opted_out"]):
             return False
     except Exception as error:
         logger.error("email_suppression_unavailable error={}", str(error))
@@ -146,6 +146,13 @@ def send_email(to: str, subject: str, body: str, lead_id: str = "") -> bool:
 
 
 def send_drip_email(to: str, subject: str, body: str, lead_id: str) -> bool:
+    from backend.lib import db
+    try:
+        if db.local_lead_reply_hold(lead_id)["email_paused"]:
+            return False
+    except Exception as error:
+        logger.error("email_reply_hold_unavailable error={}", str(error))
+        return False
     sent = send_email(to, subject, body, lead_id)
     if sent:
         logger.info("drip_email sent to={} lead_id={} subject={}", to, lead_id, subject)

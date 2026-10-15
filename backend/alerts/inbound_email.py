@@ -21,7 +21,7 @@ def verify_adapter(body, timestamp, signature):
 
 def accept_reply(payload):
     receipt = db.stage_inbound_email(payload)
-    if payload["text"].strip().lower() in {"stop", "unsubscribe", "remove me", "do not contact me"}:
+    if db.email_reply_is_stop(payload["text"]):
         db.suppress_email_address(payload["sender"])
     db.recover_inbound_email()
     return receipt
