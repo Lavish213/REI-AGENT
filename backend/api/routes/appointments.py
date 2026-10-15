@@ -60,3 +60,34 @@ async def source_candidate_review(identity: str, body: dict):
         return await run_in_threadpool(review_source_candidate, identity, body['actor_id'], body['decision'], body['reason'], body['fingerprint'], body.get('lead_id'))
     except (KeyError, ValueError, TypeError) as error:
         raise HTTPException(422, 'Explicit candidate review required') from error
+
+
+@router.get('/operations/price-reviews')
+async def price_reviews(page: int = 1):
+    from backend.lib.db import list_source_price_reviews
+    try:
+        return await run_in_threadpool(list_source_price_reviews, page)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@router.post('/operations/price-reviews/{identity}/resolve')
+async def resolve_price_review(identity: str, body: dict):
+    from backend.lib.db import resolve_source_price_review
+    try:
+        return await run_in_threadpool(resolve_source_price_review, identity, body)
+    except (ValueError, TypeError, KeyError) as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(409, 'Decision not confirmed; refresh source review') from error
+
+
+@router.post('/operations/command')
+async def source_operation(body: dict):
+    from backend.lib.db import apply_source_operation
+    try:
+        return await run_in_threadpool(apply_source_operation, body)
+    except (ValueError, TypeError, KeyError) as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(409, 'Operation not applied; refresh source version and review') from error
