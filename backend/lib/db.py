@@ -2182,6 +2182,9 @@ def _workflow_journal():
         "CREATE TABLE IF NOT EXISTS inbound_email (id TEXT PRIMARY KEY, tenant TEXT NOT NULL, lead_id TEXT NOT NULL, fingerprint TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, state TEXT NOT NULL DEFAULT 'pending', error TEXT)",
         "CREATE INDEX IF NOT EXISTS inbound_email_lead ON inbound_email(tenant,lead_id)",
         "CREATE INDEX IF NOT EXISTS email_threads_address ON email_threads(tenant,email)",
+        "CREATE TABLE IF NOT EXISTS email_reply_cutoffs (tenant TEXT NOT NULL, lead_id TEXT NOT NULL, through_seq INTEGER NOT NULL, request_id TEXT NOT NULL, PRIMARY KEY(tenant,lead_id))",
+        "CREATE TABLE IF NOT EXISTS email_resume_reviews (id TEXT PRIMARY KEY, tenant TEXT NOT NULL, lead_id TEXT NOT NULL, fingerprint TEXT NOT NULL, through_seq INTEGER NOT NULL, view_fingerprint TEXT NOT NULL, actor_id TEXT NOT NULL, reason TEXT NOT NULL, email TEXT NOT NULL, reply_ids TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', error TEXT, created REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0)",
+
     ))
     connection.create_function("email_reply_is_stop", 1, email_reply_is_stop, deterministic=True)
     try:
@@ -2237,8 +2240,10 @@ def workflow_journal_health():
     with _workflow_journal() as connection:
         jobs = {row["state"]: row["n"] for row in connection.execute("SELECT state,count(*) AS n FROM durable_jobs WHERE tenant=? GROUP BY state", (tenant,))}
         email = {row["state"]: row["n"] for row in connection.execute("SELECT state,count(*) AS n FROM inbound_email WHERE tenant=? GROUP BY state", (tenant,))}
+        resume = {row['state']: row['n'] for row in connection.execute("SELECT state,count(*) AS n FROM email_resume_reviews WHERE tenant=? GROUP BY state", (tenant,))}
+        resume_review = connection.execute("SELECT count(*) FROM email_resume_reviews r WHERE r.tenant=? AND r.state='requires_review' AND r.through_seq>coalesce((SELECT through_seq FROM email_reply_cutoffs c WHERE c.tenant=r.tenant AND c.lead_id=r.lead_id),0)", (tenant,)).fetchone()[0]
         oldest = connection.execute("SELECT min(due) FROM durable_jobs WHERE tenant=? AND state='pending'", (tenant,)).fetchone()[0]
-    return {"jobs": jobs, "email": email, "oldest_due_seconds": max(0, time.time() - oldest) if oldest is not None else 0, "requires_review": jobs.get("quarantined", 0) + email.get("quarantined", 0), "review_owner_configured": bool(os.environ.get("WORKFLOW_REVIEW_OWNER_ID"))}
+    return {"jobs": jobs, "email": email, "oldest_due_seconds": max(0, time.time() - oldest) if oldest is not None else 0, "requires_review": jobs.get("quarantined", 0) + email.get("quarantined", 0) + resume_review, "email_resumptions": resume, "review_owner_configured": bool(os.environ.get("WORKFLOW_REVIEW_OWNER_ID"))}
 
 
 def register_email_thread(lead_id, email):
@@ -2295,8 +2300,17 @@ def email_reply_is_stop(text):
 def local_lead_reply_hold(lead_id):
     tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
     with _workflow_journal() as connection:
-        row = connection.execute("SELECT count(*) AS replies,coalesce(max(email_reply_is_stop(json_extract(payload,'$.text'))),0) AS opted_out FROM inbound_email WHERE tenant=? AND lead_id=?", (tenant, lead_id)).fetchone()
-    return {"email_paused": bool(row["replies"]), "opted_out": bool(row["opted_out"])}
+        row = connection.execute("SELECT coalesce(sum(rowid>coalesce((SELECT through_seq FROM email_reply_cutoffs WHERE tenant=? AND lead_id=?),0)),0) AS replies,coalesce(max(email_reply_is_stop(json_extract(payload,'$.text'))),0) AS opted_out FROM inbound_email WHERE tenant=? AND lead_id=?", (tenant, lead_id, tenant, lead_id)).fetchone()
+    return {"email_paused": bool(row["replies"]), "opted_out": bool(row["opted_out"]) or local_lead_phone_suppressed(lead_id)}
+
+
+def local_lead_phone_suppressed(lead_id):
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    connection = _suppression_journal()
+    try:
+        return connection.execute('SELECT 1 FROM contact_suppression WHERE tenant_id=? AND lead_id=? LIMIT 1', (tenant, lead_id)).fetchone() is not None
+    finally:
+        connection.close()
 
 
 def local_reply_email_blocked(email):
@@ -2488,3 +2502,121 @@ def apply_source_operation(payload):
     if receipt != payload['id']:
         raise RuntimeError('Source operation persistence not confirmed')
     return {'schema_version': 1, 'persisted': True, 'receipt_id': receipt, 'lead_id': payload['lead_id'], 'action': action}
+
+
+def _email_hold_snapshot(connection, tenant, lead_id):
+    import hashlib
+    import json
+    totals = connection.execute("SELECT count(*) AS count,max(rowid) AS through_seq,coalesce(max(email_reply_is_stop(json_extract(payload,'$.text'))),0) AS stopped,coalesce(sum(state<>'applied'),0) AS pending FROM inbound_email WHERE tenant=? AND lead_id=?", (tenant, lead_id)).fetchone()
+    if not totals['count']:
+        return None
+    cutoff = connection.execute("SELECT through_seq FROM email_reply_cutoffs WHERE tenant=? AND lead_id=?", (tenant, lead_id)).fetchone()
+    cutoff = cutoff['through_seq'] if cutoff else 0
+    rows = connection.execute("SELECT i.rowid AS seq,i.id,i.payload,t.email FROM inbound_email i LEFT JOIN email_threads t ON t.tenant=i.tenant AND t.lead_id=i.lead_id AND t.token=json_extract(i.payload,'$.thread_token') WHERE i.tenant=? AND i.lead_id=? ORDER BY i.rowid DESC LIMIT 501", (tenant, lead_id)).fetchall()
+    latest = rows[0]
+    state = {'tenant': tenant, 'lead_id': lead_id, 'through_seq': totals['through_seq'], 'count': totals['count'], 'stopped': bool(totals['stopped']), 'pending': totals['pending'], 'email': latest['email'], 'cutoff': cutoff, 'reply_ids': sorted(row['id'] for row in rows)}
+    state['fingerprint'] = hashlib.sha256(json.dumps(state, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    state['text'] = json.loads(latest['payload'])['text'][:1000]
+    state['paused'] = state['through_seq'] > cutoff
+    state['can_resume'] = state['paused'] and not state['stopped'] and not state['pending'] and state['count'] <= 500 and bool(state['email'])
+    review = connection.execute("SELECT state,error FROM email_resume_reviews WHERE tenant=? AND lead_id=? AND through_seq=? ORDER BY created DESC LIMIT 1", (tenant, lead_id, state['through_seq'])).fetchone()
+    state['review_state'] = review['state'] if review else None
+    state['error'] = review['error'] if review else None
+    return state
+
+
+def list_email_reply_holds(page=1):
+    if type(page) is not int or not 1 <= page <= 100000:
+        raise ValueError('Bounded review page required')
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _workflow_journal() as connection:
+        leads = connection.execute("SELECT lead_id FROM inbound_email i WHERE tenant=? GROUP BY lead_id HAVING max(rowid)>coalesce((SELECT through_seq FROM email_reply_cutoffs c WHERE c.tenant=i.tenant AND c.lead_id=i.lead_id),0) ORDER BY min(created),lead_id LIMIT 50 OFFSET ?", (tenant, (page-1)*50)).fetchall()
+        items = [_email_hold_snapshot(connection, tenant, row['lead_id']) for row in leads]
+    for item in items:
+        if local_lead_phone_suppressed(item['lead_id']):
+            item['stopped'] = True
+            item['can_resume'] = False
+    return {'items': [{key: value for key, value in item.items() if key not in {'tenant', 'reply_ids', 'cutoff'}} for item in items], 'page': page}
+
+
+def _apply_email_resumption(identity):
+    import json
+    import time
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _workflow_journal() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        row = connection.execute("SELECT * FROM email_resume_reviews WHERE id=? AND tenant=?", (identity, tenant)).fetchone()
+        if row is None or row['state'] != 'pending':
+            return
+        review = dict(row)
+        snapshot = _email_hold_snapshot(connection, tenant, row['lead_id'])
+        if row['attempts'] >= 30 or time.time()-row['created'] > 86400:
+            connection.execute("UPDATE email_resume_reviews SET state='requires_review',error='retry_budget_exhausted' WHERE id=? AND state='pending'", (identity,))
+            return
+        expected_ids = json.loads(row['reply_ids'])
+        if not snapshot or snapshot['stopped'] or snapshot['pending'] or snapshot['reply_ids'] != expected_ids or snapshot['through_seq'] != row['through_seq'] or snapshot['email'] != row['email']:
+            connection.execute("UPDATE email_resume_reviews SET state='requires_review',error='reply_evidence_changed' WHERE id=? AND state='pending'", (identity,))
+            return
+        connection.execute("UPDATE email_resume_reviews SET attempts=attempts+1 WHERE id=? AND state='pending'", (identity,))
+    try:
+        if local_lead_phone_suppressed(review['lead_id']) or email_address_is_suppressed(review['email']):
+            raise ValueError('Email address remains suppressed')
+        receipt = _get_client().rpc('resume_reviewed_email', {'p_id': identity, 'p_tenant': tenant, 'p_lead': review['lead_id'], 'p_actor': review['actor_id'], 'p_reason': review['reason'], 'p_email': review['email'], 'p_replies': expected_ids, 'p_fingerprint': review['fingerprint']}).execute().data
+        if receipt != identity:
+            raise RuntimeError('Source resumption receipt not confirmed')
+        with _workflow_journal() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            current = connection.execute("SELECT state FROM email_resume_reviews WHERE id=? AND tenant=?", (identity, tenant)).fetchone()
+            if current is None or current['state'] != 'pending':
+                return
+            latest = _email_hold_snapshot(connection, tenant, review['lead_id'])
+            if local_lead_phone_suppressed(review['lead_id']) or not latest or latest['stopped'] or latest['pending'] or latest['through_seq'] != review['through_seq'] or latest['reply_ids'] != expected_ids or latest['email'] != review['email']:
+                connection.execute("UPDATE email_resume_reviews SET state='requires_review',error='reply_evidence_changed' WHERE id=? AND state='pending'", (identity,))
+                return
+            connection.execute("INSERT INTO email_reply_cutoffs(tenant,lead_id,through_seq,request_id) VALUES(?,?,?,?) ON CONFLICT(tenant,lead_id) DO UPDATE SET through_seq=max(email_reply_cutoffs.through_seq,excluded.through_seq),request_id=excluded.request_id", (tenant, review['lead_id'], review['through_seq'], identity))
+            connection.execute("UPDATE email_resume_reviews SET state='applied',error=NULL WHERE id=? AND state='pending'", (identity,))
+    except Exception as error:
+        with _workflow_journal() as connection:
+            connection.execute("UPDATE email_resume_reviews SET state=?,error=? WHERE id=? AND state='pending'", ('requires_review' if isinstance(error, ValueError) or getattr(error, 'code', None) == 'P0001' else 'pending', type(error).__name__, identity))
+        logger.warning('email_resume_pending request_id={} type={}', identity, type(error).__name__)
+
+
+def review_email_resumption(lead_id, body):
+    import hashlib
+    import json
+    import time
+    from uuid import UUID
+    if not isinstance(body, dict) or set(body) != {'request_id', 'actor_id', 'reason', 'fingerprint'}:
+        raise ValueError('Explicit operator review required')
+    identity, actor = str(UUID(body['request_id'])), str(UUID(body['actor_id']))
+    UUID(lead_id)
+    if not isinstance(body['reason'], str) or not 10 <= len(body['reason'].strip()) <= 1000 or not isinstance(body['fingerprint'], str) or not re.fullmatch('[0-9a-f]{64}', body['fingerprint']):
+        raise ValueError('Review reason and current fingerprint required')
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    decision = hashlib.sha256(json.dumps({'lead_id': lead_id, **body}, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    with _workflow_journal() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        existing = connection.execute('SELECT * FROM email_resume_reviews WHERE id=?', (identity,)).fetchone()
+        if existing:
+            if existing['tenant'] != tenant or existing['lead_id'] != lead_id or existing['fingerprint'] != decision:
+                raise ValueError('Conflicting reviewed resumption replay')
+        else:
+            snapshot = _email_hold_snapshot(connection, tenant, lead_id)
+            if not snapshot or not snapshot['can_resume'] or snapshot['fingerprint'] != body['fingerprint']:
+                raise ValueError('New reply review required; STOP cannot be resumed')
+            connection.execute("INSERT INTO email_resume_reviews(id,tenant,lead_id,fingerprint,through_seq,view_fingerprint,actor_id,reason,email,reply_ids,created) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (identity, tenant, lead_id, decision, snapshot['through_seq'], body['fingerprint'], actor, body['reason'].strip(), snapshot['email'], json.dumps(snapshot['reply_ids']), time.time()))
+    _apply_email_resumption(identity)
+    with _workflow_journal() as connection:
+        state = connection.execute('SELECT state FROM email_resume_reviews WHERE id=? AND tenant=?', (identity, tenant)).fetchone()['state']
+    return {'schema_version': 1, 'persisted': True, 'request_id': identity, 'lead_id': lead_id, 'state': state}
+
+
+def recover_email_resumptions(limit=20):
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError('Bounded resumption recovery required')
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _workflow_journal() as connection:
+        rows = connection.execute("SELECT id FROM email_resume_reviews WHERE tenant=? AND state='pending' ORDER BY created LIMIT ?", (tenant, limit)).fetchall()
+    for row in rows:
+        _apply_email_resumption(row['id'])
+    return {'processed': len(rows)}

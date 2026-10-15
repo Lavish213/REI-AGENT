@@ -11,6 +11,7 @@ from backend.alerts import speed_to_lead, inbound_email
 
 @pytest.fixture
 def journal(tmp_path, monkeypatch):
+    monkeypatch.setenv('CONTACT_SUPPRESSION_PATH', str(tmp_path / 'contact.sqlite3'))
     monkeypatch.setenv('WORKFLOW_JOURNAL_PATH', str(tmp_path / 'workflows.sqlite3'))
     monkeypatch.setenv('COMMUNICATION_JOURNAL_PATH', str(tmp_path / 'messages.sqlite3'))
     return datetime.now(timezone.utc)

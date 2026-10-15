@@ -91,3 +91,21 @@ async def source_operation(body: dict):
         raise HTTPException(422, str(error)) from error
     except Exception as error:
         raise HTTPException(409, 'Operation not applied; refresh source version and review') from error
+
+
+@router.get('/operations/email-holds')
+async def email_holds(page: int = 1):
+    from backend.lib.db import list_email_reply_holds
+    try:
+        return await run_in_threadpool(list_email_reply_holds, page)
+    except (ValueError, TypeError) as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@router.post('/operations/email-holds/{lead_id}/resume', status_code=202)
+async def resume_email(lead_id: str, body: dict):
+    from backend.lib.db import review_email_resumption
+    try:
+        return await run_in_threadpool(review_email_resumption, lead_id, body)
+    except (ValueError, TypeError, KeyError) as error:
+        raise HTTPException(409, 'Resumption needs a current operator review; STOP remains blocked') from error
