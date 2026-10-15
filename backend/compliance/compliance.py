@@ -35,12 +35,12 @@ def _check_dnc(phone: str) -> bool:
 class ComplianceEngine:
     def check_call_allowed(self, lead_id: str) -> ComplianceResult:
         try:
-            from backend.lib.db import get_lead_with_property
+            from backend.lib.db import get_lead_with_property, local_lead_reply_hold
 
             lead = get_lead_with_property(lead_id)
             if not lead:
                 return ComplianceResult(allowed=False, reason="lead_not_found")
-            if lead.get("opted_out"):
+            if lead.get("opted_out") or local_lead_reply_hold(lead_id)["opted_out"]:
                 return ComplianceResult(allowed=False, reason="opted_out")
             if lead.get("dnc_blocked"):
                 return ComplianceResult(allowed=False, reason="dnc_blocked")
@@ -112,12 +112,12 @@ class ComplianceEngine:
 
     def check_sms_allowed(self, lead_id: str) -> ComplianceResult:
         try:
-            from backend.lib.db import get_lead_with_property
+            from backend.lib.db import get_lead_with_property, local_lead_reply_hold
 
             lead = get_lead_with_property(lead_id)
             if not lead:
                 return ComplianceResult(allowed=False, reason="lead_not_found")
-            if lead.get("opted_out"):
+            if lead.get("opted_out") or local_lead_reply_hold(lead_id)["opted_out"]:
                 return ComplianceResult(allowed=False, reason="opted_out")
             if lead.get("dnc_blocked"):
                 return ComplianceResult(allowed=False, reason="dnc_blocked")

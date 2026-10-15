@@ -92,3 +92,73 @@ def test_inbound_adapter_signature_covers_exact_body_and_fresh_timestamp(monkeyp
     assert not inbound_email.verify_adapter(body,str(int(stamp)-301),signature)
     monkeypatch.delenv('INBOUND_EMAIL_ADAPTER_SECRET')
     assert not inbound_email.verify_adapter(body,stamp,signature)
+
+
+@pytest.mark.parametrize('text', ['STOP', '\n stop\t', 'unsubscribe', 'remove me', 'do not contact me'])
+def test_stop_holds_all_lead_channels_before_remote_write(journal, monkeypatch, text):
+    from backend.compliance.compliance import ComplianceEngine
+    from backend.alerts import email
+    lead = {'id':'lead', 'tenant_id':'00000000-0000-0000-0000-000000000001', 'owner_email':'seller@example.invalid'}
+    monkeypatch.setattr(db, 'get_lead_with_property', lambda _: lead)
+    token = db.register_email_thread('lead', lead['owner_email'])
+    db.stage_inbound_email({'event_id':'stop', 'thread_token':token, 'sender':lead['owner_email'], 'sender_verified':True, 'text':text})
+    assert db.local_lead_reply_hold('lead') == {'email_paused':True, 'opted_out':True}
+    assert ComplianceEngine().check_call_allowed('lead').reason == 'opted_out'
+    assert ComplianceEngine().check_sms_allowed('lead').reason == 'opted_out'
+    assert db.email_address_is_suppressed(lead['owner_email'])
+    monkeypatch.setenv('OUTBOUND_ENABLED', 'true')
+    provider = MagicMock()
+    monkeypatch.setattr('httpx.post', provider)
+    assert not email.send_email(lead['owner_email'], 'subject', 'body', 'lead')
+    assert not email.send_email('other@example.invalid', 'subject', 'body', 'lead')
+    provider.assert_not_called()
+
+
+def test_reply_pauses_drip_during_outage_without_granting_global_optout(journal, monkeypatch):
+    from backend.alerts import email
+    monkeypatch.setattr(db, 'get_lead_with_property', lambda _: {'tenant_id':'00000000-0000-0000-0000-000000000001', 'owner_email':'seller@example.invalid'})
+    token = db.register_email_thread('lead', 'seller@example.invalid')
+    db.stage_inbound_email({'event_id':'reply', 'thread_token':token, 'sender':'seller@example.invalid', 'sender_verified':True, 'text':'Tuesday works'})
+    assert db.local_lead_reply_hold('lead') == {'email_paused':True, 'opted_out':False}
+    assert not db.email_address_is_suppressed('seller@example.invalid')
+    sender = MagicMock(return_value=True)
+    monkeypatch.setattr(email, 'send_email', sender)
+    assert not email.send_drip_email('seller@example.invalid', 'follow up', 'body', 'lead')
+    sender.assert_not_called()
+    assert db.local_lead_reply_hold('other') == {'email_paused':False, 'opted_out':False}
+    monkeypatch.setenv('TENANT_ID', '00000000-0000-0000-0000-000000000002')
+    assert db.local_lead_reply_hold('lead') == {'email_paused':False, 'opted_out':False}
+    assert not db.local_reply_email_blocked('seller@example.invalid')
+
+
+def test_stop_hold_survives_crash_between_journals_and_recovery(journal, monkeypatch):
+    monkeypatch.setattr(db, 'get_lead_with_property', lambda _: {'tenant_id':'00000000-0000-0000-0000-000000000001', 'owner_email':'seller@example.invalid'})
+    token = db.register_email_thread('lead', 'seller@example.invalid')
+    payload = {'event_id':'stop', 'thread_token':token, 'sender':' \nSELLER@example.invalid\t', 'sender_verified':True, 'text':'STOP'}
+    monkeypatch.setattr(db, 'suppress_email_address', MagicMock(side_effect=RuntimeError('second journal unavailable')))
+    with pytest.raises(RuntimeError):
+        inbound_email.accept_reply(payload)
+    assert db.local_reply_email_blocked(' SELLER@example.invalid ')
+    assert db.local_lead_reply_hold('lead')['opted_out']
+    receipt = db.stage_inbound_email(payload)
+    client = MagicMock()
+    client.rpc.return_value.execute.return_value = SimpleNamespace(data=receipt['receipt_id'])
+    monkeypatch.setattr(db, '_get_client', lambda:client)
+    assert db.recover_inbound_email()['applied'] == 1
+    assert db.local_lead_reply_hold('lead')['opted_out']
+    with pytest.raises(ValueError):
+        db.stage_inbound_email({**payload, 'text':'Tuesday works'})
+    assert db.local_lead_reply_hold('lead')['opted_out']
+
+
+def test_unavailable_hold_denies_calls_sms_and_drip(journal, monkeypatch):
+    from backend.compliance.compliance import ComplianceEngine
+    from backend.alerts import email
+    monkeypatch.setattr(db, 'get_lead_with_property', lambda _: {'id':'lead'})
+    monkeypatch.setattr(db, 'local_lead_reply_hold', MagicMock(side_effect=OSError('journal unavailable')))
+    assert ComplianceEngine().check_call_allowed('lead').reason == 'compliance_unavailable'
+    assert ComplianceEngine().check_sms_allowed('lead').reason == 'compliance_unavailable'
+    sender = MagicMock()
+    monkeypatch.setattr(email, 'send_email', sender)
+    assert not email.send_drip_email('seller@example.invalid', 'subject', 'body', 'lead')
+    sender.assert_not_called()

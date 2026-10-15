@@ -2160,7 +2160,8 @@ def suppress_email_address(email):
 def email_address_is_suppressed(email):
     tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
     with _communication_journal() as connection:
-        return connection.execute("SELECT 1 FROM email_blocks WHERE tenant=? AND email=?", (tenant, email.strip().lower())).fetchone() is not None
+        blocked = connection.execute("SELECT 1 FROM email_blocks WHERE tenant=? AND email=?", (tenant, email.strip().lower())).fetchone() is not None
+    return blocked or local_reply_email_blocked(email)
 
 
 @contextmanager
@@ -2171,7 +2172,10 @@ def _workflow_journal():
         "CREATE INDEX IF NOT EXISTS durable_jobs_due ON durable_jobs(tenant,state,due)",
         "CREATE TABLE IF NOT EXISTS email_threads (token TEXT PRIMARY KEY, tenant TEXT NOT NULL, lead_id TEXT NOT NULL, email TEXT NOT NULL, created REAL NOT NULL)",
         "CREATE TABLE IF NOT EXISTS inbound_email (id TEXT PRIMARY KEY, tenant TEXT NOT NULL, lead_id TEXT NOT NULL, fingerprint TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, state TEXT NOT NULL DEFAULT 'pending', error TEXT)",
+        "CREATE INDEX IF NOT EXISTS inbound_email_lead ON inbound_email(tenant,lead_id)",
+        "CREATE INDEX IF NOT EXISTS email_threads_address ON email_threads(tenant,email)",
     ))
+    connection.create_function("email_reply_is_stop", 1, email_reply_is_stop, deterministic=True)
     try:
         with connection:
             yield connection
@@ -2274,6 +2278,23 @@ def stage_inbound_email(payload):
             return {"receipt_id": identity, "duplicate": True, "state": existing['state']}
         connection.execute("INSERT INTO inbound_email(id,tenant,lead_id,fingerprint,payload,created) VALUES(?,?,?,?,?,?)", (identity, tenant, thread['lead_id'], fingerprint, encoded, time.time()))
     return {"receipt_id": identity, "duplicate": False, "state": "pending"}
+
+
+def email_reply_is_stop(text):
+    return isinstance(text, str) and text.strip().lower() in {"stop", "unsubscribe", "remove me", "do not contact me"}
+
+
+def local_lead_reply_hold(lead_id):
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    with _workflow_journal() as connection:
+        row = connection.execute("SELECT count(*) AS replies,coalesce(max(email_reply_is_stop(json_extract(payload,'$.text'))),0) AS opted_out FROM inbound_email WHERE tenant=? AND lead_id=?", (tenant, lead_id)).fetchone()
+    return {"email_paused": bool(row["replies"]), "opted_out": bool(row["opted_out"])}
+
+
+def local_reply_email_blocked(email):
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    with _workflow_journal() as connection:
+        return connection.execute("SELECT 1 FROM email_threads t JOIN inbound_email i ON i.tenant=t.tenant AND i.lead_id=t.lead_id AND json_extract(i.payload,'$.thread_token')=t.token WHERE t.tenant=? AND t.email=? AND email_reply_is_stop(json_extract(i.payload,'$.text')) LIMIT 1", (tenant, email.strip().lower())).fetchone() is not None
 
 
 def recover_inbound_email(limit=20):
