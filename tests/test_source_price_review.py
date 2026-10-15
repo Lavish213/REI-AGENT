@@ -52,3 +52,13 @@ def test_unconfirmed_source_resolution_is_not_success(price_review):
     client.rpc.return_value.execute.return_value = SimpleNamespace(data='different')
     with pytest.raises(RuntimeError, match='not confirmed'):
         db.resolve_source_price_review(row['id'], {'actor_id': '00000000-0000-0000-0000-000000000099', 'status': 'rejected', 'reason': 'Comparable evidence insufficient', 'fingerprint': item['fingerprint'], 'offer_low_cents': None, 'offer_high_cents': None})
+
+
+@pytest.mark.parametrize('receipt', [None, 123, 'not-a-source-receipt'])
+def test_price_request_requires_real_source_identity(monkeypatch, receipt):
+    client = MagicMock()
+    client.rpc.return_value.execute.return_value = SimpleNamespace(data=receipt)
+    monkeypatch.setattr(db, '_get_client', lambda: client)
+    with pytest.raises(RuntimeError, match='not confirmed'):
+        db.create_approval_request('lead', 'call', 'price_review', 'get_offer_range')
+    client.table.assert_not_called()

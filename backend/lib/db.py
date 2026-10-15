@@ -1289,6 +1289,14 @@ def write_tool_gate_log(lead_id, call_sid, tool_name, permission_level, gate_res
 def create_approval_request(lead_id, call_sid, approval_type, requested_action, risk_reason="", context_snapshot=None, expires_minutes=2, priority="high") -> str:
     from datetime import datetime, timezone, timedelta
     client = _get_client()
+    if approval_type == "price_review":
+        tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+        if type(expires_minutes) is not int or not 1 <= expires_minutes <= 30:
+            raise ValueError('Bounded price review expiry required')
+        identity = client.rpc('request_source_price_review', {'p_tenant': tenant, 'p_lead': lead_id, 'p_call': call_sid, 'p_action': requested_action, 'p_reason': risk_reason, 'p_context': context_snapshot or {}, 'p_minutes': expires_minutes}).execute().data
+        if not isinstance(identity, str) or not re.fullmatch('[0-9a-fA-F-]{32,36}', identity):
+            raise RuntimeError('Price review creation persistence not confirmed')
+        return identity
     ikey = _idem_key(lead_id, call_sid or "", approval_type, requested_action)
     expires_at = (datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)).isoformat()
     try:
