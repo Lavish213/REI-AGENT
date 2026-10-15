@@ -2173,7 +2173,7 @@ def _workflow_journal():
         "CREATE TABLE IF NOT EXISTS email_threads (token TEXT PRIMARY KEY, tenant TEXT NOT NULL, lead_id TEXT NOT NULL, email TEXT NOT NULL, created REAL NOT NULL)",
         "CREATE TABLE IF NOT EXISTS inbound_email (id TEXT PRIMARY KEY, tenant TEXT NOT NULL, lead_id TEXT NOT NULL, fingerprint TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, state TEXT NOT NULL DEFAULT 'pending', error TEXT)",
         "CREATE INDEX IF NOT EXISTS inbound_email_lead ON inbound_email(tenant,lead_id)",
-        "CREATE INDEX IF NOT EXISTS inbound_email_sender ON inbound_email(tenant,lower(trim(json_extract(payload,'$.sender'))))",
+        "CREATE INDEX IF NOT EXISTS email_threads_address ON email_threads(tenant,email)",
     ))
     connection.create_function("email_reply_is_stop", 1, email_reply_is_stop, deterministic=True)
     try:
@@ -2294,7 +2294,7 @@ def local_lead_reply_hold(lead_id):
 def local_reply_email_blocked(email):
     tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
     with _workflow_journal() as connection:
-        return connection.execute("SELECT 1 FROM inbound_email WHERE tenant=? AND lower(trim(json_extract(payload,'$.sender')))=? AND email_reply_is_stop(json_extract(payload,'$.text')) LIMIT 1", (tenant, email.strip().lower())).fetchone() is not None
+        return connection.execute("SELECT 1 FROM email_threads t JOIN inbound_email i ON i.tenant=t.tenant AND i.lead_id=t.lead_id AND json_extract(i.payload,'$.thread_token')=t.token WHERE t.tenant=? AND t.email=? AND email_reply_is_stop(json_extract(i.payload,'$.text')) LIMIT 1", (tenant, email.strip().lower())).fetchone() is not None
 
 
 def recover_inbound_email(limit=20):

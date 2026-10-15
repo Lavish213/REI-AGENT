@@ -134,7 +134,7 @@ def test_reply_pauses_drip_during_outage_without_granting_global_optout(journal,
 def test_stop_hold_survives_crash_between_journals_and_recovery(journal, monkeypatch):
     monkeypatch.setattr(db, 'get_lead_with_property', lambda _: {'tenant_id':'00000000-0000-0000-0000-000000000001', 'owner_email':'seller@example.invalid'})
     token = db.register_email_thread('lead', 'seller@example.invalid')
-    payload = {'event_id':'stop', 'thread_token':token, 'sender':'seller@example.invalid', 'sender_verified':True, 'text':'STOP'}
+    payload = {'event_id':'stop', 'thread_token':token, 'sender':' \nSELLER@example.invalid\t', 'sender_verified':True, 'text':'STOP'}
     monkeypatch.setattr(db, 'suppress_email_address', MagicMock(side_effect=RuntimeError('second journal unavailable')))
     with pytest.raises(RuntimeError):
         inbound_email.accept_reply(payload)
