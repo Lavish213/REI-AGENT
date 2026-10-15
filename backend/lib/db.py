@@ -2055,7 +2055,11 @@ def dashboard_business_source(lead_id):
     prop = lead.get('properties') or {}
     if lead.get('tenant_id') != tenant or not isinstance(prop, dict) or prop.get('tenant_id') != tenant:
         raise ValueError('Business evidence tenant binding required')
-    return {"lead": lead, "offers": get_offers_for_lead(lead_id)[:20], "followups": _get_client().table('followups').select('id,state,scheduled_at,followup_type').eq('lead_id', lead_id).order('scheduled_at').limit(20).execute().data or [], "email_replies": _get_client().table('email_reply_events').select('id,body,created_at').eq('lead_id', lead_id).order('created_at', desc=True).limit(20).execute().data or []}
+    reservations = _get_client().table('voice_appointments').select('id,lead_id,starts_at,status').eq('lead_id', lead_id).order('created_at', desc=True).limit(1).execute().data or []
+    reservation = reservations[0] if reservations else None
+    if reservation is not None and reservation.get('lead_id') != lead_id:
+        raise ValueError('Canonical appointment binding required')
+    return {"lead": lead, "appointment": reservation, "offers": get_offers_for_lead(lead_id)[:20], "followups": _get_client().table('followups').select('id,state,scheduled_at,followup_type').eq('lead_id', lead_id).order('scheduled_at').limit(20).execute().data or [], "email_replies": _get_client().table('email_reply_events').select('id,body,created_at').eq('lead_id', lead_id).order('created_at', desc=True).limit(20).execute().data or []}
 
 
 def dashboard_lead_refresh_ids(offset=0):
