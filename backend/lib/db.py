@@ -2387,3 +2387,96 @@ def review_source_candidate(identity, actor_id, decision, reason, fingerprint, l
     if len(result or []) != 1:
         raise ValueError('Candidate missing or already reviewed')
     return {'id': identity, 'status': decision, 'lead_id': lead_id, 'contact_authorized': False, 'offer_authorized': False}
+
+
+def _source_price_expected(row):
+    prop = offer_subject(row['lead_id'])
+    return {key: row.get(key) for key in ('lead_id', 'call_sid', 'requested_action', 'expires_at')} | {'context_snapshot': row.get('context_snapshot') or {}, 'property_id': prop['id']}
+
+
+def _source_price_fingerprint(identity, expected):
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps({'id': str(identity), 'expected': expected}, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def list_source_price_reviews(page=1):
+    if type(page) is not int or not 1 <= page <= 100000:
+        raise ValueError('Bounded page required')
+    rows = _get_client().table('approval_requests').select('*').eq('approval_type', 'price_review').eq('status', 'pending').gt('expires_at', datetime.now(timezone.utc).isoformat()).order('expires_at').range((page-1)*50, page*50-1).execute().data or []
+    items = []
+    for row in rows:
+        expected = _source_price_expected(row)
+        prop = offer_subject(row['lead_id'])
+        items.append({'id': str(row['id']), 'lead_id': row['lead_id'], 'property_id': expected['property_id'], 'address': prop.get('address'), 'call_sid': row.get('call_sid'), 'requested_action': row.get('requested_action'), 'expires_at': row['expires_at'], 'risk_reason': str(row.get('risk_reason') or '')[:1000], 'fingerprint': _source_price_fingerprint(row['id'], expected)})
+    return {'items': items, 'page': page}
+
+
+def resolve_source_price_review(identity, body):
+    import hashlib
+    import json
+    from uuid import UUID
+    required = {'actor_id', 'status', 'reason', 'fingerprint', 'offer_low_cents', 'offer_high_cents'}
+    if not isinstance(body, dict) or set(body) != required or body['status'] not in {'approved', 'rejected'}:
+        raise ValueError('Explicit bounded price decision required')
+    actor = str(UUID(body['actor_id']))
+    if not isinstance(body['reason'], str) or not 10 <= len(body['reason'].strip()) <= 1000 or not isinstance(body['fingerprint'], str) or not re.fullmatch('[0-9a-f]{64}', body['fingerprint']):
+        raise ValueError('Review fingerprint and reason required')
+    low, high = body['offer_low_cents'], body['offer_high_cents']
+    if body['status'] == 'approved':
+        if type(low) is not int or type(high) is not int or not 0 < low <= high <= 10**14 or low % 100 or high % 100:
+            raise ValueError('Bounded whole-dollar integer-cent range required')
+    elif low is not None or high is not None:
+        raise ValueError('Rejected decision cannot grant pricing')
+    rows = _get_client().table('approval_requests').select('*').eq('id', identity).limit(1).execute().data or []
+    if len(rows) != 1 or rows[0].get('approval_type') != 'price_review':
+        raise ValueError('Price review not found')
+    row = rows[0]
+    expected = _source_price_expected(row)
+    if row.get('status') == 'pending' and body['fingerprint'] != _source_price_fingerprint(identity, expected):
+        raise ValueError('Review changed; refresh before deciding')
+    decision = hashlib.sha256(json.dumps({'id': str(identity), **body}, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    result = _get_client().rpc('resolve_source_price_review', {'p_id': str(identity), 'p_tenant': tenant, 'p_actor': actor, 'p_status': body['status'], 'p_reason': body['reason'], 'p_low': low, 'p_high': high, 'p_expected': expected, 'p_decision': decision}).execute().data
+    if result != str(identity):
+        raise RuntimeError('Source price decision persistence not confirmed')
+    return {'schema_version': 1, 'persisted': True, 'approval_id': str(identity), 'status': body['status'], 'action': 'resolve_price_review'}
+
+
+def apply_source_operation(payload):
+    import hashlib
+    import json
+    from uuid import UUID
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    keys = {'id', 'tenant_id', 'lead_id', 'property_id', 'expected_updated_at', 'action', 'data', 'actor_id', 'reason'}
+    if not isinstance(payload, dict) or set(payload) != keys or payload['tenant_id'] != tenant or not isinstance(payload['reason'], str) or not 10 <= len(payload['reason'].strip()) <= 1000:
+        raise ValueError('Canonical operation and review reason required')
+    for field in ('id', 'tenant_id', 'lead_id', 'property_id', 'actor_id'):
+        UUID(payload[field])
+    expected = datetime.fromisoformat(payload['expected_updated_at'].replace('Z', '+00:00'))
+    if expected.tzinfo is None:
+        raise ValueError('Source version requires timezone')
+    action, data = payload['action'], payload['data']
+    if not isinstance(data, dict):
+        raise ValueError('Explicit operation data required')
+    if action == 'set_disposition':
+        if set(data) != {'disposition'} or data['disposition'] not in {'HOT', 'WARM', 'COLD', 'DEAD'}:
+            raise ValueError('Valid disposition required')
+    elif action == 'cancel_walkthrough':
+        if set(data) != {'starts_at'} or datetime.fromisoformat(data['starts_at'].replace('Z', '+00:00')).tzinfo is None:
+            raise ValueError('Exact dated reservation required')
+    elif action == 'draft_offer':
+        if set(data) != {'amount_cents', 'repair_cents', 'arv_cents'}:
+            raise ValueError('Explicit draft money required')
+        for key, value in data.items():
+            if key == 'arv_cents' and value is None:
+                continue
+            if type(value) is not int or not 0 <= value <= 10**14 or (key != 'repair_cents' and value == 0):
+                raise ValueError('Bounded integer cents required')
+    else:
+        raise ValueError('Unsupported source operation')
+    fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    receipt = _get_client().rpc('apply_source_operation', {'p_id': payload['id'], 'p_tenant': tenant, 'p_lead': payload['lead_id'], 'p_property': payload['property_id'], 'p_expected': payload['expected_updated_at'], 'p_action': action, 'p_payload': data, 'p_actor': payload['actor_id'], 'p_reason': payload['reason'], 'p_fingerprint': fingerprint}).execute().data
+    if receipt != payload['id']:
+        raise RuntimeError('Source operation persistence not confirmed')
+    return {'schema_version': 1, 'persisted': True, 'receipt_id': receipt, 'lead_id': payload['lead_id'], 'action': action}
