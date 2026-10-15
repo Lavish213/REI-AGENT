@@ -123,3 +123,33 @@ async def health_check():
         "agent": os.environ.get("AGENT_FULL_NAME", "Sophia Reyes"),
         "business": os.environ.get("BUSINESS_NAME", "San Joaquin House Buyers"),
     }
+
+
+@router.get("/health/workflow-recovery")
+async def workflow_recovery_health():
+    import asyncio
+    from fastapi import HTTPException
+    from backend.lib.db import workflow_journal_health
+    try:
+        result = await asyncio.to_thread(workflow_journal_health)
+    except Exception as error:
+        raise HTTPException(503, "Workflow journal unavailable") from error
+    return {"status": "degraded" if result["requires_review"] or result["oldest_due_seconds"] > 300 or not result["review_owner_configured"] else "ok", **result}
+
+
+@router.get("/health/workflow-recovery/review")
+async def workflow_review():
+    import asyncio
+    from backend.lib.db import workflow_review_queue
+    return {'items': await asyncio.to_thread(workflow_review_queue)}
+
+
+@router.post("/health/workflow-recovery/{identity}/reconcile")
+async def workflow_reconcile(identity: str, body: dict):
+    import asyncio
+    from fastapi import HTTPException
+    from backend.lib.db import reconcile_workflow_job
+    try:
+        return await asyncio.to_thread(reconcile_workflow_job, identity, body['decision'], body['actor_id'], body['reason'])
+    except (ValueError, TypeError, KeyError) as error:
+        raise HTTPException(422, 'Explicit operator reconciliation required') from error

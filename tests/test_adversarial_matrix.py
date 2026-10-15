@@ -489,7 +489,7 @@ def test_real_backend_route_inventory_is_protected(monkeypatch):
         checked = 0
         for path, operations in app.openapi()["paths"].items():
             methods = {method.upper() for method in operations}
-            if not path.startswith("/api/") or path.startswith("/api/voice/") or path.startswith("/api/sms/inbound") or path in {"/api/email/webhook", "/api/email/unsubscribe"}:
+            if not path.startswith("/api/") or path.startswith("/api/voice/") or path.startswith("/api/sms/inbound") or path in {"/api/email/webhook", "/api/email/unsubscribe", "/api/email/inbound"}:
                 continue
             for method in methods & {"GET", "POST", "PATCH", "DELETE"}:
                 response = client.request(method, path.replace("{lead_id}", "test").replace("{call_id}", "test"))

@@ -117,3 +117,13 @@ def test_business_source_cannot_read_another_tenants_offers(monkeypatch):
     with pytest.raises(ValueError, match='tenant'):
         db.dashboard_business_source('lead-1')
     offers.assert_not_called()
+
+
+def test_snapshot_uses_real_reservation_not_missing_lead_status():
+    value = source()
+    value['lead']['appointment_status'] = None
+    value['appointment'] = {'id':'reservation', 'lead_id':'lead-1', 'starts_at':'2030-01-01T18:00:00+00:00', 'status':'confirmed'}
+    assert business.build_snapshot('lead-1',value)['appointment'] == {'at':'2030-01-01T18:00:00+00:00','status':'confirmed'}
+    value['appointment']['lead_id'] = 'other'
+    with pytest.raises(ValueError):
+        business.build_snapshot('lead-1',value)

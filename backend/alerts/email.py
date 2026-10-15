@@ -87,7 +87,7 @@ def _is_in_hours() -> bool:
     return start <= now_pt.hour < end
 
 
-def send_email(to: str, subject: str, body: str) -> bool:
+def send_email(to: str, subject: str, body: str, lead_id: str = "") -> bool:
     if os.environ.get("OUTBOUND_ENABLED", "false").lower() != "true":
         return False
     from backend.lib import db
@@ -106,6 +106,13 @@ def send_email(to: str, subject: str, body: str) -> bool:
         identity, claimed, receipt = db.claim_message_intent("email", to, subject, body)
         if not claimed:
             return bool(receipt)
+        reply_to = os.environ.get("BUSINESS_EMAIL", "sophia@sanjoaquinhousebuyers.com")
+        domain = os.environ.get("INBOUND_EMAIL_DOMAIN", "")
+        if lead_id and domain:
+            import re
+            if not re.fullmatch(r"[A-Za-z0-9.-]+\.[A-Za-z]{2,63}", domain):
+                raise ValueError("Valid inbound provider domain required")
+            reply_to = "replies+" + db.register_email_thread(lead_id, to) + "@" + domain
         import httpx
         response = httpx.post(
             "https://api.sendgrid.com/v3/mail/send",
@@ -122,7 +129,7 @@ def send_email(to: str, subject: str, body: str) -> bool:
                 "subject": subject,
                 "content": [{"type": "text/plain", "value": body}],
                 "reply_to": {
-                    "email": os.environ.get("BUSINESS_EMAIL", "sophia@sanjoaquinhousebuyers.com"),
+                    "email": reply_to,
                 },
             },
             timeout=10,
@@ -139,7 +146,7 @@ def send_email(to: str, subject: str, body: str) -> bool:
 
 
 def send_drip_email(to: str, subject: str, body: str, lead_id: str) -> bool:
-    sent = send_email(to, subject, body)
+    sent = send_email(to, subject, body, lead_id)
     if sent:
         logger.info("drip_email sent to={} lead_id={} subject={}", to, lead_id, subject)
     return sent
@@ -225,6 +232,8 @@ def handle_email_reply(lead_id: str, from_email: str, body: str) -> None:
 
 
 def _email_tick() -> None:
+    from backend.lib.db import recover_inbound_email
+    recover_inbound_email()
     if not _is_in_hours():
         return
     try:
@@ -319,7 +328,7 @@ def send_offer_summary_email(to, first_name, address, offer_low, offer_high, lea
         f"— Sophia\nSan Joaquin House Buyers\n"
         f"{os.environ.get('SIGNALWIRE_PHONE', '')}"
     )
-    return send_email(to=to, subject=subject, body=body)
+    return send_email(to=to, subject=subject, body=body, lead_id=lead_id)
 
 
 def create_unsubscribe_token(lead_id: str, email: str) -> str:
