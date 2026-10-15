@@ -60,7 +60,7 @@ def test_email_requires_actual_provider_acceptance(status, expected, tmp_path):
     from unittest.mock import MagicMock, patch
     from backend.alerts.email import send_email
     response = MagicMock(status_code=status, headers={'x-message-id': 'accepted-test'})
-    with patch.dict('os.environ', {'SENDGRID_API_KEY': 'test-only', 'OUTBOUND_ENABLED': 'true', 'COMMUNICATION_JOURNAL_PATH': str(tmp_path / 'communications.sqlite3')}), patch('httpx.post', return_value=response):
+    with patch.dict('os.environ', {'SENDGRID_API_KEY': 'test-only', 'OUTBOUND_ENABLED': 'true', 'COMMUNICATION_JOURNAL_PATH': str(tmp_path / 'communications.sqlite3'), 'WORKFLOW_JOURNAL_PATH': str(tmp_path / 'workflows.sqlite3')}), patch('httpx.post', return_value=response):
         assert send_email('owner@example.com', 'Review', 'Test') is expected
 
 
