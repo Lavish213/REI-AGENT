@@ -275,7 +275,6 @@ async def lifespan(app: FastAPI):
             await asyncio.to_thread(db.suppression_journal_health)
             suppression = asyncio.create_task(_suppression_recovery_loop())
         from backend.alerts.delivery import recover_loop
-        await asyncio.to_thread(db.delivery_event_health)
         provider_events = asyncio.create_task(recover_loop())
         delivery = await start_recovery()
         recovery = asyncio.create_task(_bob_fact_recovery_loop()) if os.environ.get("VOICE_FACT_OUTBOX_PATH") else None

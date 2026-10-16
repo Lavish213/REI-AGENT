@@ -174,3 +174,17 @@ async def test_unsigned_sms_callback_is_rejected_before_storage(journal, monkeyp
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='https://source.example.invalid') as client:
         assert (await client.post('/api/voice/sms-status', data=sms())).status_code == 403
     assert db.delivery_event_health()['received'] == 0
+
+
+@pytest.mark.asyncio
+async def test_unavailable_receipt_storage_does_not_stop_other_service_recovery(monkeypatch):
+    import asyncio
+    def readonly():
+        raise PermissionError('private storage detail')
+    async def stop_after_retry_interval(seconds):
+        assert seconds == 5
+        raise asyncio.CancelledError
+    monkeypatch.setattr(db, 'recover_delivery_events', readonly)
+    monkeypatch.setattr(delivery.asyncio, 'sleep', stop_after_retry_interval)
+    with pytest.raises(asyncio.CancelledError):
+        await delivery.recover_loop()
