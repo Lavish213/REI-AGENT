@@ -1,0 +1,46 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const {PGlite}=require('@electric-sql/pglite');
+(async()=>{
+ const db=new PGlite();
+ try {
+  await db.exec(`create role anon;create role authenticated;create role service_role;
+   create table leads(id uuid primary key,tenant_id uuid,owner_email text,email_paused boolean default false,updated_at timestamptz default now());
+   create table sms_messages(tenant_id uuid,lead_id uuid,signalwire_message_id text,direction text,delivery_status text,updated_at timestamptz default now());`);
+  const migration=fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261020_provider_delivery_receipts.sql'),'utf8');
+  await db.exec(migration);await db.exec(migration);
+  const tenant='00000000-0000-0000-0000-000000000001',lead='00000000-0000-0000-0000-000000000020',intent='a'.repeat(64);
+  await db.query("insert into leads(id,tenant_id,owner_email) values ($1,$2,'seller@example.invalid')",[lead,tenant]);
+  await db.query("insert into sms_messages values ($1,$2,'SM123','outbound','sent',now())",[tenant,lead]);
+  const payload=(status,channel='sms')=>({channel,status,message_id:channel==='sms'?'SM123':'internal.id',recipient:channel==='sms'?'+12095550100':'seller@example.invalid'});
+  const apply=(id,data,binding=intent,scope=tenant,lid=lead)=>db.query('select apply_delivery_event($1,$2,$3,$4,$5) as id',[scope,id,binding,lid,data]);
+  await apply('1'.repeat(64),payload('delivered'));
+  await Promise.all(Array.from({length:1000},()=>apply('1'.repeat(64),payload('delivered'))));
+  await apply('2'.repeat(64),payload('queued'));
+  assert.equal((await db.query('select delivery_status from provider_delivery_messages')).rows[0].delivery_status,'delivered');
+  assert.equal((await db.query('select delivery_status from sms_messages')).rows[0].delivery_status,'delivered');
+  await apply('3'.repeat(64),payload('failed'));
+  assert.equal((await db.query('select delivery_status from provider_delivery_messages')).rows[0].delivery_status,'conflicting_receipts');
+  await assert.rejects(apply('1'.repeat(64),payload('sent')),/replay conflict/i);
+  await assert.rejects(apply('4'.repeat(64),{...payload('sent'),recipient:'+12095550200'}),/binding conflict/i);
+  const mailIntent='b'.repeat(64);
+  await apply('5'.repeat(64),payload('click','email'),mailIntent);
+  let message=(await db.query('select * from provider_delivery_messages where intent_id=$1',[mailIntent])).rows[0];
+  assert.equal(message.clicked,true);assert.equal(message.delivery_status,'pending');
+  await apply('6'.repeat(64),payload('delivered','email'),mailIntent);
+  await apply('7'.repeat(64),payload('open','email'),mailIntent);
+  message=(await db.query('select * from provider_delivery_messages where intent_id=$1',[mailIntent])).rows[0];
+  assert.equal(message.delivery_status,'delivered');assert.equal(message.clicked,true);assert.equal(message.opened,true);
+  await apply('8'.repeat(64),payload('unsubscribe','email'),mailIntent);
+  await apply('9'.repeat(64),payload('group_resubscribe','email'),mailIntent);
+  assert.equal((await db.query('select email_paused from leads')).rows[0].email_paused,true);
+  assert.equal((await db.query('select suppressed from provider_delivery_messages where intent_id=$1',[mailIntent])).rows[0].suppressed,true);
+  await db.exec('update leads set email_paused=false');
+  await apply('a'.repeat(64),payload('unsubscribe','email'),'c'.repeat(64),'00000000-0000-0000-0000-000000000002');
+  assert.equal((await db.query('select email_paused from leads')).rows[0].email_paused,false);
+  const target='apply_delivery_event(uuid,text,text,uuid,jsonb)';
+  for(const role of ['anon','authenticated'])assert.equal((await db.query('select has_function_privilege($1,$2,\'EXECUTE\') as allowed',[role,target])).rows[0].allowed,false);
+  console.log('PASS: provider receipt migration, 1000 replays, monotonic evidence, conflicting terminal receipts, separated opens/clicks, permanent suppression, tenant fencing, function permissions');
+ }finally{await db.close();}
+})().catch(error=>{console.error(error);process.exitCode=1});
