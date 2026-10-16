@@ -33,6 +33,8 @@ def normalize_event(channel, event):
         payload = {'channel': channel, 'message_id': event.get('sg_message_id', ''), 'status': status, 'recipient': recipient.strip().lower(), 'occurred_at': timestamp, 'intent_id': event.get('communication_intent') or args.get('communication_intent', ''), 'provider_event_id': event.get('sg_event_id', ''), 'bounce_type': str(event.get('type', ''))[:40]}
     else:
         raise ValueError('Unsupported channel')
+    if channel == 'email' and not payload['message_id'] and status in {'unsubscribe', 'group_unsubscribe', 'spamreport'}:
+        payload['message_id'] = 'unattributed-suppression'
     if not isinstance(payload['message_id'], str) or not 0 < len(payload['message_id']) <= 512:
         raise ValueError('Provider message ID required')
     for field in ('intent_id', 'provider_event_id'):

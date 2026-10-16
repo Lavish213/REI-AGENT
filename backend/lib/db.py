@@ -2629,6 +2629,7 @@ def _delivery_journal():
         'CREATE TABLE IF NOT EXISTS delivery_events (tenant TEXT NOT NULL,id TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL DEFAULT \'pending\',created REAL NOT NULL,error TEXT,PRIMARY KEY(tenant,id))',
         'CREATE TABLE IF NOT EXISTS email_blocks (tenant TEXT NOT NULL,email TEXT NOT NULL,PRIMARY KEY(tenant,email))',
         'CREATE INDEX IF NOT EXISTS delivery_events_pending ON delivery_events(tenant,state,created)',
+        'CREATE TABLE IF NOT EXISTS delivery_attempts (tenant TEXT NOT NULL,id TEXT NOT NULL,attempted REAL NOT NULL,PRIMARY KEY(tenant,id))',
         'CREATE TABLE IF NOT EXISTS delivery_bindings (tenant TEXT NOT NULL,intent_id TEXT NOT NULL,lead_id TEXT NOT NULL,channel TEXT NOT NULL,recipient TEXT NOT NULL,PRIMARY KEY(tenant,intent_id))',
     ))
     try:
@@ -2671,11 +2672,14 @@ def stage_delivery_events(events):
 
 def recover_delivery_events(limit=100):
     import json
+    import time
     tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
     with _delivery_journal() as connection:
-        rows = connection.execute("SELECT id,payload FROM delivery_events WHERE tenant=? AND state='pending' ORDER BY created LIMIT ?", (tenant, min(max(limit, 1), 1000))).fetchall()
+        rows = connection.execute("SELECT e.id,e.payload FROM delivery_events e LEFT JOIN delivery_attempts a ON a.tenant=e.tenant AND a.id=e.id WHERE e.tenant=? AND e.state='pending' ORDER BY coalesce(a.attempted,0),e.created LIMIT ?", (tenant, min(max(limit, 1), 1000))).fetchall()
     synced = 0
     for row in rows:
+        with _delivery_journal() as connection:
+            connection.execute('INSERT INTO delivery_attempts VALUES (?,?,?) ON CONFLICT(tenant,id) DO UPDATE SET attempted=excluded.attempted', (tenant, row['id'], time.time()))
         payload = json.loads(row['payload'])
         try:
             binding = None

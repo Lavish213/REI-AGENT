@@ -188,3 +188,23 @@ async def test_unavailable_receipt_storage_does_not_stop_other_service_recovery(
     monkeypatch.setattr(delivery.asyncio, 'sleep', stop_after_retry_interval)
     with pytest.raises(asyncio.CancelledError):
         await delivery.recover_loop()
+
+
+def test_unbound_backlog_cannot_starve_new_bound_receipts(journal, monkeypatch):
+    for index in range(101):
+        delivery.accept_events('sms', [sms(message='unbound-' + str(index))])
+    assert db.recover_delivery_events()['synced'] == 0
+    bind()
+    delivery.accept_events('sms', [sms('delivered')])
+    class Client:
+        def rpc(self, name, args):
+            return SimpleNamespace(execute=lambda: SimpleNamespace(data=args['p_id']))
+    monkeypatch.setattr(db, '_get_client', Client)
+    result = db.recover_delivery_events()
+    assert result['synced'] == 1 and result['pending'] == 101
+
+
+def test_signed_address_opt_out_without_message_id_still_persists_suppression(journal):
+    delivery.accept_events('email', [email('unsubscribe', sg_message_id='')])
+    assert db.email_address_is_suppressed('seller@example.invalid')
+    assert db.delivery_event_health()['pending'] == 1
