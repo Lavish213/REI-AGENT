@@ -71,6 +71,10 @@ BEGIN
     UPDATE public.leads SET email_paused=true,updated_at=now()
       WHERE tenant_id=p_tenant AND id=p_lead AND lower(btrim(owner_email))=p_payload->>'recipient';
   END IF;
+  IF p_payload->>'channel'='email' AND p_payload->>'status' IN ('unsubscribe','group_unsubscribe','spamreport') AND p_lead IS NOT NULL THEN
+    UPDATE public.leads SET opted_out=true,email_paused=true,updated_at=now()
+      WHERE tenant_id=p_tenant AND id=p_lead AND lower(btrim(owner_email))=p_payload->>'recipient';
+  END IF;
   IF p_payload->>'channel'='sms' AND to_regclass('public.sms_messages') IS NOT NULL THEN
     UPDATE public.sms_messages SET delivery_status=status,updated_at=now()
       WHERE tenant_id=p_tenant AND signalwire_message_id=p_payload->>'message_id' AND direction='outbound' AND lead_id IS NOT DISTINCT FROM p_lead;

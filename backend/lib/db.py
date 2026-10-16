@@ -2723,3 +2723,11 @@ def delivery_event_health():
 def delivery_overview():
     response = _get_client().table('provider_delivery_messages').select('intent_id,lead_id,channel,delivery_status,opened,clicked,suppressed,updated_at').eq('tenant_id', os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')).order('updated_at', desc=True).limit(100).execute()
     return {'schema_version': 1, 'tenant_id': os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001'), 'journal': delivery_event_health(), 'messages': response.data or [], 'limit': 100, 'scope': 'provider_receipts_not_human_read_or_seller_acceptance'}
+
+
+def provider_email_opted_out(email):
+    if not isinstance(email, str) or not email.strip():
+        return False
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _delivery_journal() as connection:
+        return connection.execute("SELECT 1 FROM delivery_events WHERE tenant=? AND json_extract(payload,'$.channel')='email' AND json_extract(payload,'$.recipient')=? AND json_extract(payload,'$.status') IN ('unsubscribe','group_unsubscribe','spamreport') LIMIT 1", (tenant, email.strip().lower())).fetchone() is not None

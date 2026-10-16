@@ -6,7 +6,7 @@ const {PGlite}=require('@electric-sql/pglite');
  const db=new PGlite();
  try {
   await db.exec(`create role anon;create role authenticated;create role service_role;
-   create table leads(id uuid primary key,tenant_id uuid,owner_email text,email_paused boolean default false,updated_at timestamptz default now());
+   create table leads(id uuid primary key,tenant_id uuid,owner_email text,email_paused boolean default false,opted_out boolean default false,updated_at timestamptz default now());
    create table sms_messages(tenant_id uuid,lead_id uuid,signalwire_message_id text,direction text,delivery_status text,updated_at timestamptz default now());`);
   const migration=fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261020_provider_delivery_receipts.sql'),'utf8');
   await db.exec(migration);await db.exec(migration);
@@ -33,6 +33,7 @@ const {PGlite}=require('@electric-sql/pglite');
   message=(await db.query('select * from provider_delivery_messages where intent_id=$1',[mailIntent])).rows[0];
   assert.equal(message.delivery_status,'delivered');assert.equal(message.clicked,true);assert.equal(message.opened,true);
   await apply('8'.repeat(64),payload('unsubscribe','email'),mailIntent);
+  assert.equal((await db.query('select opted_out from leads')).rows[0].opted_out,true);
   await apply('9'.repeat(64),payload('group_resubscribe','email'),mailIntent);
   assert.equal((await db.query('select email_paused from leads')).rows[0].email_paused,true);
   assert.equal((await db.query('select suppressed from provider_delivery_messages where intent_id=$1',[mailIntent])).rows[0].suppressed,true);

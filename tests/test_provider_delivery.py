@@ -208,3 +208,21 @@ def test_signed_address_opt_out_without_message_id_still_persists_suppression(jo
     delivery.accept_events('email', [email('unsubscribe', sg_message_id='')])
     assert db.email_address_is_suppressed('seller@example.invalid')
     assert db.delivery_event_health()['pending'] == 1
+
+
+@pytest.mark.parametrize('status', ['unsubscribe', 'group_unsubscribe', 'spamreport'])
+def test_provider_opt_out_blocks_both_call_and_sms_before_database_sync(journal, monkeypatch, status):
+    from backend.compliance.compliance import ComplianceEngine
+    delivery.accept_events('email', [email(status)])
+    monkeypatch.setattr(db, 'get_lead_with_property', lambda _: {'id': 'lead', 'owner_email': 'SELLER@example.invalid', 'opted_out': False})
+    monkeypatch.setattr(db, 'local_lead_reply_hold', lambda _: {'opted_out': False})
+    engine = ComplianceEngine()
+    assert engine.check_call_allowed('lead').allowed is False
+    assert engine.check_sms_allowed('lead').allowed is False
+    assert db.provider_email_opted_out('other@example.invalid') is False
+
+
+def test_email_bounce_does_not_mislabel_all_channels_as_opted_out(journal):
+    delivery.accept_events('email', [email('bounce')])
+    assert db.email_address_is_suppressed('seller@example.invalid')
+    assert not db.provider_email_opted_out('seller@example.invalid')
