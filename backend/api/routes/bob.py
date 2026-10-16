@@ -1,11 +1,20 @@
 from __future__ import annotations
+
 import asyncio
 import os
 from uuid import UUID
+
 from fastapi import APIRouter, Header, HTTPException
+
 from backend.lib import db
 
 router = APIRouter()
+
+
+@router.get('/operations/integration')
+async def integration(challenge: UUID):
+    from backend.karpathys.connections import inspect_connections
+    return await inspect_connections(str(challenge))
 
 
 @router.post('/ingest/bob/brief-created')

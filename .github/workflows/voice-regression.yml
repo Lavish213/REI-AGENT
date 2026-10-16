@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: Lavish213/Bob-Intelligence-
-          ref: ea02f3c8513be859e87c2b22870798b1ce620ac0
+          ref: 7d265ab8b3ea244674a249504d481e55cc55973c
           path: _bob-contract
       - name: PostgreSQL migration and recovery contracts
         run: |
