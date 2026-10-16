@@ -28,6 +28,8 @@ def _verify_signature(request_body: bytes, signature: str, timestamp: str) -> bo
 @router.post("/email/webhook")
 async def sendgrid_webhook(request: Request) -> Response:
     body = await request.body()
+    if len(body) > 2_000_000:
+        return Response(status_code=413)
     sig = request.headers.get("X-Twilio-Email-Event-Webhook-Signature", "")
     ts  = request.headers.get("X-Twilio-Email-Event-Webhook-Timestamp", "")
     if not _verify_signature(body, sig, ts):
@@ -41,123 +43,16 @@ async def sendgrid_webhook(request: Request) -> Response:
         logger.error("sendgrid_webhook json parse failed error={}", str(e))
         return Response(status_code=400)
 
-    for event in (events if isinstance(events, list) else [events]):
-        try:
-            await _process_event(event)
-        except Exception as e:
-            logger.error("sendgrid_webhook event error event={} error={}", event.get("event"), str(e))
-
+    import asyncio
+    from backend.alerts.delivery import accept_events
+    try:
+        await asyncio.to_thread(accept_events, 'email', events if isinstance(events, list) else [events])
+    except (ValueError, TypeError):
+        return Response(status_code=422)
+    except Exception as error:
+        logger.warning('email_events_not_saved type={}', type(error).__name__)
+        return Response(status_code=503)
     return Response(status_code=200)
-
-
-async def _process_event(event: dict) -> None:
-    event_type     = event.get("event", "")
-    email          = event.get("email", "")
-    sg_message_id  = event.get("sg_message_id", "")
-    lead_id        = event.get("lead_id") or (event.get("custom_args") or {}).get("lead_id", "")
-    timestamp      = event.get("timestamp", 0)
-    occurred_at    = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat() if timestamp else datetime.now(timezone.utc).isoformat()
-
-    if not lead_id and email:
-        lead_id = _lookup_lead_by_email(email) or ""
-
-    _log_email_event(lead_id or None, email, sg_message_id, event_type, event, occurred_at)
-
-    if event_type == "delivered":
-        _update_delivery_status(sg_message_id, "delivered", lead_id)
-
-    elif event_type == "bounce":
-        bounce_type = event.get("type", "bounce")
-        _update_delivery_status(sg_message_id, f"bounced_{bounce_type}", lead_id)
-        if bounce_type in ("bounce", "blocked"):
-            _handle_hard_bounce(lead_id, email, bounce_type)
-
-    elif event_type == "spamreport":
-        _handle_spam_report(lead_id, email)
-
-    elif event_type == "unsubscribe":
-        _handle_unsubscribe(lead_id, email, method="sendgrid_unsubscribe")
-
-    elif event_type == "open":
-        _handle_open(lead_id, sg_message_id)
-
-    elif event_type == "click":
-        _handle_click(lead_id, sg_message_id, event.get("url", ""))
-
-    elif event_type in ("deferred", "dropped"):
-        _update_delivery_status(sg_message_id, event_type, lead_id)
-
-
-def _lookup_lead_by_email(email: str) -> str | None:
-    try:
-        from backend.lib.db import _get_client
-        resp = _get_client().table("leads").select("id").eq("owner_email", email).limit(1).execute()
-        return resp.data[0]["id"] if resp.data else None
-    except Exception:
-        return None
-
-
-def _log_email_event(lead_id, email, sg_message_id, event_type, payload, occurred_at) -> None:
-    try:
-        from backend.lib.db import _get_client
-        _get_client().table("email_events").insert({
-            "lead_id": lead_id,
-            "email": email,
-            "sg_message_id": sg_message_id,
-            "event_type": event_type,
-            "payload": payload,
-            "occurred_at": occurred_at,
-        }).execute()
-    except Exception as e:
-        logger.error("email_event log failed type={} error={}", event_type, str(e))
-
-
-def _update_delivery_status(sg_message_id: str, status: str, lead_id: str) -> None:
-    if not sg_message_id:
-        return
-    try:
-        from backend.lib.db import _get_client
-        _get_client().table("email_sends").update({
-            "delivery_status": status,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("sg_message_id", sg_message_id).execute()
-    except Exception as e:
-        logger.warning("email_sends status update failed sg={} error={}", sg_message_id, str(e))
-
-
-def _handle_hard_bounce(lead_id: str, email: str, reason: str) -> None:
-    try:
-        from backend.lib.db import _get_client
-        client = _get_client()
-        lid = lead_id
-        if not lid:
-            resp = client.table("leads").select("id").eq("owner_email", email).limit(1).execute()
-            lid = resp.data[0]["id"] if resp.data else None
-        if lid:
-            client.table("leads").update({
-                "email_bounced": True,
-                "email_bounce_reason": reason,
-                "email_paused": True,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", lid).execute()
-    except Exception as e:
-        logger.error("handle_hard_bounce failed lead_id={} error={}", lead_id, str(e))
-
-
-def _handle_spam_report(lead_id: str, email: str) -> None:
-    try:
-        from backend.lib.db import _get_client, pause_lead_email, pause_lead_drip
-        from backend.compliance.compliance import ComplianceEngine
-        client = _get_client()
-        if not lead_id:
-            resp = client.table("leads").select("id").eq("owner_email", email).limit(1).execute()
-            lead_id = resp.data[0]["id"] if resp.data else ""
-        if lead_id:
-            pause_lead_email(lead_id)
-            pause_lead_drip(lead_id)
-            ComplianceEngine().handle_opt_out(lead_id, method="spam_report", trigger_word="spam")
-    except Exception as e:
-        logger.error("handle_spam_report failed lead_id={} error={}", lead_id, str(e))
 
 
 def _handle_unsubscribe(lead_id: str, email: str, method: str = "email_link") -> None:
@@ -180,34 +75,6 @@ def _handle_unsubscribe(lead_id: str, email: str, method: str = "email_link") ->
     except Exception as e:
         logger.error("handle_unsubscribe failed lead_id={} error={}", lead_id, str(e))
 
-
-def _handle_open(lead_id: str, sg_message_id: str) -> None:
-    if not lead_id:
-        return
-    try:
-        from backend.lib.db import update_engagement_score, _get_client
-        update_engagement_score(lead_id, "sms_opened")
-        _get_client().table("email_sends").update({
-            "opened_at": datetime.now(timezone.utc).isoformat(),
-            "delivery_status": "opened",
-        }).eq("sg_message_id", sg_message_id).execute()
-    except Exception as e:
-        logger.warning("handle_open failed lead_id={} error={}", lead_id, str(e))
-
-
-def _handle_click(lead_id: str, sg_message_id: str, url: str) -> None:
-    if not lead_id:
-        return
-    try:
-        from backend.lib.db import update_engagement_score, _get_client
-        update_engagement_score(lead_id, "sms_reply")
-        _get_client().table("email_sends").update({
-            "clicked_at": datetime.now(timezone.utc).isoformat(),
-            "clicked_url": url[:500],
-            "delivery_status": "clicked",
-        }).eq("sg_message_id", sg_message_id).execute()
-    except Exception as e:
-        logger.warning("handle_click failed lead_id={} error={}", lead_id, str(e))
 
 
 @router.get("/email/unsubscribe", response_class=HTMLResponse)

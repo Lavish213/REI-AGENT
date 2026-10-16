@@ -62,6 +62,7 @@ jobs:
           node tests/forensic_lockdown_db.cjs
           node tests/source_price_review_db.cjs
           node tests/email_resumption_db.cjs
+          node tests/provider_delivery_db.cjs
           BOB_REPO="$GITHUB_WORKSPACE/_bob-contract" node tests/bob_roundtrip.cjs
       - name: Dashboard build and HTTP fault tests
         run: |

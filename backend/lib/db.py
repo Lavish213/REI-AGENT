@@ -6,7 +6,7 @@ import re
 from loguru import logger
 from supabase import create_client, Client, ClientOptions
 
-TABLES = frozenset({'leads', 'properties', 'calls', 'contacts', 'comps', 'offers', 'sms_messages', 'email_sends', 'email_events', 'followups', 'campaigns', 'deal_blast_sends', 'phone_pool_health', 'dnc_list', 'cash_buyers', 'intel_packets', 'packet_events', 'decision_records', 'bob_feedback_events', 'transcript_chunks', 'call_events', 'approval_requests', 'operator_queries', 'tool_gate_log', 'workflows', 'traces', 'eval_runs', 'latency_benchmarks', 'compliance_log', 'suppression_events', 'source_candidates', 'email_suppressions', 'email_reply_events'})
+TABLES = frozenset({'leads', 'properties', 'calls', 'contacts', 'comps', 'offers', 'sms_messages', 'email_sends', 'email_events', 'followups', 'campaigns', 'deal_blast_sends', 'phone_pool_health', 'dnc_list', 'cash_buyers', 'intel_packets', 'packet_events', 'decision_records', 'bob_feedback_events', 'transcript_chunks', 'call_events', 'approval_requests', 'operator_queries', 'tool_gate_log', 'workflows', 'traces', 'eval_runs', 'latency_benchmarks', 'compliance_log', 'suppression_events', 'source_candidates', 'email_suppressions', 'email_reply_events', 'provider_delivery_messages', 'provider_delivery_events'})
 
 
 class ScopedQuery:
@@ -2620,3 +2620,114 @@ def recover_email_resumptions(limit=20):
     for row in rows:
         _apply_email_resumption(row['id'])
     return {'processed': len(rows)}
+
+
+@contextmanager
+def _delivery_journal():
+    from pathlib import Path
+    connection = _private_journal_connection(Path(os.environ.get('COMMUNICATION_JOURNAL_PATH', '/data/sophia/communications.sqlite3')), (
+        'CREATE TABLE IF NOT EXISTS delivery_events (tenant TEXT NOT NULL,id TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL DEFAULT \'pending\',created REAL NOT NULL,error TEXT,PRIMARY KEY(tenant,id))',
+        'CREATE TABLE IF NOT EXISTS email_blocks (tenant TEXT NOT NULL,email TEXT NOT NULL,PRIMARY KEY(tenant,email))',
+        'CREATE INDEX IF NOT EXISTS delivery_events_pending ON delivery_events(tenant,state,created)',
+        'CREATE TABLE IF NOT EXISTS delivery_attempts (tenant TEXT NOT NULL,id TEXT NOT NULL,attempted REAL NOT NULL,PRIMARY KEY(tenant,id))',
+        'CREATE TABLE IF NOT EXISTS delivery_bindings (tenant TEXT NOT NULL,intent_id TEXT NOT NULL,lead_id TEXT NOT NULL,channel TEXT NOT NULL,recipient TEXT NOT NULL,PRIMARY KEY(tenant,intent_id))',
+    ))
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
+
+
+def bind_delivery_intent(identity, lead_id, channel, recipient):
+    from uuid import UUID
+    tenant = str(UUID(os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')))
+    lead = str(UUID(lead_id)) if lead_id else ''
+    if channel not in {'email', 'sms'} or not re.fullmatch('[a-f0-9]{64}', identity):
+        raise ValueError('Canonical delivery binding required')
+    recipient = recipient.strip().lower() if channel == 'email' else recipient
+    with _delivery_journal() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        existing = connection.execute('SELECT lead_id,channel,recipient FROM delivery_bindings WHERE tenant=? AND intent_id=?', (tenant, identity)).fetchone()
+        if existing and tuple(existing) != (lead, channel, recipient):
+            raise ValueError('Delivery binding conflict')
+        connection.execute('INSERT OR IGNORE INTO delivery_bindings VALUES (?,?,?,?,?)', (tenant, identity, lead, channel, recipient))
+
+
+def stage_delivery_events(events):
+    import json
+    import time
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _delivery_journal() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        for identity, payload in events:
+            raw = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+            existing = connection.execute('SELECT payload FROM delivery_events WHERE tenant=? AND id=?', (tenant, identity)).fetchone()
+            if existing and existing['payload'] != raw:
+                raise ValueError('Delivery event identity conflict')
+            connection.execute('INSERT OR IGNORE INTO delivery_events(tenant,id,payload,created) VALUES (?,?,?,?)', (tenant, identity, raw, time.time()))
+            if payload['channel'] == 'email' and payload['status'] in {'unsubscribe', 'group_unsubscribe', 'spamreport', 'bounce', 'dropped'}:
+                connection.execute('INSERT OR IGNORE INTO email_blocks(tenant,email) VALUES (?,?)', (tenant, payload['recipient']))
+
+
+def recover_delivery_events(limit=100):
+    import json
+    import time
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _delivery_journal() as connection:
+        rows = connection.execute("SELECT e.id,e.payload FROM delivery_events e LEFT JOIN delivery_attempts a ON a.tenant=e.tenant AND a.id=e.id WHERE e.tenant=? AND e.state='pending' ORDER BY coalesce(a.attempted,0),e.created LIMIT ?", (tenant, min(max(limit, 1), 1000))).fetchall()
+    synced = 0
+    for row in rows:
+        with _delivery_journal() as connection:
+            connection.execute('INSERT INTO delivery_attempts VALUES (?,?,?) ON CONFLICT(tenant,id) DO UPDATE SET attempted=excluded.attempted', (tenant, row['id'], time.time()))
+        payload = json.loads(row['payload'])
+        try:
+            binding = None
+            with _communication_journal() as connection:
+                intents = connection.execute("SELECT id,payload FROM message_intents WHERE state='accepted' AND receipt=?", (payload['message_id'],)).fetchall()
+            with _delivery_journal() as connection:
+                if payload.get('intent_id'):
+                    binding = connection.execute('SELECT * FROM delivery_bindings WHERE tenant=? AND intent_id=?', (tenant, payload['intent_id'])).fetchone()
+                if binding is None:
+                    for intent in intents:
+                        original = json.loads(intent['payload'])
+                        if original[0] == tenant and original[1] == payload['channel'] and original[2].strip().lower() == payload['recipient'].strip().lower():
+                            binding = connection.execute('SELECT * FROM delivery_bindings WHERE tenant=? AND intent_id=?', (tenant, intent['id'])).fetchone()
+                            if binding is None:
+                                binding = {'intent_id': intent['id'], 'channel': original[1], 'recipient': original[2], 'lead_id': original[5]}
+                            break
+            if not binding or binding['channel'] != payload['channel'] or binding['recipient'].strip().lower() != payload['recipient'].strip().lower():
+                raise RuntimeError('Delivery binding unavailable')
+            params = {'p_tenant': tenant, 'p_id': row['id'], 'p_intent': binding['intent_id'], 'p_lead': binding['lead_id'] or None, 'p_payload': payload}
+            result = _get_client().rpc('apply_delivery_event', params).execute().data
+            if result != row['id']:
+                raise RuntimeError('Delivery event persistence unconfirmed')
+            with _delivery_journal() as connection:
+                connection.execute("UPDATE delivery_events SET state='synced',error=NULL WHERE tenant=? AND id=?", (tenant, row['id']))
+            synced += 1
+        except Exception as error:
+            with _delivery_journal() as connection:
+                connection.execute('UPDATE delivery_events SET error=? WHERE tenant=? AND id=?', (type(error).__name__, tenant, row['id']))
+    return {'synced': synced, **delivery_event_health()}
+
+
+def delivery_event_health():
+    import time
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _delivery_journal() as connection:
+        row = connection.execute("SELECT count(*) AS pending,min(created) AS oldest FROM delivery_events WHERE tenant=? AND state='pending'", (tenant,)).fetchone()
+        total = connection.execute('SELECT count(*) FROM delivery_events WHERE tenant=?', (tenant,)).fetchone()[0]
+    return {'pending': row['pending'], 'oldest_pending_seconds': max(0, int(time.time() - row['oldest'])) if row['oldest'] else 0, 'received': total, 'scope': 'persisted_provider_events_not_delivery_without_receipts'}
+
+
+def delivery_overview():
+    response = _get_client().table('provider_delivery_messages').select('intent_id,lead_id,channel,delivery_status,opened,clicked,suppressed,updated_at').eq('tenant_id', os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')).order('updated_at', desc=True).limit(100).execute()
+    return {'schema_version': 1, 'tenant_id': os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001'), 'journal': delivery_event_health(), 'messages': response.data or [], 'limit': 100, 'scope': 'provider_receipts_not_human_read_or_seller_acceptance'}
+
+
+def provider_email_opted_out(email):
+    if not isinstance(email, str) or not email.strip():
+        return False
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _delivery_journal() as connection:
+        return connection.execute("SELECT 1 FROM delivery_events WHERE tenant=? AND json_extract(payload,'$.channel')='email' AND json_extract(payload,'$.recipient')=? AND json_extract(payload,'$.status') IN ('unsubscribe','group_unsubscribe','spamreport') LIMIT 1", (tenant, email.strip().lower())).fetchone() is not None

@@ -269,15 +269,21 @@ async def lifespan(app: FastAPI):
     suppression = None
     delivery = None
     recovery = None
+    provider_events = None
     try:
         if os.environ.get("CONTACT_SUPPRESSION_PATH") or os.environ.get("OUTBOUND_ENABLED", "false").lower() == "true":
             await asyncio.to_thread(db.suppression_journal_health)
             suppression = asyncio.create_task(_suppression_recovery_loop())
+        from backend.alerts.delivery import recover_loop
+        provider_events = asyncio.create_task(recover_loop())
         delivery = await start_recovery()
         recovery = asyncio.create_task(_bob_fact_recovery_loop()) if os.environ.get("VOICE_FACT_OUTBOX_PATH") else None
         async with _application_lifespan(app):
             yield
     finally:
+        if provider_events:
+            provider_events.cancel()
+            await asyncio.gather(provider_events, return_exceptions=True)
         if suppression:
             suppression.cancel()
             await asyncio.gather(suppression, return_exceptions=True)

@@ -113,6 +113,7 @@ def send_email(to: str, subject: str, body: str, lead_id: str = "") -> bool:
             if not re.fullmatch(r"[A-Za-z0-9.-]+\.[A-Za-z]{2,63}", domain):
                 raise ValueError("Valid inbound provider domain required")
             reply_to = "replies+" + db.register_email_thread(lead_id, to) + "@" + domain
+        db.bind_delivery_intent(identity, lead_id, "email", to)
         import httpx
         response = httpx.post(
             "https://api.sendgrid.com/v3/mail/send",
@@ -121,7 +122,7 @@ def send_email(to: str, subject: str, body: str, lead_id: str = "") -> bool:
                 "Content-Type": "application/json",
             },
             json={
-                "personalizations": [{"to": [{"email": to}]}],
+                "personalizations": [{"to": [{"email": to}], "custom_args": {"communication_intent": identity}}],
                 "from": {
                     "email": os.environ.get("BUSINESS_EMAIL", "sophia@sanjoaquinhousebuyers.com"),
                     "name": os.environ.get("BUSINESS_NAME", "San Joaquin House Buyers"),

@@ -61,6 +61,7 @@ def send_sms(to: str, body: str, lead_id: str = "", bypass_hours: bool = False) 
         identity, claimed, receipt = db.claim_message_intent("sms", to, "", body, lead_id)
         if not claimed:
             return bool(receipt)
+        db.bind_delivery_intent(identity, lead_id, "sms", to)
         kwargs = {"From": _from_number(), "To": to, "Body": body}
         callback = _status_callback_url()
         if callback:

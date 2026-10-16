@@ -43,3 +43,14 @@ async def health():
         raise HTTPException(status_code=503, detail='Bob integration unavailable')
     from backend.voice.bob_recovery import integration_status
     return {'status': integration_status(shared, local), 'shared': shared, 'facts': local}
+
+
+@router.get('/operations/delivery')
+async def provider_delivery_overview():
+    import asyncio
+    from fastapi import HTTPException
+    from backend.lib import db
+    try:
+        return await asyncio.to_thread(db.delivery_overview)
+    except Exception as error:
+        raise HTTPException(503, 'Provider delivery evidence unavailable') from error
