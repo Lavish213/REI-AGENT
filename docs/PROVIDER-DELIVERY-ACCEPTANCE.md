@@ -19,3 +19,11 @@ Provider references checked October 16, 2026:
 - https://www.twilio.com/docs/sendgrid/for-developers/tracking-events/twilio-sendgrid-event-webhook-overview
 - https://www.twilio.com/docs/sendgrid/glossary/message-id
 - https://signalwire.com/docs/compatibility-api/guides/webhooks
+
+## Accepted-message inventory follow-up — October 22, 2026
+
+Provider acceptance and its inventory entry now commit together in the private communication journal. Recovery stages deterministic `accepted` evidence for SMS/email even if no provider callback arrives, then applies the existing SQL projection. Such messages remain pending/unconfirmed; a subsequent callback can establish delivery without a late acceptance event reversing it. Identical acknowledgement replay is idempotent, conflicting receipt replay is rejected, and another tenant cannot accept an intent it does not own.
+
+Legacy accepted journal entries are backfilled with unknown acceptance time; no timestamp is invented. Uncertain submission intents remain explicitly counted and cannot be automatically resent. Staging and callback recovery are failure-isolated. The authenticated read model reports accepted, uncertain and pending-staging counts; the dashboard shows incomplete/older-source inventory honestly. The latest 100 projected messages are a window, not the entire history.
+
+Scope remains journaled SMS/email. Calls, messages sent outside these adapters, unjournaled historical sends, automatic provider status polling and production migration/volume/provider acceptance are not established by this change. No new SQL migration is needed beyond the existing provider-receipt migration. The fixture integration test uses an HTTP acceptance provider and RPC bridge with real SQLite/PostgreSQL execution and the authenticated source API; it never contacts a live messaging provider.

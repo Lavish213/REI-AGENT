@@ -45,84 +45,63 @@ def _get_latest_csv() -> str | None:
     return os.path.join(DATA_DIR, csvs[0])
 
 
-def run_scout() -> None:
-    logger.info("scout run started at {}", datetime.now(timezone.utc).isoformat())
-
+def run_scout() -> dict:
+    from backend.lib import db
+    report = {'status': 'ok', 'upserted': 0, 'leads_created': 0, 'alerts_accepted': 0, 'alerts_failed': 0, 'record_errors': 0, 'contact_errors': 0}
     csv_path = _get_latest_csv()
     if not csv_path:
-        logger.error("no CSV to process — drop a Propwire export into scripts/data/")
-        return
-
-    logger.info("processing CSV: {}", csv_path)
-    properties = parse_csv(csv_path)
-
-    if not properties:
-        logger.warning("parser returned 0 properties")
-        return
-
-    scored = score_properties(properties)
-
-    upserted = 0
-    leads_created = 0
-    alerts_sent = 0
-
-    for prop in scored:
-        upsert_property(prop)
-        upserted += 1
-
-        if prop["distress_score"] >= MIN_ALERT_SCORE:
-            existing_lead = get_lead_by_property(prop.get("id", ""))
-            if not existing_lead and prop.get("id"):
-                lead_id = insert_lead(prop["id"])
-                leads_created += 1
-
-                csv_phone = prop.pop("_owner_phone", None)
-                prop.pop("_owner_phone_2", None)
-                csv_email = prop.pop("_owner_email", None)
-                if csv_phone or csv_email:
-                    try:
-                        from backend.lib.db import _get_client
-                        lead_upd = {"updated_at": datetime.now(timezone.utc).isoformat()}
-                        if csv_phone:
-                            lead_upd["owner_phone"] = csv_phone
-                            lead_upd["callable"] = True
-                        if csv_email:
-                            lead_upd["owner_email"] = csv_email
-                        _get_client().table("leads").update(lead_upd).eq("id", lead_id).execute()
-                        logger.info("csv_phone_stored lead_id={}", lead_id)
-                    except Exception as ph_err:
-                        logger.warning("csv_phone_store failed error={}", str(ph_err))
-
-                if ALERT_PHONE:
-                    message = format_lead_alert(prop)
-                    send_sms(to=ALERT_PHONE, body=message)
-                    alerts_sent += 1
-
-                if prop["distress_score"] >= 50:
-                    try:
-                        from backend.alerts.speed_to_lead import run_speed_to_lead
-                        run_speed_to_lead(lead_id)
-                        logger.info("speed_to_lead triggered lead_id={} score={}", lead_id, prop["distress_score"])
-                    except Exception as e:
-                        logger.error("speed_to_lead trigger failed lead_id={} error={}", lead_id, str(e))
-
-                if prop.get("distress_score", 0) >= 35:
-                    realestateapi_key = os.environ.get("REALESTATEAPI_KEY")
-                    if realestateapi_key:
-                        try:
-                            from backend.lib.batchdata import enrich_lead_realestateapi
-                            lead_id_for_enrich = lead_id
-                            if lead_id_for_enrich:
-                                enrich_lead_realestateapi(lead_id_for_enrich)
-                        except Exception as enrich_err:
-                            logger.warning("auto_enrichment failed lead_id={} error={}", prop.get("lead_id"), str(enrich_err))
-
-    logger.info(
-        "scout run complete upserted={} leads={} alerts={}",
-        upserted,
-        leads_created,
-        alerts_sent
-    )
+        return {**report, 'status': 'unconfigured'}
+    scored = score_properties(parse_csv(csv_path))
+    if not scored:
+        return {**report, 'status': 'empty'}
+    for original in scored:
+        prop = dict(original)
+        try:
+            property_id = upsert_property(prop)
+            if not property_id or prop.get('id') != property_id:
+                raise RuntimeError('Property persistence unconfirmed')
+            report['upserted'] += 1
+            if prop['distress_score'] < MIN_ALERT_SCORE or get_lead_by_property(property_id):
+                continue
+            lead_id = insert_lead(property_id)
+            if not lead_id:
+                raise RuntimeError('Lead persistence unconfirmed')
+            report['leads_created'] += 1
+        except Exception as error:
+            report['record_errors'] += 1
+            logger.warning('scout_record_failed type={}', type(error).__name__)
+            continue
+        csv_phone = prop.pop('_owner_phone', None)
+        prop.pop('_owner_phone_2', None)
+        csv_email = prop.pop('_owner_email', None)
+        if csv_phone or csv_email:
+            try:
+                db.store_imported_lead_contacts(lead_id, csv_phone, csv_email)
+            except Exception as error:
+                report['contact_errors'] += 1
+                logger.warning('scout_contact_failed type={}', type(error).__name__)
+        if ALERT_PHONE:
+            try:
+                accepted = send_sms(to=ALERT_PHONE, body=format_lead_alert(prop))
+            except Exception as error:
+                accepted = False
+                logger.warning('scout_alert_failed type={}', type(error).__name__)
+            report['alerts_accepted' if accepted else 'alerts_failed'] += 1
+        try:
+            from backend.alerts.speed_to_lead import run_speed_to_lead
+            run_speed_to_lead(lead_id)
+        except Exception as error:
+            logger.warning('scout_speed_to_lead_failed type={}', type(error).__name__)
+        if os.environ.get('REALESTATEAPI_KEY'):
+            try:
+                from backend.lib.batchdata import enrich_lead_realestateapi
+                enrich_lead_realestateapi(lead_id)
+            except Exception as error:
+                logger.warning('scout_enrichment_failed type={}', type(error).__name__)
+    if report['record_errors'] or report['contact_errors'] or report['alerts_failed']:
+        report['status'] = 'partial'
+    logger.info('scout_run_result result={}', report)
+    return report
 
 
 def _safe(fn):

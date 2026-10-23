@@ -55,8 +55,9 @@ def accept_events(channel, events):
 
 async def recover_loop():
     while True:
-        try:
-            await asyncio.to_thread(db.recover_delivery_events)
-        except (RuntimeError, ValueError, TypeError, KeyError, OSError, sqlite3.Error, APIError) as error:
-            logger.warning('delivery_recovery_failed type={}', type(error).__name__)
+        for recover in (db.stage_message_acceptances, db.recover_delivery_events):
+            try:
+                await asyncio.to_thread(recover)
+            except (RuntimeError, ValueError, TypeError, KeyError, OSError, sqlite3.Error, APIError) as error:
+                logger.warning('delivery_recovery_failed operation={} type={}', recover.__name__, type(error).__name__)
         await asyncio.sleep(5)
