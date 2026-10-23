@@ -2126,6 +2126,7 @@ def _communication_journal():
     connection = _private_journal_connection(Path(os.environ.get("COMMUNICATION_JOURNAL_PATH", "/data/sophia/communications.sqlite3")), (
         "CREATE TABLE IF NOT EXISTS message_intents (id TEXT PRIMARY KEY, state TEXT NOT NULL, receipt TEXT, payload TEXT NOT NULL)",
         "CREATE TABLE IF NOT EXISTS email_blocks (tenant TEXT NOT NULL, email TEXT NOT NULL, PRIMARY KEY(tenant,email))",
+        "CREATE TABLE IF NOT EXISTS message_acceptances (tenant TEXT NOT NULL,intent_id TEXT NOT NULL,receipt TEXT NOT NULL,accepted_at REAL,state TEXT NOT NULL DEFAULT 'pending',PRIMARY KEY(tenant,intent_id))",
     ))
     try:
         with connection:
@@ -2149,12 +2150,24 @@ def claim_message_intent(channel, recipient, subject, body, lead_id=""):
 
 
 def accept_message_intent(identity, receipt):
-    if not isinstance(receipt, str) or not receipt.strip():
+    import json
+    import time
+    if not isinstance(receipt, str) or not receipt.strip() or len(receipt) > 512:
         raise ValueError("Provider receipt required")
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
     with _communication_journal() as connection:
-        result = connection.execute("UPDATE message_intents SET state='accepted',receipt=? WHERE id=? AND state='sending'", (receipt, identity))
-        if result.rowcount != 1:
-            raise RuntimeError("Message receipt persistence not confirmed")
+        connection.execute('BEGIN IMMEDIATE')
+        row = connection.execute('SELECT payload,state,receipt FROM message_intents WHERE id=?', (identity,)).fetchone()
+        if row is None or json.loads(row['payload'])[0] != tenant:
+            raise RuntimeError('Message intent ownership unconfirmed')
+        if row['state'] == 'accepted':
+            if row['receipt'] != receipt:
+                raise ValueError('Provider receipt conflict')
+            return
+        if row['state'] != 'sending':
+            raise RuntimeError('Message receipt persistence not confirmed')
+        connection.execute("UPDATE message_intents SET state='accepted',receipt=? WHERE id=?", (receipt, identity))
+        connection.execute('INSERT INTO message_acceptances(tenant,intent_id,receipt,accepted_at) VALUES (?,?,?,?)', (tenant, identity, receipt, time.time()))
 
 
 def suppress_email_address(email):
@@ -2722,7 +2735,7 @@ def delivery_event_health():
 
 def delivery_overview():
     response = _get_client().table('provider_delivery_messages').select('intent_id,lead_id,channel,delivery_status,opened,clicked,suppressed,updated_at').eq('tenant_id', os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')).order('updated_at', desc=True).limit(100).execute()
-    return {'schema_version': 1, 'tenant_id': os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001'), 'journal': delivery_event_health(), 'messages': response.data or [], 'limit': 100, 'scope': 'provider_receipts_not_human_read_or_seller_acceptance'}
+    return {'schema_version': 1, 'tenant_id': os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001'), 'inventory': message_inventory_health(), 'journal': delivery_event_health(), 'messages': response.data or [], 'limit': 100, 'scope': 'provider_receipts_not_human_read_or_seller_acceptance'}
 
 
 def provider_email_opted_out(email):
@@ -2731,3 +2744,56 @@ def provider_email_opted_out(email):
     tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
     with _delivery_journal() as connection:
         return connection.execute("SELECT 1 FROM delivery_events WHERE tenant=? AND json_extract(payload,'$.channel')='email' AND json_extract(payload,'$.recipient')=? AND json_extract(payload,'$.status') IN ('unsubscribe','group_unsubscribe','spamreport') LIMIT 1", (tenant, email.strip().lower())).fetchone() is not None
+
+
+def stage_message_acceptances(limit=100):
+    import hashlib
+    import json
+    if type(limit) is not int or not 1 <= limit <= 1000:
+        raise ValueError('Bounded acceptance recovery required')
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _communication_journal() as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        legacy = connection.execute("SELECT id,receipt FROM message_intents WHERE state='accepted' AND json_valid(payload) AND json_extract(payload,'$[0]')=? AND id NOT IN (SELECT intent_id FROM message_acceptances WHERE tenant=?) LIMIT ?", (tenant, tenant, limit)).fetchall()
+        for row in legacy:
+            if isinstance(row['receipt'], str) and 0 < len(row['receipt']) <= 512:
+                connection.execute('INSERT OR IGNORE INTO message_acceptances(tenant,intent_id,receipt) VALUES (?,?,?)', (tenant, row['id'], row['receipt']))
+        rows = connection.execute("SELECT a.intent_id,a.receipt,a.accepted_at,i.payload FROM message_acceptances a JOIN message_intents i ON i.id=a.intent_id WHERE a.tenant=? AND a.state='pending' ORDER BY a.accepted_at,a.intent_id LIMIT ?", (tenant, limit)).fetchall()
+    staged = 0
+    for row in rows:
+        original = json.loads(row['payload'])
+        if len(original) != 6 or original[0] != tenant or original[1] not in {'sms', 'email'}:
+            raise ValueError('Invalid accepted message provenance')
+        identity = hashlib.sha256(('acceptance:' + tenant + ':' + row['intent_id']).encode()).hexdigest()
+        payload = {'channel': original[1], 'message_id': row['receipt'], 'recipient': original[2].strip().lower() if original[1] == 'email' else original[2], 'status': 'accepted', 'intent_id': row['intent_id'], 'origin': 'provider_acceptance', 'accepted_at': row['accepted_at']}
+        stage_delivery_events([(identity, payload)])
+        with _communication_journal() as connection:
+            connection.execute("UPDATE message_acceptances SET state='staged' WHERE tenant=? AND intent_id=?", (tenant, row['intent_id']))
+        staged += 1
+    return {'staged': staged, **message_inventory_health()}
+
+
+def message_inventory_health():
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+    with _communication_journal() as connection:
+        rows = connection.execute("SELECT state,count(*) AS total FROM message_intents WHERE json_valid(payload) AND json_extract(payload,'$[0]')=? GROUP BY state", (tenant,)).fetchall()
+        pending = connection.execute("SELECT count(*) FROM message_acceptances WHERE tenant=? AND state='pending'", (tenant,)).fetchone()[0]
+        tracked = connection.execute('SELECT count(*) FROM message_acceptances WHERE tenant=?', (tenant,)).fetchone()[0]
+    counts = {row['state']: row['total'] for row in rows}
+    accepted = counts.get('accepted', 0)
+    return {'accepted': accepted, 'uncertain_submission': counts.get('sending', 0), 'pending_projection': pending + max(0, accepted - tracked), 'scope': 'journaled_sms_and_email_not_calls_or_unjournaled_legacy_sends'}
+
+
+def store_imported_lead_contacts(lead_id, phone=None, email=None):
+    from uuid import UUID
+    lead_id = str(UUID(lead_id))
+    values = {'updated_at': datetime.now(timezone.utc).isoformat()}
+    if phone:
+        from backend.alerts.sms import _e164
+        values['owner_phone'] = _e164(phone)
+    if email:
+        if not isinstance(email, str) or len(email) > 320 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
+            raise ValueError('Valid imported email required')
+        values['owner_email'] = email.strip().lower()
+    if len(values) > 1:
+        _get_client().table('leads').update(values).eq('id', lead_id).execute()
