@@ -30,7 +30,7 @@ def scout(monkeypatch):
 
 def test_failed_alert_is_not_counted_as_sent_and_lead_is_durable(scout):
     result = cron.run_scout()
-    assert result['leads_created'] == 1 and result['upserted'] == 1
+    assert result['leads_confirmed'] == 1 and result['upserted'] == 1
     assert result['alerts_accepted'] == 0 and result['alerts_failed'] == 1
     assert result['status'] == 'partial'
 
@@ -46,7 +46,7 @@ def test_one_poison_record_does_not_prevent_later_property(scout, monkeypatch):
         return PROP
     monkeypatch.setattr(cron, 'upsert_property', save)
     result = cron.run_scout()
-    assert result['record_errors'] == 1 and result['upserted'] == 1 and result['leads_created'] == 1
+    assert result['record_errors'] == 1 and result['upserted'] == 1 and result['leads_confirmed'] == 1
 
 
 def test_unconfirmed_property_never_creates_lead_or_sends_alert(scout, monkeypatch):
@@ -54,14 +54,14 @@ def test_unconfirmed_property_never_creates_lead_or_sends_alert(scout, monkeypat
     monkeypatch.setattr(cron, 'insert_lead', lambda _: pytest.fail('unconfirmed property used'))
     monkeypatch.setattr(cron, 'send_sms', lambda **kwargs: pytest.fail('alert used before persistence'))
     result = cron.run_scout()
-    assert result['upserted'] == 0 and result['leads_created'] == 0 and result['record_errors'] == 1
+    assert result['upserted'] == 0 and result['leads_confirmed'] == 0 and result['record_errors'] == 1
 
 
 def test_existing_lead_does_not_duplicate_or_repeat_initial_actions(scout, monkeypatch):
     monkeypatch.setattr(cron, 'get_lead_by_property', lambda _: {'id': LEAD})
     monkeypatch.setattr(cron, 'insert_lead', lambda _: pytest.fail('duplicate lead'))
     result = cron.run_scout()
-    assert result['upserted'] == 1 and result['leads_created'] == 0 and result['alerts_failed'] == 0
+    assert result['upserted'] == 1 and result['leads_confirmed'] == 0 and result['alerts_failed'] == 0
 
 
 def test_imported_phone_does_not_grant_contact_authority(monkeypatch):

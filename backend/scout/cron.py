@@ -47,7 +47,7 @@ def _get_latest_csv() -> str | None:
 
 def run_scout() -> dict:
     from backend.lib import db
-    report = {'status': 'ok', 'upserted': 0, 'leads_created': 0, 'alerts_accepted': 0, 'alerts_failed': 0, 'record_errors': 0, 'contact_errors': 0}
+    report = {'status': 'ok', 'upserted': 0, 'leads_confirmed': 0, 'alerts_accepted': 0, 'alerts_failed': 0, 'record_errors': 0, 'contact_errors': 0}
     csv_path = _get_latest_csv()
     if not csv_path:
         return {**report, 'status': 'unconfigured'}
@@ -66,7 +66,7 @@ def run_scout() -> dict:
             lead_id = insert_lead(property_id)
             if not lead_id:
                 raise RuntimeError('Lead persistence unconfirmed')
-            report['leads_created'] += 1
+            report['leads_confirmed'] += 1
         except Exception as error:
             report['record_errors'] += 1
             logger.warning('scout_record_failed type={}', type(error).__name__)
