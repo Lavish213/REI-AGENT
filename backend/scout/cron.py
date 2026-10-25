@@ -109,20 +109,20 @@ def _safe(fn):
         try:
             fn()
         except Exception as e:
-            logger.error("scheduler job failed fn={} error={}", fn.__name__, str(e))
+            logger.error("scheduler job failed fn={} error_type={}", fn.__name__, type(e).__name__)
     return wrapped
 
 
 def start_scheduler() -> None:
     logger.info("starting scout scheduler every {} hours", INTERVAL_HOURS)
-    schedule.every(INTERVAL_HOURS).hours.do(run_scout)
-    schedule.every().day.at("07:00").do(run_expired_scraper)
+    schedule.every(INTERVAL_HOURS).hours.do(_safe(run_scout))
+    schedule.every().day.at("07:00").do(_safe(run_expired_scraper))
     schedule.every().day.at("06:00").do(_safe(run_rss_scraper))
     schedule.every().day.at("07:00").do(_safe(run_social_scraper))
     schedule.every().day.at("07:30").do(_safe(run_eviction_scraper))
     schedule.every().day.at("07:00").do(_safe(run_crmls_scraper))
     schedule.every().day.at("08:00").do(_safe(run_daily_drip_triggers))
-    run_scout()
+    _safe(run_scout)()
     while True:
         schedule.run_pending()
         time.sleep(60)
