@@ -132,9 +132,15 @@ def test_scheduler_isolates_failing_scout_jobs_and_continues(monkeypatch):
     for name in ('run_rss_scraper', 'run_social_scraper', 'run_eviction_scraper',
                  'run_crmls_scraper', 'run_daily_drip_triggers'):
         monkeypatch.setattr(cron, name, succeeding(name))
-    monkeypatch.setattr(cron.time, 'sleep', lambda _: (_ for _ in ()).throw(StopIteration))
+    class EndScheduler(Exception):
+        pass
 
-    with pytest.raises(StopIteration):
+    def stop_after_first_cycle(_seconds):
+        raise EndScheduler()
+
+    monkeypatch.setattr(cron.time, 'sleep', stop_after_first_cycle)
+
+    with pytest.raises(EndScheduler):
         cron.start_scheduler()
 
     assert len(callbacks) == 7
