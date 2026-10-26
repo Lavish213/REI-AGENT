@@ -84,3 +84,68 @@ def test_imported_phone_does_not_grant_contact_authority(monkeypatch):
 def test_missing_csv_is_unconfigured_not_success(scout, monkeypatch):
     monkeypatch.setattr(cron, '_get_latest_csv', lambda: None)
     assert cron.run_scout()['status'] == 'unconfigured'
+
+
+def test_scheduler_isolates_failing_scout_jobs_and_continues(monkeypatch):
+    """A failed startup scan or scheduled source must not stop other jobs."""
+    callbacks = []
+    calls = []
+
+    class Job:
+        @property
+        def hours(self):
+            return self
+
+        @property
+        def day(self):
+            return self
+
+        def at(self, _time):
+            return self
+
+        def do(self, callback):
+            callbacks.append(callback)
+            return self
+
+    class FakeSchedule:
+        def every(self, *_args):
+            return Job()
+
+        def run_pending(self):
+            for callback in callbacks:
+                callback()
+
+    def failing(name):
+        def run():
+            calls.append(name)
+            raise RuntimeError('sensitive provider exception text')
+        return run
+
+    def succeeding(name):
+        def run():
+            calls.append(name)
+        return run
+
+    monkeypatch.setattr(cron, 'schedule', FakeSchedule())
+    monkeypatch.setattr(cron, 'run_scout', failing('scout'))
+    monkeypatch.setattr(cron, 'run_expired_scraper', failing('expired'))
+    for name in ('run_rss_scraper', 'run_social_scraper', 'run_eviction_scraper',
+                 'run_crmls_scraper', 'run_daily_drip_triggers'):
+        monkeypatch.setattr(cron, name, succeeding(name))
+    class EndScheduler(Exception):
+        pass
+
+    def stop_after_first_cycle(_seconds):
+        raise EndScheduler()
+
+    monkeypatch.setattr(cron.time, 'sleep', stop_after_first_cycle)
+
+    with pytest.raises(EndScheduler):
+        cron.start_scheduler()
+
+    assert len(callbacks) == 7
+    assert calls.count('scout') == 2  # startup plus scheduled invocation
+    assert calls.count('expired') == 1
+    for name in ('run_rss_scraper', 'run_social_scraper', 'run_eviction_scraper',
+                 'run_crmls_scraper', 'run_daily_drip_triggers'):
+        assert calls.count(name) == 1
