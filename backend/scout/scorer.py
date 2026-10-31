@@ -214,15 +214,15 @@ def _deal_score(prop: dict, arv: int | None) -> int:
 
     if arv and arv > 0:
         arv_dollars = arv / 100
-        if 150000 <= arv_dollars <= 200000:
+        if 300000 <= arv_dollars <= 450000:
             score += 25
-        elif 120000 <= arv_dollars < 150000:
+        elif 250000 <= arv_dollars < 300000:
             score += 18
-        elif 200000 < arv_dollars <= 225000:
+        elif 450000 < arv_dollars <= 525000:
             score += 18
-        elif 80000 <= arv_dollars < 120000:
+        elif 200000 <= arv_dollars < 250000:
             score += 10
-        elif 50000 <= arv_dollars < 80000:
+        elif 150000 <= arv_dollars < 200000:
             score += 5
 
     pt = (prop.get("property_type") or prop.get("land_use") or "").lower()
