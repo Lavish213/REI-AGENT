@@ -83,6 +83,75 @@ async def trigger_comps(property_id: str):
     return {"property_id": property_id, **result, "comp_count": len(comps)}
 
 
+def _process_csv(csv_text: str, min_score: int, create_leads: bool) -> dict:
+    from backend.scout.parser import parse_csv
+    from backend.scout.scorer import calculate_distress_score
+    from backend.lib.db import insert_lead, get_lead_by_property
+
+    properties = parse_csv(io.StringIO(csv_text))
+    logger.info("csv_upload parsed={}", len(properties))
+
+    upserted = 0
+    scored = 0
+    leads_created = 0
+    skipped_score = 0
+    errors = 0
+
+    for prop in properties:
+        try:
+            score = calculate_distress_score(prop)
+            prop["distress_score"] = score
+
+            upsert_property(prop)
+            upserted += 1
+
+            if score < min_score:
+                skipped_score += 1
+                continue
+
+            scored += 1
+
+            if create_leads and prop.get("id"):
+                existing = get_lead_by_property(prop["id"])
+                if not existing:
+                    csv_phone = prop.pop("_owner_phone", None)
+                    csv_phone_2 = prop.pop("_owner_phone_2", None)
+                    csv_email = prop.pop("_owner_email", None)
+                    lead_id = insert_lead(prop["id"])
+                    leads_created += 1
+                    if csv_phone or csv_email:
+                        try:
+                            from backend.lib.db import _get_client
+                            from datetime import datetime, timezone
+                            lead_upd = {"updated_at": datetime.now(timezone.utc).isoformat()}
+                            if csv_phone:
+                                lead_upd["owner_phone"] = csv_phone
+                                lead_upd["callable"] = True
+                            if csv_email:
+                                lead_upd["owner_email"] = csv_email
+                            _get_client().table("leads").update(lead_upd).eq("id", lead_id).execute()
+                            logger.info("csv_phone_stored lead_id={}", lead_id)
+                        except Exception as ph_err:
+                            logger.warning("csv_phone_store failed error={}", str(ph_err))
+                else:
+                    prop.pop("_owner_phone", None)
+                    prop.pop("_owner_phone_2", None)
+                    prop.pop("_owner_email", None)
+
+        except Exception as e:
+            logger.warning("csv_upload row_error error={}", str(e))
+            errors += 1
+
+    return {
+        "parsed": len(properties),
+        "upserted": upserted,
+        "scored": scored,
+        "leads_created": leads_created,
+        "skipped_score": skipped_score,
+        "errors": errors,
+    }
+
+
 @router.post("/properties/upload")
 async def upload_properties_csv(
     file: UploadFile = File(...),
@@ -101,75 +170,7 @@ async def upload_properties_csv(
     except UnicodeDecodeError:
         csv_text = contents.decode("latin-1")
 
-    def _process(csv_text: str, min_score: int, create_leads: bool) -> dict:
-        from backend.scout.parser import parse_csv
-        from backend.scout.scorer import calculate_distress_score
-        from backend.lib.db import insert_lead, get_lead_by_property
-
-        properties = parse_csv(io.StringIO(csv_text))
-        logger.info("csv_upload parsed={}", len(properties))
-
-        upserted = 0
-        scored = 0
-        leads_created = 0
-        skipped_score = 0
-        errors = 0
-
-        for prop in properties:
-            try:
-                score = calculate_distress_score(prop)
-                prop["distress_score"] = score
-
-                upsert_property(prop)
-                upserted += 1
-
-                if score < min_score:
-                    skipped_score += 1
-                    continue
-
-                scored += 1
-
-                if create_leads and prop.get("id"):
-                    existing = get_lead_by_property(prop["id"])
-                    if not existing:
-                        csv_phone = prop.pop("_owner_phone", None)
-                        csv_phone_2 = prop.pop("_owner_phone_2", None)
-                        csv_email = prop.pop("_owner_email", None)
-                        lead_id = insert_lead(prop["id"])
-                        leads_created += 1
-                        if csv_phone or csv_email:
-                            try:
-                                from backend.lib.db import _get_client
-                                from datetime import datetime, timezone
-                                lead_upd = {"updated_at": datetime.now(timezone.utc).isoformat()}
-                                if csv_phone:
-                                    lead_upd["owner_phone"] = csv_phone
-                                    lead_upd["callable"] = True
-                                if csv_email:
-                                    lead_upd["owner_email"] = csv_email
-                                _get_client().table("leads").update(lead_upd).eq("id", lead_id).execute()
-                                logger.info("csv_phone_stored lead_id={}", lead_id)
-                            except Exception as ph_err:
-                                logger.warning("csv_phone_store failed error={}", str(ph_err))
-                    else:
-                        prop.pop("_owner_phone", None)
-                        prop.pop("_owner_phone_2", None)
-                        prop.pop("_owner_email", None)
-
-            except Exception as e:
-                logger.warning("csv_upload row_error error={}", str(e))
-                errors += 1
-
-        return {
-            "parsed": len(properties),
-            "upserted": upserted,
-            "scored": scored,
-            "leads_created": leads_created,
-            "skipped_score": skipped_score,
-            "errors": errors,
-        }
-
-    result = await run_in_threadpool(_process, csv_text, min_score, create_leads)
+    result = await run_in_threadpool(_process_csv, csv_text, min_score, create_leads)
     logger.info("csv_upload complete result={}", result)
     return {"success": True, **result}
 
@@ -195,3 +196,29 @@ async def rentcast_price_endpoint(body: dict):
         return await run_in_threadpool(rentcast.price_batch, limit)
     except rentcast.RentcastDisabled as error:
         raise HTTPException(409, "RentCast is disabled") from error
+
+
+@router.get("/operations/mail-list")
+async def mail_list_endpoint(priced_only: bool = True):
+    from backend.lib.db import mail_list
+    try:
+        rows = await run_in_threadpool(mail_list, priced_only)
+    except Exception as error:
+        raise HTTPException(503, "Mail list unavailable") from error
+    return {"schema_version": 1, "priced_only": priced_only, "count": len(rows), "rows": rows}
+
+
+@router.post("/operations/import-csv")
+async def import_csv_endpoint(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a .csv")
+    contents = await file.read()
+    if not contents or len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File must be between 1 byte and 10MB")
+    try:
+        csv_text = contents.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        csv_text = contents.decode("latin-1")
+    result = await run_in_threadpool(_process_csv, csv_text, 0, True)
+    logger.info("csv_import complete result={}", result)
+    return {"schema_version": 1, **result}

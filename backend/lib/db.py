@@ -2839,6 +2839,34 @@ def save_rentcast_valuation(property_id: str, data: dict) -> int:
     return len(rows)
 
 
+MAIL_LIST_LIMIT = 2000
+
+
+def mail_list(priced_only: bool) -> list[dict]:
+    leads = [row for row in _scan_rows('leads', 'id,property_id,owner_name,opted_out,ownership_denied') if row.get('property_id') and not row.get('opted_out') and not row.get('ownership_denied')]
+    by_property = {row['property_id']: row for row in leads}
+    properties = _scan_rows('properties', 'id,address,city,state,zip,owner_name,owner_mailing_address,owner_mailing_city,owner_mailing_state,owner_mailing_zip,estimated_arv,mao,arv_confidence,distress_type,distress_score,deal_viable')
+    rows = []
+    for prop in properties:
+        lead = by_property.get(prop.get('id'))
+        if not lead or prop.get('deal_viable') is False or not (prop.get('owner_mailing_address') or '').strip():
+            continue
+        priced = isinstance(prop.get('estimated_arv'), int) and prop['estimated_arv'] > 0 and prop.get('arv_confidence') not in (None, 'needs_comps')
+        if priced_only and not priced:
+            continue
+        rows.append({
+            'lead_id': lead['id'], 'owner_name': lead.get('owner_name') or prop.get('owner_name'),
+            'mailing_address': prop.get('owner_mailing_address'), 'mailing_city': prop.get('owner_mailing_city'),
+            'mailing_state': prop.get('owner_mailing_state'), 'mailing_zip': prop.get('owner_mailing_zip'),
+            'property_address': prop.get('address'), 'property_city': prop.get('city'), 'property_zip': prop.get('zip'),
+            'value_cents': prop['estimated_arv'] if priced else None, 'mao_cents': prop.get('mao') if priced else None,
+            'value_source': prop.get('arv_confidence') if priced else None,
+            'distress_type': prop.get('distress_type'), 'distress_score': prop.get('distress_score'),
+        })
+    rows.sort(key=lambda row: -(row['distress_score'] or 0))
+    return rows[:MAIL_LIST_LIMIT]
+
+
 def _scan_rows(table: str, columns: str, page: int = 1000, limit: int = 50000) -> list[dict]:
     rows = []
     for start in range(0, limit, page):
