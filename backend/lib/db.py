@@ -2808,7 +2808,10 @@ def save_rentcast_valuation(property_id: str, data: dict) -> int:
     require_price_cents('mao', mao)
     retrieved = datetime.now(timezone.utc).isoformat()
     comparables = [item for item in (data.get('comparables') or []) if isinstance(item, dict)]
+    from backend.scout.scorer import rescore_with_arv
+    current = (_get_client().table('properties').select('motivation_score,move_score,equity_pct,free_and_clear,distress_type,property_type,land_use,year_built').eq('id', property_id).limit(1).execute().data or [{}])[0]
     _get_client().table('properties').update({
+        **rescore_with_arv(current, arv),
         'estimated_arv': arv,
         'mao': mao,
         'arv_confidence': 'rentcast_avm',
