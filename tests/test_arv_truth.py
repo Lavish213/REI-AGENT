@@ -177,3 +177,12 @@ def test_tax_based_estimated_value_never_disqualifies(value, monkeypatch):
     prop = house(estimated_value=value)
     scorer.calculate_distress_score(prop)
     assert prop['deal_viable'] is True and prop['disqualified_reason'] is None
+
+
+@pytest.mark.parametrize('dollars,bonus', [
+    (100000, 0), (149999, 0), (150000, 5), (199999, 5), (200000, 10), (249999, 10), (250000, 18),
+    (299999, 18), (300000, 25), (450000, 25), (450001, 18), (525000, 18), (525001, 0), (900000, 0),
+])
+def test_arv_bonus_follows_stockton_market_prices(dollars, bonus):
+    prop = {'property_type': 'vacant', 'equity_pct': 0}
+    assert scorer._deal_score(prop, dollars * 100) - scorer._deal_score(prop, None) == bonus
