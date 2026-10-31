@@ -1,0 +1,31 @@
+name: Uptime
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check services
+        run: |
+          failed=0
+          for url in \
+            https://rei-agent-production-7a65.up.railway.app/healthz \
+            https://the-dashboard-production-ca9a.up.railway.app/api/ready \
+            https://the-dashboard-pi.vercel.app/; do
+            ok=0
+            for attempt in 1 2 3; do
+              code=$(curl -s -o /dev/null -m 20 -w '%{http_code}' "$url" || true)
+              if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then ok=1; break; fi
+              sleep 10
+            done
+            if [ "$ok" = 1 ]; then echo "up $code $url"; else echo "::error::down $code $url"; failed=1; fi
+          done
+          exit $failed
