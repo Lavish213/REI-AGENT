@@ -172,3 +172,26 @@ async def upload_properties_csv(
     result = await run_in_threadpool(_process, csv_text, min_score, create_leads)
     logger.info("csv_upload complete result={}", result)
     return {"success": True, **result}
+
+
+@router.get("/operations/rentcast/usage")
+async def rentcast_usage_endpoint():
+    from backend.comps import rentcast
+    from backend.lib.db import rentcast_usage
+    try:
+        usage = await run_in_threadpool(rentcast_usage)
+    except Exception as error:
+        raise HTTPException(503, "RentCast usage unavailable") from error
+    return {**usage, "enabled": rentcast.enabled(), "configured_cap": rentcast.monthly_cap()}
+
+
+@router.post("/operations/rentcast/price")
+async def rentcast_price_endpoint(body: dict):
+    from backend.comps import rentcast
+    limit = body.get("limit")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= rentcast.MAX_BATCH:
+        raise HTTPException(422, "limit must be an integer from 1 to 50")
+    try:
+        return await run_in_threadpool(rentcast.price_batch, limit)
+    except rentcast.RentcastDisabled as error:
+        raise HTTPException(409, "RentCast is disabled") from error
