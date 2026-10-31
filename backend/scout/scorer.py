@@ -288,6 +288,17 @@ def calculate_distress_score(prop: dict) -> int:
     return final
 
 
+def rescore_with_arv(row: dict, arv: int) -> dict:
+    motivation = row.get("motivation_score")
+    if not isinstance(motivation, int) or isinstance(motivation, bool):
+        motivation = _motivation_score(row)
+    move_bonus = row.get("move_score")
+    if not isinstance(move_bonus, int) or isinstance(move_bonus, bool):
+        move_bonus = 0
+    deal = _deal_score(row, arv)
+    return {"deal_score": deal, "distress_score": min(int(motivation * 0.65 + deal * 0.35 + move_bonus * 0.1), 100)}
+
+
 def score_properties(properties: list[dict]) -> list[dict]:
     for prop in properties:
         prop["distress_score"] = calculate_distress_score(prop)

@@ -162,9 +162,17 @@ def test_request_params_skip_bad_values():
 class Query:
     def __init__(self, store, table):
         self.store, self.table, self.op, self.payload, self.filters = store, table, None, None, []
+        self.store_rows = {}
 
     def update(self, payload):
         self.op, self.payload = 'update', payload
+        return self
+
+    def select(self, columns):
+        self.op, self.payload = 'select', columns
+        return self
+
+    def limit(self, count):
         return self
 
     def upsert(self, payload, on_conflict=None):
@@ -176,16 +184,21 @@ class Query:
         return self
 
     def execute(self):
+        if self.op == 'select':
+            return type('R', (), {'data': [self.store_rows.get(self.table, {'id': 'p0'})]})()
         self.store.append((self.table, self.op, self.payload, self.filters, getattr(self, 'conflict', None)))
         return type('R', (), {'data': [{'id': 'p0'}]})()
 
 
 class Client:
-    def __init__(self):
+    def __init__(self, rows=None):
         self.writes = []
+        self.rows = rows or {}
 
     def table(self, name):
-        return Query(self.writes, name)
+        query = Query(self.writes, name)
+        query.store_rows = self.rows
+        return query
 
 
 def test_save_valuation_uses_cents_and_listing_comps(monkeypatch):
@@ -337,3 +350,19 @@ def test_candidates_follow_leads_property_link(monkeypatch):
     monkeypatch.setattr(db, '_get_client', lambda: ListClient({'properties': properties, 'leads': leads}))
     assert [row['id'] for row in db.rentcast_candidates(50)] == ['a', 'b', 'g']
     assert [row['id'] for row in db.rentcast_candidates(1)] == ['a']
+
+
+def test_pricing_rescores_with_the_new_value(monkeypatch):
+    client = Client({'properties': {'motivation_score': 80, 'move_score': 10, 'equity_pct': 100, 'free_and_clear': True, 'property_type': 'Single Family Residence', 'year_built': 1955}})
+    monkeypatch.setattr(db, '_get_client', lambda: client)
+    db.save_rentcast_valuation('p0', {'price': 400000})
+    payload = client.writes[0][2]
+    assert payload['deal_score'] == 40 + 25 + 12 + 10
+    assert payload['distress_score'] == min(int(80 * 0.65 + 87 * 0.35 + 10 * 0.1), 100)
+
+
+def test_rescore_handles_missing_stored_scores():
+    from backend.scout import scorer
+    result = scorer.rescore_with_arv({'motivation_score': None, 'move_score': True, 'distress_type': 'vacant'}, 40000000)
+    assert result['deal_score'] == 25
+    assert 0 <= result['distress_score'] <= 100
