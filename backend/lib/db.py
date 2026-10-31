@@ -97,9 +97,23 @@ def get_supabase() -> Client:
     return _get_client()
 
 
+MIN_PLAUSIBLE_PRICE_CENTS = 1_000_000
+
+
+def require_price_cents(field: str, value) -> None:
+    if value is None or value == 0:
+        return
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be integer cents")
+    if value < 0 or value < MIN_PLAUSIBLE_PRICE_CENTS:
+        raise ValueError(f"{field} looks like dollars, not cents")
+
+
 def upsert_property(data: dict) -> str:
-    client = _get_client()
     payload = {key: value for key, value in data.items() if not key.startswith("_")}
+    for field in ("estimated_arv", "mao"):
+        require_price_cents(field, payload.get(field))
+    client = _get_client()
     response = client.table("properties").upsert(payload, on_conflict="apn").execute()
     if not response.data or not response.data[0].get("id"):
         raise RuntimeError("Property was not saved")
@@ -256,6 +270,8 @@ def get_comps_by_property(property_id: str) -> list[dict]:
 
 
 def update_property_arv(property_id: str, arv: int, mao: int, confidence: str) -> None:
+    require_price_cents("arv", arv)
+    require_price_cents("mao", mao)
     if type(arv) is not int or type(mao) is not int or not 0 < arv <= 10**14 or not 0 <= mao <= 10**14:
         raise ValueError('Bounded diagnostic integer cents required')
     _get_client().table('properties').update({'valuation_diagnostic': {'arv_cents': arv, 'screening_mao_cents': mao, 'confidence': str(confidence).lower(), 'method': 'unreviewed_ppsf_diagnostic', 'observed_at': datetime.now(timezone.utc).isoformat(), 'quote_authorized': False, 'offer_authorized': False}}).eq('id', property_id).execute()
@@ -2733,8 +2749,51 @@ def delivery_event_health():
     return {'pending': row['pending'], 'oldest_pending_seconds': max(0, int(time.time() - row['oldest'])) if row['oldest'] else 0, 'received': total, 'scope': 'persisted_provider_events_not_delivery_without_receipts'}
 
 
+def _scan_rows(table: str, columns: str, page: int = 1000, limit: int = 50000) -> list[dict]:
+    rows = []
+    for start in range(0, limit, page):
+        batch = _get_client().table(table).select(columns).range(start, start + page - 1).execute().data or []
+        rows.extend(batch)
+        if len(batch) < page:
+            break
+    return rows
+
+
+def data_quality_report() -> dict:
+    properties = _scan_rows('properties', 'id,distress_type,estimated_arv,arv_confidence,assessed_total_value')
+    leads = _scan_rows('leads', 'id,owner_phone,call_brief_generated_at')
+    comps = _get_client().table('comps').select('id', count='exact').limit(1).execute()
+    by_type = {}
+    assessed_based = 0
+    for row in properties:
+        kind = row.get('distress_type') or 'unknown'
+        bucket = by_type.setdefault(kind, {'properties': 0, 'with_comp_arv': 0, 'needs_comps': 0})
+        bucket['properties'] += 1
+        arv = row.get('estimated_arv')
+        assessed = row.get('assessed_total_value')
+        if arv and assessed and abs(arv - round(assessed / 0.8)) <= 1:
+            assessed_based += 1
+        if arv and row.get('arv_confidence') not in (None, 'needs_comps'):
+            bucket['with_comp_arv'] += 1
+        else:
+            bucket['needs_comps'] += 1
+    return {
+        'schema_version': 1,
+        'generated_at': datetime.now(timezone.utc).isoformat(),
+        'properties': len(properties),
+        'properties_with_comp_arv': sum(item['with_comp_arv'] for item in by_type.values()),
+        'properties_needing_comps': sum(item['needs_comps'] for item in by_type.values()),
+        'assessed_based_arv': assessed_based,
+        'comps_rows': comps.count or 0,
+        'leads': len(leads),
+        'leads_with_phone': sum(1 for row in leads if (row.get('owner_phone') or '').strip()),
+        'leads_with_bob_brief': sum(1 for row in leads if row.get('call_brief_generated_at')),
+        'by_distress_type': dict(sorted(by_type.items(), key=lambda item: -item[1]['properties'])),
+    }
+
+
 def delivery_overview():
-    response = _get_client().table('provider_delivery_messages').select('intent_id,lead_id,channel,delivery_status,opened,clicked,suppressed,updated_at').eq('tenant_id', os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')).order('updated_at', desc=True).limit(100).execute()
+    response =_get_client().table('provider_delivery_messages').select('intent_id,lead_id,channel,delivery_status,opened,clicked,suppressed,updated_at').eq('tenant_id', os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')).order('updated_at', desc=True).limit(100).execute()
     return {'schema_version': 1, 'tenant_id': os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001'), 'inventory': message_inventory_health(), 'journal': delivery_event_health(), 'messages': response.data or [], 'limit': 100, 'scope': 'provider_receipts_not_human_read_or_seller_acceptance'}
 
 

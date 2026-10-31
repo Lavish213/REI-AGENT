@@ -181,7 +181,7 @@ def _move_score(prop: dict) -> int:
     return min(score, 30)
 
 
-def _compute_arv(prop: dict) -> int:
+def _compute_arv(prop: dict) -> int | None:
     try:
         from backend.comps.homeharvest import get_comps as hh_get_comps
         result = hh_get_comps(
@@ -200,19 +200,11 @@ def _compute_arv(prop: dict) -> int:
     except Exception as e:
         logger.warning("homeharvest arv lookup failed apn={} error={}", prop.get("apn"), str(e))
 
-    zestimate = prop.get("zestimate")
-    if zestimate and zestimate > 0:
-        return int(zestimate)
-    assessed = prop.get("assessed_total_value")
-    if assessed and assessed > 0:
-        return int(assessed / 0.80)
-    ev = prop.get("estimated_value")
-    if ev and ev > 0:
-        return int(ev)
-    return 0
+    prop["arv_confidence"] = "needs_comps"
+    return None
 
 
-def _deal_score(prop: dict, arv: int) -> int:
+def _deal_score(prop: dict, arv: int | None) -> int:
     score = 0
     equity_pct = prop.get("equity_pct") or 0
     free_clear = bool(prop.get("free_and_clear")) or prop.get("distress_type") == "free_and_clear"
@@ -228,7 +220,7 @@ def _deal_score(prop: dict, arv: int) -> int:
     elif equity_pct >= 10:
         score += 5
 
-    if arv > 0:
+    if arv and arv > 0:
         arv_dollars = arv / 100
         if 150000 <= arv_dollars <= 200000:
             score += 25
@@ -283,7 +275,7 @@ def calculate_distress_score(prop: dict) -> int:
     motivation = _motivation_score(prop)
     arv = _compute_arv(prop)
     deal = _deal_score(prop, arv)
-    mao = max(0, int(arv * 0.70) - 2500000)
+    mao = max(0, int(arv * 0.70) - 2500000) if arv else None
     move_bonus = _move_score(prop)
 
     prop["motivation_score"] = motivation

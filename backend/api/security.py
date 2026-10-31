@@ -30,7 +30,7 @@ def valid_signalwire_signature(key: str, signature: str, url: str, body: bytes) 
 class OperatorAuthentication(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path in {"/api/operations/callback", "/api/operations/command", "/api/operations/integration", "/api/operations/delivery"} or path.startswith("/api/operations/email-holds") or path.startswith("/api/operations/price-reviews") or path.startswith("/api/operations/candidates") or path.startswith("/api/health/workflow-recovery"):
+        if path in {"/api/operations/callback", "/api/operations/command", "/api/operations/integration", "/api/operations/delivery"} or path.startswith("/api/operations/email-holds") or path.startswith("/api/operations/price-reviews") or path.startswith("/api/operations/candidates") or path.startswith("/api/health/workflow-recovery") or path == "/api/health/data-quality":
             secret = os.environ.get("SOURCE_COMMAND_SECRET", "")
             supplied = request.headers.get("x-source-command-secret", "")
             if len(secret) < 32 or not hmac.compare_digest(secret.encode(), supplied.encode()):
