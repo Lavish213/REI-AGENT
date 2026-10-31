@@ -125,6 +125,17 @@ async def health_check():
     }
 
 
+@router.get("/health/data-quality")
+async def data_quality():
+    import asyncio
+    from fastapi import HTTPException
+    from backend.lib.db import data_quality_report
+    try:
+        return await asyncio.to_thread(data_quality_report)
+    except Exception as error:
+        raise HTTPException(503, "Data quality report unavailable") from error
+
+
 @router.get("/health/workflow-recovery")
 async def workflow_recovery_health():
     import asyncio
