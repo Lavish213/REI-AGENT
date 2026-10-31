@@ -289,3 +289,51 @@ def test_price_endpoint_disabled_is_409(monkeypatch, budget):
     monkeypatch.setenv('RENTCAST_ENABLED', 'false')
     response = app().post('/api/operations/rentcast/price', json={'limit': 5}, headers={'x-source-command-secret': SECRET})
     assert response.status_code == 409 and budget.calls == []
+
+
+class ListQuery:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def select(self, *args, **kwargs):
+        return self
+
+    def is_(self, *args):
+        return self
+
+    def order(self, *args, **kwargs):
+        return self
+
+    def limit(self, *args):
+        return self
+
+    def range(self, start, end):
+        self.rows = self.rows[start:end + 1]
+        return self
+
+    def execute(self):
+        return type('R', (), {'data': self.rows})()
+
+
+class ListClient:
+    def __init__(self, tables):
+        self.tables = tables
+
+    def table(self, name):
+        return ListQuery(list(self.tables[name]))
+
+
+def test_candidates_follow_leads_property_link(monkeypatch):
+    properties = [
+        {'id': 'a', 'address': '1 A St', 'city': 'Stockton', 'deal_viable': True, 'arv_confidence': 'needs_comps', 'lead_id': None},
+        {'id': 'b', 'address': '2 B St', 'city': 'Stockton', 'deal_viable': None, 'arv_confidence': None, 'lead_id': None},
+        {'id': 'c', 'address': '3 C St', 'city': 'Stockton', 'deal_viable': True, 'arv_confidence': None, 'lead_id': None},
+        {'id': 'd', 'address': '4 D St', 'city': 'Stockton', 'deal_viable': False, 'arv_confidence': None, 'lead_id': None},
+        {'id': 'e', 'address': '5 E St', 'city': 'Stockton', 'deal_viable': True, 'arv_confidence': 'rentcast_no_data', 'lead_id': None},
+        {'id': 'f', 'address': '', 'city': 'Stockton', 'deal_viable': True, 'arv_confidence': None, 'lead_id': None},
+        {'id': 'g', 'address': '7 G St', 'city': 'Lodi', 'deal_viable': True, 'arv_confidence': None, 'lead_id': 'lead-g'},
+    ]
+    leads = [{'property_id': key} for key in ('a', 'b', 'd', 'e', 'f')] + [{'property_id': None}]
+    monkeypatch.setattr(db, '_get_client', lambda: ListClient({'properties': properties, 'leads': leads}))
+    assert [row['id'] for row in db.rentcast_candidates(50)] == ['a', 'b', 'g']
+    assert [row['id'] for row in db.rentcast_candidates(1)] == ['a']

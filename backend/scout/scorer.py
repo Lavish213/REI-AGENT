@@ -42,14 +42,6 @@ def _check_disqualifiers(prop: dict) -> str | None:
     if not sqft or sqft < 400:
         return "sqft_too_small"
 
-    ev = prop.get("estimated_value")
-    if ev is not None:
-        ev_dollars = ev / 100
-        if ev_dollars < 50000:
-            return f"value_too_low:{int(ev_dollars)}"
-        if ev_dollars > 225000:
-            return f"value_too_high:{int(ev_dollars)}"
-
     years = _years_owned(prop)
     if years is not None and years < 0.5:
         return "owned_under_6_months"
