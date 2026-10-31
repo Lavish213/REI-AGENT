@@ -113,6 +113,9 @@ def upsert_property(data: dict) -> str:
     payload = {key: value for key, value in data.items() if not key.startswith("_")}
     for field in ("estimated_arv", "mao"):
         require_price_cents(field, payload.get(field))
+    if payload.get("estimated_arv") is None:
+        for field in ("estimated_arv", "mao", "arv_confidence"):
+            payload.pop(field, None)
     client = _get_client()
     response = client.table("properties").upsert(payload, on_conflict="apn").execute()
     if not response.data or not response.data[0].get("id"):
@@ -2749,6 +2752,89 @@ def delivery_event_health():
     return {'pending': row['pending'], 'oldest_pending_seconds': max(0, int(time.time() - row['oldest'])) if row['oldest'] else 0, 'received': total, 'scope': 'persisted_provider_events_not_delivery_without_receipts'}
 
 
+RENTCAST_HARD_CAP = 50
+
+
+def _tenant_id() -> str:
+    return os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
+
+
+def reserve_rentcast_call(property_id: str | None, cap: int) -> int | None:
+    bounded = max(0, min(int(cap), RENTCAST_HARD_CAP))
+    response = _get_client().rpc('reserve_rentcast_call', {'p_tenant': _tenant_id(), 'p_property': property_id, 'p_cap': bounded}).execute()
+    value = response.data
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def finish_rentcast_call(call_id: int, http_status: int | None, outcome: str) -> None:
+    _get_client().rpc('finish_rentcast_call', {'p_id': call_id, 'p_http_status': http_status, 'p_outcome': outcome}).execute()
+
+
+def rentcast_usage() -> dict:
+    data = _get_client().rpc('rentcast_usage', {}).execute().data
+    if not isinstance(data, dict) or not isinstance(data.get('used'), int):
+        raise RuntimeError('RentCast usage unavailable')
+    return data
+
+
+def rentcast_candidates(limit: int) -> list[dict]:
+    rows = (
+        _get_client().table('properties')
+        .select('id,address,city,state,zip,beds,baths,sqft,property_type,land_use,distress_score,deal_viable,arv_confidence,lead_id')
+        .is_('estimated_arv', 'null')
+        .order('distress_score', desc=True)
+        .limit(500)
+        .execute().data or []
+    )
+    eligible = [row for row in rows if row.get('lead_id') and row.get('address') and row.get('city') and row.get('deal_viable') is not False and row.get('arv_confidence') != 'rentcast_no_data']
+    return eligible[:limit]
+
+
+def mark_rentcast_no_data(property_id: str) -> None:
+    _get_client().table('properties').update({'arv_confidence': 'rentcast_no_data'}).eq('id', property_id).execute()
+
+
+def save_rentcast_valuation(property_id: str, data: dict) -> int:
+    def cents(value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            return None
+        return int(round(value * 100))
+    arv = cents(data.get('price'))
+    require_price_cents('estimated_arv', arv)
+    if not arv:
+        raise ValueError('RentCast returned no usable price')
+    mao = max(0, arv * 70 // 100 - 2500000)
+    require_price_cents('mao', mao)
+    retrieved = datetime.now(timezone.utc).isoformat()
+    comparables = [item for item in (data.get('comparables') or []) if isinstance(item, dict)]
+    _get_client().table('properties').update({
+        'estimated_arv': arv,
+        'mao': mao,
+        'arv_confidence': 'rentcast_avm',
+        'valuation_diagnostic': {
+            'method': 'rentcast_avm', 'basis': 'listing_prices_not_recorded_sales', 'arv_cents': arv,
+            'low_cents': cents(data.get('priceRangeLow')), 'high_cents': cents(data.get('priceRangeHigh')),
+            'comp_count': len(comparables), 'observed_at': retrieved, 'quote_authorized': False, 'offer_authorized': False,
+        },
+    }).eq('id', property_id).execute()
+    rows = []
+    for item in comparables:
+        reference = str(item.get('id') or item.get('formattedAddress') or '')[:300]
+        if not reference:
+            continue
+        rows.append({
+            'tenant_id': _tenant_id(), 'subject_property_id': property_id, 'source': 'rentcast', 'source_ref': reference, 'retrieved_at': retrieved,
+            'comp_kind': 'listing', 'address': item.get('formattedAddress'), 'list_price_cents': cents(item.get('price')),
+            'listing_status': item.get('status'), 'listing_type': item.get('listingType'),
+            'listed_date': (item.get('listedDate') or '')[:10] or None, 'removed_date': (item.get('removedDate') or '')[:10] or None,
+            'beds': item.get('bedrooms'), 'baths': item.get('bathrooms'), 'sqft': item.get('squareFootage'),
+            'year_built': item.get('yearBuilt'), 'distance_miles': item.get('distance'), 'correlation': item.get('correlation'),
+        })
+    if rows:
+        _get_client().table('comps').upsert(rows, on_conflict='subject_property_id,source,source_ref').execute()
+    return len(rows)
+
+
 def _scan_rows(table: str, columns: str, page: int = 1000, limit: int = 50000) -> list[dict]:
     rows = []
     for start in range(0, limit, page):
@@ -2757,6 +2843,14 @@ def _scan_rows(table: str, columns: str, page: int = 1000, limit: int = 50000) -
         if len(batch) < page:
             break
     return rows
+
+
+def _rentcast_usage_or_none() -> dict | None:
+    try:
+        usage = rentcast_usage()
+    except Exception:
+        return None
+    return {'used': usage['used'], 'hard_cap': usage.get('hard_cap', RENTCAST_HARD_CAP), 'window_days': usage.get('window_days', 31)}
 
 
 def data_quality_report() -> dict:
@@ -2788,6 +2882,7 @@ def data_quality_report() -> dict:
         'leads': len(leads),
         'leads_with_phone': sum(1 for row in leads if (row.get('owner_phone') or '').strip()),
         'leads_with_bob_brief': sum(1 for row in leads if row.get('call_brief_generated_at')),
+        'rentcast': _rentcast_usage_or_none(),
         'by_distress_type': dict(sorted(by_type.items(), key=lambda item: -item[1]['properties'])),
     }
 
