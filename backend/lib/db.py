@@ -2783,10 +2783,11 @@ def rentcast_candidates(limit: int) -> list[dict]:
         .select('id,address,city,state,zip,beds,baths,sqft,property_type,land_use,distress_score,deal_viable,arv_confidence,lead_id')
         .is_('estimated_arv', 'null')
         .order('distress_score', desc=True)
-        .limit(500)
+        .limit(1000)
         .execute().data or []
     )
-    eligible = [row for row in rows if row.get('lead_id') and row.get('address') and row.get('city') and row.get('deal_viable') is not False and row.get('arv_confidence') != 'rentcast_no_data']
+    linked = {row['property_id'] for row in _scan_rows('leads', 'property_id') if row.get('property_id')}
+    eligible = [row for row in rows if (row.get('id') in linked or row.get('lead_id')) and row.get('address') and row.get('city') and row.get('deal_viable') is not False and row.get('arv_confidence') != 'rentcast_no_data']
     return eligible[:limit]
 
 

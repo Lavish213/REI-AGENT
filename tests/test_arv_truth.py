@@ -169,3 +169,11 @@ def test_data_quality_route_fails_closed(monkeypatch):
     monkeypatch.setattr(db, 'data_quality_report', lambda: (_ for _ in ()).throw(RuntimeError('down')))
     response = TestClient(app()).get('/api/health/data-quality', headers={'x-source-command-secret': SECRET})
     assert response.status_code == 503
+
+
+@pytest.mark.parametrize('value', [3977900, 12000000, 52283300, 90000000])
+def test_tax_based_estimated_value_never_disqualifies(value, monkeypatch):
+    monkeypatch.setattr(homeharvest, 'get_comps', no_comps)
+    prop = house(estimated_value=value)
+    scorer.calculate_distress_score(prop)
+    assert prop['deal_viable'] is True and prop['disqualified_reason'] is None
