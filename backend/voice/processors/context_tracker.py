@@ -589,7 +589,8 @@ class ContextTrackerProcessor(FrameProcessor):
             self._ctx.condition_known = True
             remember_fact("condition")
         if self._ctx._walkthrough_asked and re.search(r"\b(yes|yeah|sure|sounds good|works for me|let.s do it)\b", lower) and not re.search(r"\b(no|not|never|maybe|but|if|depends|possibly)\b", lower):
-            self._ctx.pre_close_done = True
+            from backend.voice.conversation_policy import discovery_ready
+            self._ctx.pre_close_done = discovery_ready(self._ctx)
             self._ctx._walkthrough_asked = False
 
         price = _extract_price_cents(text)
