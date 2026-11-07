@@ -3,16 +3,12 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import logging
 import os
 from urllib.parse import parse_qs
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-
-
-logger = logging.getLogger(__name__)
 
 
 def valid_signalwire_signature(key: str, signature: str, url: str, body: bytes) -> bool:
@@ -61,42 +57,13 @@ class OperatorAuthentication(BaseHTTPMiddleware):
             public = os.environ.get("PUBLIC_URL", "").rstrip("/")
             url = public + path + ("?" + request.url.query if request.url.query else "")
             key = os.environ.get("SIGNALWIRE_SIGNING_KEY", "")
-            compatibility_token = os.environ.get("SIGNALWIRE_TOKEN", "")
             body = await request.body()
             sha256_signature = request.headers.get("x-signalwire-sha256-signature", "")
             signature = request.headers.get("x-signalwire-signature", "") or request.headers.get("x-twilio-signature", "")
-            sha256_valid = valid_signalwire_sha256_signature(key, sha256_signature, url, body)
-            compatibility_valid = valid_signalwire_signature(key, signature, url, body)
-            signature_valid = sha256_valid or compatibility_valid
-            if not signature_valid:
-                forwarded_proto = request.headers.get("x-forwarded-proto", "")
-                forwarded_host = request.headers.get("x-forwarded-host", "")
-                request_url = str(request.url)
-                logger.warning(
-                    "signalwire_signature_rejected path=%s public_set=%s key_set=%s "
-                    "sha256_header=%s sha256_length=%d compatibility_header=%s compatibility_length=%d "
-                    "content_type=%s body_length=%d forwarded_proto=%s forwarded_host_matches=%s "
-                    "public_sha256_valid=%s public_compatibility_valid=%s "
-                    "request_url_sha256_valid=%s request_url_compatibility_valid=%s "
-                    "token_sha256_valid=%s token_compatibility_valid=%s",
-                    path,
-                    bool(public),
-                    bool(key),
-                    bool(sha256_signature),
-                    len(sha256_signature),
-                    bool(signature),
-                    len(signature),
-                    request.headers.get("content-type", "").split(";", 1)[0],
-                    len(body),
-                    forwarded_proto,
-                    bool(forwarded_host and forwarded_host == request.url.hostname),
-                    sha256_valid,
-                    compatibility_valid,
-                    valid_signalwire_sha256_signature(key, sha256_signature, request_url, body),
-                    valid_signalwire_signature(key, signature, request_url, body),
-                    valid_signalwire_sha256_signature(compatibility_token, sha256_signature, url, body),
-                    valid_signalwire_signature(compatibility_token, signature, url, body),
-                )
+            signature_valid = (
+                valid_signalwire_sha256_signature(key, sha256_signature, url, body)
+                or valid_signalwire_signature(key, signature, url, body)
+            )
             if not public or not signature_valid:
                 return JSONResponse({"detail": "Invalid webhook signature"}, status_code=403)
             return await call_next(request)

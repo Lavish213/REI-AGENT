@@ -321,7 +321,7 @@ class TranscriptJournal(FrameProcessor):
         await super().process_frame(frame, direction)
         if isinstance(frame, UserStartedSpeakingFrame):
             self._spoken_text = ""
-        expected = TranscriptionFrame if self._speaker == "user" else TTSTextFrame
+        expected = TranscriptionFrame if self._speaker == "user" else (TTSTextFrame, TTSSpeakFrame)
         if direction == FrameDirection.DOWNSTREAM and isinstance(frame, expected) and frame.text.strip():
             self._ctx.transcript_events.append({"role": self._speaker, "content": frame.text.strip()})
             sid = getattr(self._ctx, "_call_sid", "")
@@ -659,10 +659,10 @@ async def run_sophia_agent(
             SpeechOutputProcessor(),
             FairHousingFilter(),
             ComplianceOutputFilter(call_ctx=call_ctx),
+            TranscriptJournal(call_ctx, "assistant"),
             tts,
             TTSFrameProbe(),
             transport.output(),
-            TranscriptJournal(call_ctx, "assistant"),
             bot_speaking_monitor,
             context_aggregator.assistant(),
         ]
