@@ -168,7 +168,10 @@ accuracy."* Part 5 requires After Repair Value for San Joaquin County. The
 accuracy in the operating market. Severity: high — it is the number most likely
 to be quoted as if it were.
 
-**B-2 — The supported range under-covers, and regressed against baseline.**
+**B-2 — The supported range under-covers.** *(Superseded 2026-11-07 by
+finding B-6: the cause is combinatorial, not calibration. Coverage is capped at
+`(n-1)/(n+1)` by comparable count — 50% at Bob's 3-comp minimum. See
+`BOB_EXPERIMENT_LOG.md` E-5.)*
 Interval coverage on held-out 2010: Bob 133/215 = **61.9%**; random baseline
 2,930/4,300 = **68.1%**. Bob's point estimate improved while its interval got
 *narrower than warranted*. The engine labels the field honestly
@@ -193,7 +196,7 @@ Measured against Part 17's ten required components.
 |---|---|---|---|
 | 1 | **Market Data Engine** | 🟡 Partial | `market_research.py` is *model* research. No discovery-source collection, no provenance store, no evidence-class fields |
 | 2 | **Pattern Engine** | 🔴 **Absent** | `backend/intel/__init__.py` is 0 bytes |
-| 3 | **ARV Engine** | 🟢 **Present, measured** | `engine.py::compare_sales`; benchmark above |
+| 3 | **ARV Engine** | 🟡 **Present; kernel measured, production path not** | `engine.py::compare_sales`. **Corrected 2026-11-07:** experiment E-1 proved the benchmark measures `reconcile_indications`, not `compare_sales`, which produced zero advisory prices across all 649 held-out subjects. See `BOB_EXPERIMENT_LOG.md` finding B-5 |
 | 4 | **Rehab Engine** | 🔴 **Absent** | `repairs_with_contingency` *accepts* a line-item total. Nothing estimates scope. No $/sqft bands, no 17 categories, no low/expected/high |
 | 5 | **Opportunity Engine** | 🔴 **Absent** | `backend/scoring/__init__.py` is 0 bytes. No Opportunity Score, no Hidden Gem Score |
 | 6 | **Lockout Engine** | 🔴 **Absent** | No hard-reject, hold, or reopening-condition code anywhere |
