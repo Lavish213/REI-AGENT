@@ -58,8 +58,7 @@ class OperatorAuthentication(BaseHTTPMiddleware):
             signature = request.headers.get("x-signalwire-signature", "") or request.headers.get("x-twilio-signature", "")
             signature_valid = (
                 valid_signalwire_sha256_signature(key, sha256_signature, url, body)
-                if sha256_signature
-                else valid_signalwire_signature(key, signature, url, body)
+                or valid_signalwire_signature(key, signature, url, body)
             )
             if not public or not signature_valid:
                 return JSONResponse({"detail": "Invalid webhook signature"}, status_code=403)
