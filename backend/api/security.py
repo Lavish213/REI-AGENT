@@ -61,6 +61,7 @@ class OperatorAuthentication(BaseHTTPMiddleware):
             public = os.environ.get("PUBLIC_URL", "").rstrip("/")
             url = public + path + ("?" + request.url.query if request.url.query else "")
             key = os.environ.get("SIGNALWIRE_SIGNING_KEY", "")
+            compatibility_token = os.environ.get("SIGNALWIRE_TOKEN", "")
             body = await request.body()
             sha256_signature = request.headers.get("x-signalwire-sha256-signature", "")
             signature = request.headers.get("x-signalwire-signature", "") or request.headers.get("x-twilio-signature", "")
@@ -76,7 +77,8 @@ class OperatorAuthentication(BaseHTTPMiddleware):
                     "sha256_header=%s sha256_length=%d compatibility_header=%s compatibility_length=%d "
                     "content_type=%s body_length=%d forwarded_proto=%s forwarded_host_matches=%s "
                     "public_sha256_valid=%s public_compatibility_valid=%s "
-                    "request_url_sha256_valid=%s request_url_compatibility_valid=%s",
+                    "request_url_sha256_valid=%s request_url_compatibility_valid=%s "
+                    "token_sha256_valid=%s token_compatibility_valid=%s",
                     path,
                     bool(public),
                     bool(key),
@@ -92,6 +94,8 @@ class OperatorAuthentication(BaseHTTPMiddleware):
                     compatibility_valid,
                     valid_signalwire_sha256_signature(key, sha256_signature, request_url, body),
                     valid_signalwire_signature(key, signature, request_url, body),
+                    valid_signalwire_sha256_signature(compatibility_token, sha256_signature, url, body),
+                    valid_signalwire_signature(compatibility_token, signature, url, body),
                 )
             if not public or not signature_valid:
                 return JSONResponse({"detail": "Invalid webhook signature"}, status_code=403)
