@@ -76,6 +76,7 @@ async def _preload_and_store(
             )
 
         context["boss_mode"] = boss_mode
+        context["_preload_ready"] = True
 
         if not hasattr(app.state, "call_contexts"):
             app.state.call_contexts = {}
@@ -106,8 +107,10 @@ async def _preload_and_store(
 
         app.state.call_contexts[call_sid] = {
             "boss_mode": False,
+            "_preload_ready": True,
             "lead": None,
             "address": "",
+            "normalized_phone": _normalize_phone(caller_phone),
             "owner_first_name": "there",
             "property_context_str": (
                 "No property context available. "
@@ -155,6 +158,18 @@ async def handle_inbound_call(
         </Stream>
     </Connect>
 </Response>"""
+
+        if not hasattr(request.app.state, "call_contexts"):
+            request.app.state.call_contexts = {}
+        request.app.state.call_contexts[call_sid] = {
+            "boss_mode": False,
+            "_preload_ready": False,
+            "lead": None,
+            "address": "",
+            "normalized_phone": _normalize_phone(caller_phone),
+            "owner_first_name": "there",
+            "property_context_str": "No property context available.",
+        }
 
         asyncio.create_task(
             _preload_and_store(
@@ -209,7 +224,10 @@ async def inbound_voice_stream(websocket: WebSocket, call_sid: str):
         try:
             store = getattr(websocket.app.state, "call_contexts", {})
             waited = 0.0
-            while resolved_sid not in store and waited < 5.0:
+            while (
+                (resolved_sid not in store or not store[resolved_sid].get("_preload_ready"))
+                and waited < 5.0
+            ):
                 await asyncio.sleep(0.05)
                 waited += 0.05
                 store = getattr(websocket.app.state, "call_contexts", {})

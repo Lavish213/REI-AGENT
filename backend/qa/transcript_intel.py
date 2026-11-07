@@ -7,6 +7,10 @@ from anthropic import Anthropic
 _client: Anthropic | None = None
 
 
+def _analysis_model() -> str:
+    return os.environ.get("QA_LLM_MODEL") or os.environ.get("VOICE_LLM_MODEL") or "claude-haiku-4-5-20251001"
+
+
 def _get_client() -> Anthropic:
     global _client
     if _client is None:
@@ -88,7 +92,7 @@ def analyze_transcript(
     try:
         client = _get_client()
         response = client.messages.create(
-            model=os.environ.get("LLM_MODEL", "claude-sonnet-4-6"),
+            model=_analysis_model(),
             max_tokens=1000,
             messages=[{
                 "role": "user",

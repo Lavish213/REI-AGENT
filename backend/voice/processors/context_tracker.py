@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from loguru import logger
-from pipecat.frames.frames import Frame, LLMContextFrame, TTSSpeakFrame, EndFrame
+from pipecat.frames.frames import Frame, LLMContextFrame, TTSSpeakFrame, EndFrame, InterruptionFrame
 from pipecat.frames.frames import TranscriptionFrame, UserStartedSpeakingFrame
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.processors.frame_processor import FrameProcessor
@@ -175,6 +175,7 @@ class CallContext:
     awaiting_owner_confirmation: bool = False
     property_issues: list[str] = field(default_factory=list)
     motivation_signals: list[str] = field(default_factory=list)
+    motivation_known: bool = False
     objections_raised: list[str] = field(default_factory=list)
     last_price_mentioned: int | None = None
     timeline_mentioned: str | None = None
@@ -339,6 +340,21 @@ class CallContext:
         if self.property_address:
             tag += f"\nProperty address confirmed in this call: {self.property_address}"
 
+        known_facts = []
+        if self.motivation_signals:
+            known_facts.append("seller reason category: " + ", ".join(self.motivation_signals[-3:]))
+        elif self.motivation_known:
+            known_facts.append("seller gave a reason but no urgent motivation was identified")
+        if self.timeline_mentioned:
+            known_facts.append("preferred timing: " + self.timeline_mentioned)
+        if self.property_issues:
+            known_facts.append("condition topics: " + ", ".join(self.property_issues[-3:]))
+        elif self.condition_known:
+            known_facts.append("property condition was answered with no tracked repair issue")
+        if known_facts:
+            tag += "\nKnown seller facts: " + "; ".join(known_facts)
+            tag += "\nUse one relevant fact naturally when it helps. Do not recite this list or repeat a fact mechanically."
+
         if self.objections_raised:
             tag += f"\nLast objection raised: {self.objections_raised[-1]}"
 
@@ -467,7 +483,7 @@ class ContextTrackerProcessor(FrameProcessor):
                     stop_receipt = await asyncio.to_thread(execute_tool, "honor_stop_request", {"verbatim": text}, self._ctx)
                     self._ctx.call_should_end = True
                     if self._ctx._task_ref:
-                        await self._ctx._task_ref.queue_frames([TTSSpeakFrame(stop_receipt), EndFrame()])
+                        await self._ctx._task_ref.queue_frames([InterruptionFrame(), TTSSpeakFrame(stop_receipt), EndFrame()])
                     return
 
                 if self._objective_engine is not None:
@@ -589,7 +605,8 @@ class ContextTrackerProcessor(FrameProcessor):
             self._ctx.condition_known = True
             remember_fact("condition")
         if self._ctx._walkthrough_asked and re.search(r"\b(yes|yeah|sure|sounds good|works for me|let.s do it)\b", lower) and not re.search(r"\b(no|not|never|maybe|but|if|depends|possibly)\b", lower):
-            self._ctx.pre_close_done = True
+            from backend.voice.conversation_policy import discovery_ready
+            self._ctx.pre_close_done = discovery_ready(self._ctx)
             self._ctx._walkthrough_asked = False
 
         price = _extract_price_cents(text)
@@ -629,6 +646,13 @@ class ContextTrackerProcessor(FrameProcessor):
                 if label not in self._ctx.motivation_signals:
                     self._ctx.motivation_signals.append(label)
         self._ctx.motivation_signals = self._ctx.motivation_signals[-6:]
+        if observed_motivation:
+            self._ctx.motivation_known = True
+        elif self._ctx.last_question_topic == "motivation" and not re.fullmatch(
+            r"\s*(?:no|nothing|whatever|i don'?t know|idk|not sure|maybe|hmm+)\s*[.!]?\s*",
+            lower,
+        ) and not re.search(r"\?", text):
+            self._ctx.motivation_known = True
         if observed_motivation and re.search(r"\b(?:i|we|my|our|i.m|we.re)\b", lower):
             remember_fact("motivation")
         elif negated_relocation:

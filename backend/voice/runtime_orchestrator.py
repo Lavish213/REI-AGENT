@@ -27,6 +27,7 @@ _HIGH_RESISTANCE = frozenset(["HIGH", "BLOCKING"])
 
 class RuntimeOrchestrator:
     def decide(self, call_ctx) -> OrchestratorDecision:
+        from backend.voice.conversation_policy import discovery_ready
         trust = getattr(call_ctx, "trust_score", 5.0)
         emotional_state = getattr(call_ctx, "emotional_state", "NEUTRAL")
         resistance_level = getattr(call_ctx, "resistance_level", "NONE")
@@ -126,7 +127,7 @@ class RuntimeOrchestrator:
                 decision_reason="resistance softening",
             )
 
-        if deal_heat >= _DEAL_HEAT_APPT and momentum_score >= 6.0:
+        if deal_heat >= _DEAL_HEAT_APPT and momentum_score >= 6.0 and discovery_ready(call_ctx):
             logger.info(
                 "orchestrator BOOK_APPOINTMENT heat={:.1f} momentum={:.1f}",
                 deal_heat,

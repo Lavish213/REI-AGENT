@@ -20,6 +20,33 @@ class TestInterruptionProcessor:
         assert proc._last_ack is None
 
 
+class TestTurnController:
+    @pytest.mark.asyncio
+    async def test_pure_backchannel_does_not_trigger_a_new_llm_turn(self):
+        from backend.voice.turn_controller import TurnController
+        from backend.voice.processors.context_tracker import CallContext
+        from pipecat.frames.frames import TranscriptionFrame
+        from pipecat.processors.frame_processor import FrameDirection
+        proc = TurnController(CallContext())
+        proc.push_frame = AsyncMock()
+        with patch("pipecat.processors.frame_processor.FrameProcessor.process_frame", new=AsyncMock()):
+            await proc.process_frame(TranscriptionFrame("mhm", "seller", "now"), FrameDirection.DOWNSTREAM)
+        proc.push_frame.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_meaningful_short_answer_still_reaches_the_llm(self):
+        from backend.voice.turn_controller import TurnController
+        from backend.voice.processors.context_tracker import CallContext
+        from pipecat.frames.frames import TranscriptionFrame
+        from pipecat.processors.frame_processor import FrameDirection
+        proc = TurnController(CallContext())
+        proc.push_frame = AsyncMock()
+        frame = TranscriptionFrame("yes", "seller", "now")
+        with patch("pipecat.processors.frame_processor.FrameProcessor.process_frame", new=AsyncMock()):
+            await proc.process_frame(frame, FrameDirection.DOWNSTREAM)
+        proc.push_frame.assert_awaited_once_with(frame, FrameDirection.DOWNSTREAM)
+
+
 class TestAIIdentityProcessor:
     @pytest.mark.asyncio
     async def test_ai_identity_processor_instantiates(self):

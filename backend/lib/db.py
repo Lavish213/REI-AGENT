@@ -74,7 +74,8 @@ class TenantClient:
         self.raw = raw
 
     def table(self, name):
-        return ScopedQuery(self.raw, name, os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')) if name in TABLES else self.raw.table(name)
+        tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001').strip()
+        return ScopedQuery(self.raw, name, tenant) if name in TABLES else self.raw.table(name)
 
     def __getattr__(self, name):
         return getattr(self.raw, name)
@@ -836,9 +837,9 @@ def update_lead_intel_scores(lead_id: str, scores: dict) -> None:
         logger.info("update_lead_intel_scores lead_id={} hot={}", lead_id, scores.get("is_hot_lead"))
 
 
-# ──────────────────────────────────────────────────────────────────
-# Batch D — Workflow + Followup runtime
-# ──────────────────────────────────────────────────────────────────
+# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Batch D â Workflow + Followup runtime
+# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def insert_workflow_transition(
     lead_id: str,
@@ -872,7 +873,7 @@ def insert_workflow_transition(
     }).eq("id", lead_id).execute()
 
     logger.info(
-        "workflow_transition lead_id={} {}→{} source={}",
+        "workflow_transition lead_id={} {}â{} source={}",
         lead_id, previous_state, state, trigger_source,
     )
     return state_changed
@@ -1034,9 +1035,9 @@ def update_operator_notes(lead_id: str, notes: str) -> None:
     logger.info("update_operator_notes lead_id={}", lead_id)
 
 
-# ──────────────────────────────────────────────────────────────────
-# Batch E — Offers + Walkthroughs + Analytics
-# ──────────────────────────────────────────────────────────────────
+# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Batch E â Offers + Walkthroughs + Analytics
+# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def create_offer(
     lead_id: str,
@@ -1211,7 +1212,7 @@ def get_workflow_analytics() -> dict:
         if s in ("sent", "countered", "accepted"):
             offer_pipeline_value += o.get("offer_amount") or 0
 
-    # Conversion: active → appointment
+    # Conversion: active â appointment
     active = sum(workflow_pipeline.get(s, 0) for s in ("active_contact", "followup_required"))
     appt = workflow_pipeline.get("appointment_pending", 0) + workflow_pipeline.get("appointment_confirmed", 0)
     conversion_rate = round(appt / max(1, active + appt) * 100, 1)

@@ -18,6 +18,7 @@ IDENTITY_KEYS = frozenset({
 })
 
 STOP_TOOL = "honor_stop_request"
+DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 SIDE_EFFECT_TOOLS = frozenset({
     "set_disposition",
@@ -163,7 +164,7 @@ def resolve_for_stop(call_ctx) -> ResolvedContext:
     return ResolvedContext(
         lead_id=lead_id,
         call_sid=call_sid,
-        tenant_id=configured_tenant() or "unresolved",
+        tenant_id=configured_tenant() or DEFAULT_TENANT_ID,
         seller_phone=phone,
         seller_email="",
         address="",

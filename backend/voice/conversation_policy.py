@@ -18,6 +18,17 @@ class TurnPlan:
         return f"RESPONSE PRIORITY: {self.goal}\n{self.guidance}\nAsk at most {self.question_limit} question(s). Zero questions is often appropriate."
 
 
+def discovery_ready(ctx) -> bool:
+    return bool(
+        (getattr(ctx, "motivation_known", False) or getattr(ctx, "motivation_signals", []))
+        and getattr(ctx, "timeline_mentioned", None)
+        and (
+            getattr(ctx, "condition_known", False)
+            or getattr(ctx, "property_issues", [])
+        )
+    )
+
+
 def plan_turn(ctx, text: str) -> TurnPlan:
     lower = text.lower().replace("’", "'").strip()
     lower = re.sub(r"^(?:(?:uh|um|erm|well|hey|so)[, .]+)+", "", lower)
@@ -44,6 +55,14 @@ def plan_turn(ctx, text: str) -> TurnPlan:
         return TurnPlan("callback", "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.")
     if re.search(r"\b(goodbye|gotta go|have to go|bye|take care|adios|adi[oó]s)\b", lower):
         return TurnPlan("goodbye", "Respect the goodbye. End warmly without another question or an invented next step.", 0)
+    if (
+        getattr(ctx, "last_question_topic", None) in {"motivation", "timeline", "condition", "other"}
+        and re.fullmatch(r"(?:silly|stuff|things|whatever|nothing|i don'?t know|idk|not sure|hmm+|maybe)", lower)
+    ):
+        return TurnPlan(
+            "clarify_vague",
+            "The answer did not provide the fact you asked for. React naturally without pretending to understand, then ask one easier version of the same question. Do not pitch, infer motivation, or move toward a walkthrough.",
+        )
     if re.search(r"\b(slow down|speak (?:slower|slowly|louder|up)|talk (?:slower|slowly|louder)|say that again|say it again|repeat (?:that|yourself)|didn't (?:hear|catch|understand)|can't (?:hear|understand)|cannot (?:hear|understand)|don't understand|hard of hearing|hearing aid|muffled|breaking up|bad connection|background noise|too quiet|missed the last bit|can't make (?:that|it) out|what did you say|pardon|come again|huh|ain't (?:hear|heard|catch|understand)|no te escucho|no entiendo|m[aá]s despacio)\b", lower):
         return TurnPlan("repair", "Use short clear phrases and explain or repeat only the last relevant point. For hearing difficulty, use deliberate phrasing and one detail at a time; never shout, blame their accent, or claim to have changed volume. No new sales question." + (" Offer a human connection or an authorized text alternative instead of another identical repeat." if getattr(ctx, "clarification_failures", 0) >= 3 else ""), 0)
     if re.search(r"\b(actually|correction|i meant|not .{0,25}but|that's (?:not right|wrong)|no,? (?:it's|i said)|en realidad)\b", lower):
@@ -62,19 +81,23 @@ def plan_turn(ctx, text: str) -> TurnPlan:
         return TurnPlan("empathy", "Acknowledge what they actually shared in one grounded sentence. Do not claim shared personal experience, force optimism, or pivot immediately into condition/price questions.", 0)
     if getattr(ctx, "appointment_set", False) or getattr(ctx, "callback_set", False):
         return TurnPlan("saved_next_step", "Read back only the next step the tool actually saved. Answer any remaining question; do not restart discovery.", 0)
-    if getattr(ctx, "pre_close_done", False):
+    if getattr(ctx, "pre_close_done", False) and discovery_ready(ctx):
         return TurnPlan("schedule", "They accepted discussing a walkthrough. Ask for one missing scheduling detail. Read back date, Pacific time and address, obtain confirmation, then use the reservation tool.")
+    if getattr(ctx, "pre_close_done", False):
+        ctx.pre_close_done = False
     if not getattr(ctx, "owner_confirmed", False) and not getattr(ctx, "address_known", False):
         return TurnPlan("contact", "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.")
     if not getattr(ctx, "intent_locked", False) and not getattr(ctx, "motivation_signals", []):
         return TurnPlan("interest", "Ask whether discussing the property would be useful. Do not assume they want to sell or already agreed to a visit.")
-    if not getattr(ctx, "motivation_signals", []):
-        return TurnPlan("motivation", "React to their last answer, then ask what is prompting them to consider selling. Do not ask about motivation twice after they explain it.")
+    if not getattr(ctx, "motivation_known", False) and not getattr(ctx, "motivation_signals", []):
+        return TurnPlan("motivation", "React to their last answer, then ask what is prompting them to consider selling. Accept a low-pressure answer such as curiosity or exploring options; do not hunt for distress or ask motivation twice after they answer.")
     if not getattr(ctx, "timeline_mentioned", None):
         return TurnPlan("timeline", "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.")
     if not getattr(ctx, "condition_known", False) and not getattr(ctx, "property_issues", []):
         return TurnPlan("condition", "Ask one broad question about the property's condition. A house in good condition is a valid answer; do not insist on finding defects.")
-    return TurnPlan("walkthrough", "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.")
+    if discovery_ready(ctx):
+        return TurnPlan("walkthrough", "Briefly connect the next step to what the seller told you. Ask whether a no-obligation walkthrough would be useful. Do not claim a visit is agreed or booked.")
+    return TurnPlan("discovery", "Stay with the seller's situation. Ask one relevant missing question and do not mention a walkthrough yet.")
 
 
 class ConversationTurnReset(FrameProcessor):
@@ -113,7 +136,7 @@ class ConversationPolicyProcessor(FrameProcessor):
                 else:
                     self._ctx.requested_pause_seconds = 60.0
             self._ctx.response_guidance = plan.render()
-            facts = {"motivation": self._ctx.motivation_signals, "timeline": self._ctx.timeline_mentioned, "condition_answered": self._ctx.condition_known, "issues": self._ctx.property_issues, "seller_asking_price_cents": self._ctx.last_price_mentioned}
+            facts = {"motivation_answered": self._ctx.motivation_known or bool(self._ctx.motivation_signals), "motivation": self._ctx.motivation_signals, "timeline": self._ctx.timeline_mentioned, "condition_answered": self._ctx.condition_known, "issues": self._ctx.property_issues, "seller_asking_price_cents": self._ctx.last_price_mentioned}
             self._ctx.response_guidance += "\nAlready collected; do not ask again: " + json.dumps(facts, ensure_ascii=False)
         await self.push_frame(frame, direction)
 
@@ -139,3 +162,5 @@ def remember_assistant_turn(ctx, text: str) -> None:
         ctx.last_question_topic = "condition"
     elif re.search(r"timing|timeline|how soon|when.*sell", question):
         ctx.last_question_topic = "timeline"
+    elif re.search(r"what(?:'s| is) (?:got|prompting)|why .*sell|considering selling|thinking about (?:selling|the property)", question):
+        ctx.last_question_topic = "motivation"

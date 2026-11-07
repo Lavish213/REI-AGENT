@@ -15,8 +15,10 @@ def valid_signalwire_signature(key: str, signature: str, url: str, body: bytes) 
     if not key or not signature or not signature.isascii():
         return False
     raw = url.encode() + body
-    raw_signature = hmac.new(key.encode(), raw, hashlib.sha1).hexdigest()
-    if hmac.compare_digest(raw_signature, signature):
+    raw_digest = hmac.new(key.encode(), raw, hashlib.sha1)
+    if hmac.compare_digest(raw_digest.hexdigest(), signature) or hmac.compare_digest(
+        base64.b64encode(raw_digest.digest()).decode(), signature
+    ):
         return True
     try:
         params = parse_qs(body.decode(), keep_blank_values=True)
@@ -25,6 +27,15 @@ def valid_signalwire_signature(key: str, signature: str, url: str, body: bytes) 
         return False
     expected = base64.b64encode(hmac.new(key.encode(), canonical.encode(), hashlib.sha1).digest()).decode()
     return hmac.compare_digest(expected, signature)
+
+
+def valid_signalwire_sha256_signature(key: str, signature: str, url: str, body: bytes) -> bool:
+    if not key or not signature or not signature.isascii():
+        return False
+    digest = hmac.new(key.encode(), url.encode() + body, hashlib.sha256)
+    return hmac.compare_digest(digest.hexdigest(), signature) or hmac.compare_digest(
+        base64.b64encode(digest.digest()).decode(), signature
+    )
 
 
 class OperatorAuthentication(BaseHTTPMiddleware):
@@ -45,8 +56,15 @@ class OperatorAuthentication(BaseHTTPMiddleware):
         if path.startswith("/api/voice/") or path.startswith("/api/sms/inbound"):
             public = os.environ.get("PUBLIC_URL", "").rstrip("/")
             url = public + path + ("?" + request.url.query if request.url.query else "")
+            key = os.environ.get("SIGNALWIRE_SIGNING_KEY", "")
+            body = await request.body()
+            sha256_signature = request.headers.get("x-signalwire-sha256-signature", "")
             signature = request.headers.get("x-signalwire-signature", "") or request.headers.get("x-twilio-signature", "")
-            if not public or not valid_signalwire_signature(os.environ.get("SIGNALWIRE_SIGNING_KEY", ""), signature, url, await request.body()):
+            signature_valid = (
+                valid_signalwire_sha256_signature(key, sha256_signature, url, body)
+                or valid_signalwire_signature(key, signature, url, body)
+            )
+            if not public or not signature_valid:
                 return JSONResponse({"detail": "Invalid webhook signature"}, status_code=403)
             return await call_next(request)
         if path == "/healthz":

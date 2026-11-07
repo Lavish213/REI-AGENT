@@ -76,7 +76,7 @@ async def test_uncertain_speech_does_not_change_facts(confidence, words, uncerta
     ContextTrackerProcessor(ctx)._analyze(frame.text)
     assert ctx.transcript_uncertain is uncertain
     assert ctx.last_price_mentioned == (22000000 if uncertain else 21000000)
-    assert ctx.pre_close_done is (not uncertain)
+    assert not ctx.pre_close_done
     if uncertain:
         assert plan_turn(ctx, frame.text).goal == "clarify_audio"
 

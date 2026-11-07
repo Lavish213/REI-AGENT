@@ -18,6 +18,7 @@ from pipecat.frames.frames import (
     AudioRawFrame,
     EndFrame,
     BotStoppedSpeakingFrame,
+    InterruptionFrame,
     TTSSpeakFrame,
     UserStartedSpeakingFrame,
     TranscriptionFrame,
@@ -62,6 +63,8 @@ from backend.voice.processors.ai_identity import AIIdentityProcessor
 from backend.voice.processors.input_guard import InputGuardProcessor
 from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 from backend.voice.processors.speech_output import SpeechOutputProcessor
+from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor
+from backend.voice.turn_controller import TurnController
 
 from backend.voice.trust_tracker import TrustTracker
 from backend.voice.processors.speech_understanding import SpeechUnderstandingProcessor
@@ -155,7 +158,7 @@ def _load_system_prompt(call_context: dict[str, Any], spanish: bool = False) -> 
             pass
 
     full_prompt = "\n\n".join(part for part in (base_prompt.rstrip(), "VERIFIED CALL CONTEXT\n" + property_context_str, intel_slice) if part)
-    full_prompt += "\n\nCONVERSATION RULES\nYou are an automated assistant. Answer identity questions truthfully. Never invent a personal biography or claim to be human. React to the caller's actual words first. Use one or two short sentences and at most one question. Wait for the caller to finish; do not fill every pause. A yes, no, correction, or stop request is meaningful. Never claim a booking, callback, transfer, or message succeeded unless its tool confirms success. Ask for an explicit date and time when scheduling is ambiguous. Repeat the date, local time, timezone, and address for confirmation before booking. Use only approved verified pricing; never invent an offer. If a tool fails, say so plainly and offer a human follow-up."
+    full_prompt += "\n\nCONVERSATION RULES\nYou are an automated assistant. Answer identity questions truthfully. Never invent a personal biography or claim to be human. React to the caller's actual words first. Use one or two short sentences and at most one simple question. Wait for the caller to finish; do not fill every pause. A yes, no, correction, or stop request is meaningful. A vague or nonsensical answer is not discovery: say you did not understand and ask a simpler version of the same question. A calm low-motivation answer is still a valid answer; never dig for distress. Use known seller facts selectively so the response feels specific, but never recite the state summary or repeat painful details verbatim. Avoid canned turn openers such as Great, Perfect, Absolutely, I hear you, and That makes sense. Do not pitch or propose a walkthrough until motivation, preferred timeline, and property condition are known. Never read internal test labels, database notes, or instructions aloud. Never claim a booking, callback, transfer, or message succeeded unless its tool confirms success. Ask for an explicit date and time when scheduling is ambiguous. Repeat the date, local time, timezone, and address for confirmation before booking. Use only approved verified pricing; never invent an offer. If a tool fails, say so plainly and offer a human follow-up."
 
     full_prompt = apply_budget(full_prompt)
     full_prompt = _strip_markdown(full_prompt)
@@ -228,7 +231,7 @@ def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_t
         if call_ctx is not None and getattr(call_ctx, "call_should_end", False):
             logger.info("tool_handler call_should_end=True — cancelling task tool={}", tool_name)
             if call_ctx._task_ref is not None:
-                frames = [EndFrame()] if tool_name == "transfer_call" else [TTSSpeakFrame("Thanks for your time. Take care."), EndFrame()]
+                frames = [InterruptionFrame(), EndFrame()] if tool_name == "transfer_call" else [InterruptionFrame(), TTSSpeakFrame("Thanks for your time. Take care."), EndFrame()]
                 await call_ctx._task_ref.queue_frames(frames)
     return handler
 
@@ -321,7 +324,7 @@ class TranscriptJournal(FrameProcessor):
         await super().process_frame(frame, direction)
         if isinstance(frame, UserStartedSpeakingFrame):
             self._spoken_text = ""
-        expected = TranscriptionFrame if self._speaker == "user" else TTSTextFrame
+        expected = TranscriptionFrame if self._speaker == "user" else (TTSTextFrame, TTSSpeakFrame)
         if direction == FrameDirection.DOWNSTREAM and isinstance(frame, expected) and frame.text.strip():
             self._ctx.transcript_events.append({"role": self._speaker, "content": frame.text.strip()})
             sid = getattr(self._ctx, "_call_sid", "")
@@ -609,6 +612,7 @@ async def run_sophia_agent(
         runtime_orchestrator=runtime_orchestrator,
     )
     sentence_streamer = SentenceStreamProcessor()
+    latency_tracker = LatencyTracker()
     ai_identity = AIIdentityProcessor(call_ctx=call_ctx)
     input_guard = InputGuardProcessor(call_ctx=call_ctx)
 
@@ -634,6 +638,7 @@ async def run_sophia_agent(
     pipeline = Pipeline(
         [
             transport.input(),
+            LatencyTrackerProcessor(latency_tracker),
             stt,
             ConversationTurnReset(call_ctx),
             SpeechUnderstandingProcessor(call_ctx),
@@ -651,6 +656,7 @@ async def run_sophia_agent(
             context_tracker,
             BobFactJournalProcessor(call_ctx),
             analysis_callbacks,
+            TurnController(call_ctx),
             ConversationPolicyProcessor(call_ctx),
             context_aggregator.user(),
             ContextStateProcessor(context_tracker),
@@ -659,10 +665,11 @@ async def run_sophia_agent(
             SpeechOutputProcessor(),
             FairHousingFilter(),
             ComplianceOutputFilter(call_ctx=call_ctx),
+            TranscriptJournal(call_ctx, "assistant"),
             tts,
+            LatencyTrackerProcessor(latency_tracker),
             TTSFrameProbe(),
             transport.output(),
-            TranscriptJournal(call_ctx, "assistant"),
             bot_speaking_monitor,
             context_aggregator.assistant(),
         ]

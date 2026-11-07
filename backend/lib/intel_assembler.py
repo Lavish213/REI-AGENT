@@ -76,7 +76,7 @@ def assemble_intel_packet(lead_id: str) -> dict:
     price_floor_cents = lead.get("price_floor")
     objections = lead.get("objections_raised") or []
     timeline = lead.get("timeline_urgency")
-    disposition = lead.get("disposition", "").upper()
+    disposition = (lead.get("disposition") or "").upper()
 
     arv_cents = prop.get("estimated_arv")
     mao_cents = prop.get("mao")
