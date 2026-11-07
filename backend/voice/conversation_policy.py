@@ -20,7 +20,7 @@ class TurnPlan:
 
 def discovery_ready(ctx) -> bool:
     return bool(
-        getattr(ctx, "motivation_signals", [])
+        (getattr(ctx, "motivation_known", False) or getattr(ctx, "motivation_signals", []))
         and getattr(ctx, "timeline_mentioned", None)
         and (
             getattr(ctx, "condition_known", False)
@@ -89,8 +89,8 @@ def plan_turn(ctx, text: str) -> TurnPlan:
         return TurnPlan("contact", "Confirm the intended person or property with one simple question. A yes answers the last question only; never infer unrelated ownership or scheduling consent.")
     if not getattr(ctx, "intent_locked", False) and not getattr(ctx, "motivation_signals", []):
         return TurnPlan("interest", "Ask whether discussing the property would be useful. Do not assume they want to sell or already agreed to a visit.")
-    if not getattr(ctx, "motivation_signals", []):
-        return TurnPlan("motivation", "React to their last answer, then ask what is prompting them to consider selling. Do not ask about motivation twice after they explain it.")
+    if not getattr(ctx, "motivation_known", False) and not getattr(ctx, "motivation_signals", []):
+        return TurnPlan("motivation", "React to their last answer, then ask what is prompting them to consider selling. Accept a low-pressure answer such as curiosity or exploring options; do not hunt for distress or ask motivation twice after they answer.")
     if not getattr(ctx, "timeline_mentioned", None):
         return TurnPlan("timeline", "Use what they already shared. Ask one simple question about their preferred timing; no pressure or invented deadline.")
     if not getattr(ctx, "condition_known", False) and not getattr(ctx, "property_issues", []):
@@ -136,7 +136,7 @@ class ConversationPolicyProcessor(FrameProcessor):
                 else:
                     self._ctx.requested_pause_seconds = 60.0
             self._ctx.response_guidance = plan.render()
-            facts = {"motivation": self._ctx.motivation_signals, "timeline": self._ctx.timeline_mentioned, "condition_answered": self._ctx.condition_known, "issues": self._ctx.property_issues, "seller_asking_price_cents": self._ctx.last_price_mentioned}
+            facts = {"motivation_answered": self._ctx.motivation_known or bool(self._ctx.motivation_signals), "motivation": self._ctx.motivation_signals, "timeline": self._ctx.timeline_mentioned, "condition_answered": self._ctx.condition_known, "issues": self._ctx.property_issues, "seller_asking_price_cents": self._ctx.last_price_mentioned}
             self._ctx.response_guidance += "\nAlready collected; do not ask again: " + json.dumps(facts, ensure_ascii=False)
         await self.push_frame(frame, direction)
 
