@@ -61,6 +61,7 @@ from backend.voice.processors.fair_housing import FairHousingFilter
 from backend.voice.processors.compliance_output_filter import ComplianceOutputFilter
 from backend.voice.processors.ai_identity import AIIdentityProcessor
 from backend.voice.processors.input_guard import InputGuardProcessor
+from backend.voice.processors.ai_softener import AISoftenerProcessor
 from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 from backend.voice.processors.speech_output import SpeechOutputProcessor
 from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor
@@ -106,7 +107,7 @@ def _build_opener(call_context: dict[str, Any]) -> str:
 
 def _assert_pipeline_safety(processors: list) -> None:
     types = {type(p).__name__ for p in processors}
-    required = {"ComplianceOutputFilter", "FairHousingFilter", "SentenceStreamProcessor"}
+    required = {"AISoftenerProcessor", "ComplianceOutputFilter", "FairHousingFilter", "SentenceStreamProcessor"}
     missing = required - types
     if missing:
         raise RuntimeError(f"PIPELINE_SAFETY_VIOLATION: {missing} missing — refusing to start")
@@ -612,6 +613,7 @@ async def run_sophia_agent(
         runtime_orchestrator=runtime_orchestrator,
     )
     sentence_streamer = SentenceStreamProcessor()
+    ai_softener = AISoftenerProcessor()
     latency_tracker = LatencyTracker()
     ai_identity = AIIdentityProcessor(call_ctx=call_ctx)
     input_guard = InputGuardProcessor(call_ctx=call_ctx)
@@ -662,6 +664,7 @@ async def run_sophia_agent(
             ContextStateProcessor(context_tracker),
             llm,
             sentence_streamer,
+            ai_softener,
             SpeechOutputProcessor(),
             FairHousingFilter(),
             ComplianceOutputFilter(call_ctx=call_ctx),
