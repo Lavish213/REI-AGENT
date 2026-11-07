@@ -90,6 +90,11 @@ _LEAKAGE_PATTERNS = [
     re.compile(r"\bcomposite\s+score\b", re.I),
 ]
 
+_INTERNAL_PROPERTY_LABEL = re.compile(
+    r"(?:the\s+)?QA TEST ONLY\s*-\s*DO NOT CONTACT(?:\s+property)?",
+    re.I,
+)
+
 _LEAKAGE_SAFE = "Hey, this is Sophia with San Joaquin House Buyers. Did I catch you at an okay time?"
 
 
@@ -141,6 +146,7 @@ class AISoftenerProcessor(FrameProcessor):
                 return _LEAKAGE_SAFE
 
         original = text
+        text = _INTERNAL_PROPERTY_LABEL.sub("the property", text)
         # Strip robotic openers
         text = _apply_openers(text)
         # Apply contractions
