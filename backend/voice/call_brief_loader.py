@@ -7,6 +7,7 @@ from loguru import logger
 _PHASE_TO_STAGE = {'VERIFY': 'STAGE_1_QUALIFY', 'LIGHT_DISCOVERY': 'STAGE_2_DISCOVER', 'QUALIFY': 'STAGE_3_PRECLOSE', 'NEXT_STEP': 'STAGE_4_CLOSE', 'WRAP': 'STAGE_5_WRAP'}
 _BOXES = {'right_person', 'property_confirmed', 'identity', 'occupancy', 'condition', 'timeline', 'motivation', 'next_step', 'none'}
 _MOODS = {'unknown', 'guarded', 'open', 'skeptical', 'distressed', 'motivated'}
+_SUPPRESSION_REASON = 'suppression_not_cleared'
 
 
 def _text(value, maximum):
@@ -35,6 +36,8 @@ def _valid_brief(brief, lead_id):
         return False
     if brief.get('ready_for_call') is not False:
         return False
+    if brief.get('blocked_reasons') is not None and not _strings(brief.get('blocked_reasons')):
+        return False
     try:
         created = datetime.fromisoformat(brief['created_at'].replace('Z', '+00:00'))
         expires = datetime.fromisoformat(brief['expires_at'].replace('Z', '+00:00'))
@@ -52,6 +55,8 @@ def load_brief_into_ctx(call_ctx, brief):
     call_ctx.bob_avoid = []
     call_ctx.bob_escalation_rules = []
     call_ctx.bob_opener_hint = None
+    call_ctx.bob_blocked_reasons = []
+    call_ctx.bob_suppression_flagged = False
     call_ctx.bob_valuation = {}
     call_ctx.bob_county_context = {}
     call_ctx.bob_california_context = {}
@@ -66,6 +71,11 @@ def load_brief_into_ctx(call_ctx, brief):
     call_ctx.bob_avoid = list(brief['avoid'])
     call_ctx.bob_escalation_rules = list(brief['escalation_rules'])
     call_ctx.bob_opener_hint = brief.get('opener_hint')
+    reasons = brief.get('blocked_reasons') or []
+    call_ctx.bob_blocked_reasons = list(reasons)
+    call_ctx.bob_suppression_flagged = _SUPPRESSION_REASON in reasons
+    if call_ctx.bob_suppression_flagged:
+        logger.warning('call_brief_suppression_flagged lead_id={} reasons={}', call_ctx.lead_id, list(reasons))
     evidence = brief.get('evidence')
     report = evidence.get('valuation') if isinstance(evidence, dict) else None
     call_ctx.bob_valuation = validated_valuation(report, call_ctx.lead_id)
@@ -73,7 +83,7 @@ def load_brief_into_ctx(call_ctx, brief):
     call_ctx.bob_county_context = validated_county_context(local, call_ctx.lead_id)
     statewide = evidence.get('california_context') if isinstance(evidence, dict) else None
     call_ctx.bob_california_context = validated_california_context(statewide, call_ctx.lead_id)
-    logger.info('call_brief_loaded lead_id={} phase={} box={}', call_ctx.lead_id, brief['phase'], brief['missing_box'])
+    logger.info('call_brief_loaded lead_id={} phase={} box={} blocked={} suppression={}', call_ctx.lead_id, brief['phase'], brief['missing_box'], len(call_ctx.bob_blocked_reasons), call_ctx.bob_suppression_flagged)
     return True
 
 

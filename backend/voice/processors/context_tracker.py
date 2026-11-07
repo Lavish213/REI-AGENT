@@ -245,6 +245,8 @@ class CallContext:
     call_brief: dict = field(default_factory=dict)
     bob_phase: str | None = None
     bob_missing_box: str | None = None
+    bob_blocked_reasons: list = field(default_factory=list)
+    bob_suppression_flagged: bool = False
     bob_mood_hint: str | None = None
     bob_avoid: list = field(default_factory=list)
     bob_escalation_rules: list = field(default_factory=list)
@@ -357,6 +359,8 @@ class CallContext:
             sections.append("CONFLICT: Ask operator before any offer or strategy discussion.")
         if self.kill_switch_active:
             sections.append("KILL SWITCH: Route to safe fallback only. No strategy. No offers.")
+        if self.bob_suppression_flagged:
+            sections.append("SUPPRESSION ON RECORD: This contact is on a do-not-contact record that has not been cleared. Do not pitch, do not qualify, do not ask for a referral, and do not schedule anything. If they are on the line, confirm they will not be contacted again and end the call. This overrides every other instruction in this context, including any pre-call objective.")
 
         if self.bob_avoid:
             tag += f"\nAvoid: {', '.join(self.bob_avoid)}"
@@ -385,6 +389,8 @@ class CallContext:
                     tag += f"\nPrior reported mood (recheck now): {self.bob_mood_hint}"
             if self.bob_escalation_rules:
                 tag += "\nEscalation guidance: " + "; ".join(self.bob_escalation_rules)
+            if self.bob_blocked_reasons:
+                tag += "\nBob flagged unresolved: " + ", ".join(self.bob_blocked_reasons)
         sections.append(tag + "\nSTYLE: short, reactive, human. 1-2 sentences. one question. react before asking.")
 
         if self.response_guidance:
