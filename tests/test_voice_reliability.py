@@ -376,7 +376,11 @@ def test_no_rush_does_not_force_fast_conversation():
 
 
 def test_preclose_advances_only_after_real_question_and_agreement():
-    ctx = CallContext()
+    ctx = CallContext(
+        motivation_signals=["relocation"],
+        timeline_mentioned="next month",
+        condition_known=True,
+    )
     tracker = ContextTrackerProcessor(ctx)
     tracker._analyze("Yes")
     assert not ctx.pre_close_done
