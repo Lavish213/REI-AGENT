@@ -21,6 +21,7 @@ from backend.scout.rss_scraper import run_rss_scraper
 from backend.scout.social_scraper import run_social_scraper
 from backend.scout.eviction_scraper import run_eviction_scraper
 from backend.scout.crmls_scraper import run_crmls_scraper
+from backend.scout.tax_scraper import run_tax_scraper
 from backend.alerts.drip import run_daily_drip_triggers
 
 
@@ -121,6 +122,7 @@ def start_scheduler() -> None:
     schedule.every().day.at("07:00").do(_safe(run_social_scraper))
     schedule.every().day.at("07:30").do(_safe(run_eviction_scraper))
     schedule.every().day.at("07:00").do(_safe(run_crmls_scraper))
+    schedule.every().day.at("06:30").do(_safe(run_tax_scraper))
     schedule.every().day.at("08:00").do(_safe(run_daily_drip_triggers))
     _safe(run_scout)()
     while True:
@@ -134,7 +136,7 @@ if __name__ == "__main__":
 
 def run_scout_cycle() -> None:
     logger.info('scout_cycle starting')
-    for source in (run_scout, run_rss_scraper, run_expired_scraper, run_social_scraper, run_eviction_scraper, run_crmls_scraper):
+    for source in (run_scout, run_rss_scraper, run_expired_scraper, run_social_scraper, run_eviction_scraper, run_crmls_scraper, run_tax_scraper):
         try:
             source()
         except Exception as error:

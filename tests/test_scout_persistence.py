@@ -130,7 +130,7 @@ def test_scheduler_isolates_failing_scout_jobs_and_continues(monkeypatch):
     monkeypatch.setattr(cron, 'run_scout', failing('scout'))
     monkeypatch.setattr(cron, 'run_expired_scraper', failing('expired'))
     for name in ('run_rss_scraper', 'run_social_scraper', 'run_eviction_scraper',
-                 'run_crmls_scraper', 'run_daily_drip_triggers'):
+                 'run_crmls_scraper', 'run_tax_scraper', 'run_daily_drip_triggers'):
         monkeypatch.setattr(cron, name, succeeding(name))
     class EndScheduler(Exception):
         pass
@@ -143,9 +143,9 @@ def test_scheduler_isolates_failing_scout_jobs_and_continues(monkeypatch):
     with pytest.raises(EndScheduler):
         cron.start_scheduler()
 
-    assert len(callbacks) == 7
+    assert len(callbacks) == 8
     assert calls.count('scout') == 2  # startup plus scheduled invocation
     assert calls.count('expired') == 1
     for name in ('run_rss_scraper', 'run_social_scraper', 'run_eviction_scraper',
-                 'run_crmls_scraper', 'run_daily_drip_triggers'):
+                 'run_crmls_scraper', 'run_tax_scraper', 'run_daily_drip_triggers'):
         assert calls.count(name) == 1

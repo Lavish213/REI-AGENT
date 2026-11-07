@@ -171,3 +171,22 @@ def scrape_tax_delinquent() -> list[dict[str, Any]]:
 
     logger.info("scrape_tax_delinquent complete total={}", len(properties))
     return properties
+
+
+def run_tax_scraper() -> int:
+    from backend.lib.db import save_source_candidate
+    count = 0
+    for candidate in scrape_tax_delinquent():
+        apn = (candidate.get("apn") or "").strip()
+        if not apn:
+            logger.warning("tax_candidate_skipped reason=missing_apn")
+            continue
+        payload = dict(candidate)
+        payload["source_ref"] = f"sjgov:ttc-public-auction:{apn}"
+        try:
+            save_source_candidate("tax_delinquent", payload)
+            count += 1
+        except Exception as error:
+            logger.warning("candidate_persistence_failed source=tax_delinquent type={}", type(error).__name__)
+    logger.info("tax_scraper_run candidates={}", count)
+    return count

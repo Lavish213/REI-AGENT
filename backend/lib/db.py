@@ -8,6 +8,26 @@ from supabase import create_client, Client, ClientOptions
 
 TABLES = frozenset({'leads', 'properties', 'calls', 'contacts', 'comps', 'offers', 'sms_messages', 'email_sends', 'email_events', 'followups', 'campaigns', 'deal_blast_sends', 'phone_pool_health', 'dnc_list', 'cash_buyers', 'intel_packets', 'packet_events', 'decision_records', 'bob_feedback_events', 'transcript_chunks', 'call_events', 'approval_requests', 'operator_queries', 'tool_gate_log', 'workflows', 'traces', 'eval_runs', 'latency_benchmarks', 'compliance_log', 'suppression_events', 'source_candidates', 'email_suppressions', 'email_reply_events', 'provider_delivery_messages', 'provider_delivery_events'})
 
+_OUTBOUND_QUEUE_LIMIT_DEFAULT = 500
+
+
+def _outbound_queue_limit() -> int:
+    raw = os.environ.get("OUTBOUND_QUEUE_LIMIT", "").strip()
+    if not raw:
+        return _OUTBOUND_QUEUE_LIMIT_DEFAULT
+    try:
+        parsed = int(raw)
+    except ValueError:
+        logger.warning("outbound_queue_limit_invalid using_default={}", _OUTBOUND_QUEUE_LIMIT_DEFAULT)
+        return _OUTBOUND_QUEUE_LIMIT_DEFAULT
+    if parsed < 1:
+        logger.warning("outbound_queue_limit_out_of_range using_default={}", _OUTBOUND_QUEUE_LIMIT_DEFAULT)
+        return _OUTBOUND_QUEUE_LIMIT_DEFAULT
+    return parsed
+
+
+_OUTBOUND_QUEUE_LIMIT = _outbound_queue_limit()
+
 
 class ScopedQuery:
     def __init__(self, raw, table, tenant):
@@ -393,6 +413,10 @@ def get_leads_for_outbound(min_score: int = 50) -> list[dict]:
         .eq("callable", True)
         .eq("dnc_blocked", False)
         .or_(f"last_called_at.lte.{cutoff},last_called_at.is.null")
+        .order("priority_callback", desc=True)
+        .order("escalated", desc=True)
+        .order("composite_score", desc=True)
+        .limit(_OUTBOUND_QUEUE_LIMIT)
         .execute()
     )
     results = [
@@ -402,8 +426,18 @@ def get_leads_for_outbound(min_score: int = 50) -> list[dict]:
         and (r.get("properties") or {}).get("callable_phones")
     ]
     results.sort(
-        key=lambda r: r.get("composite_score") or (r.get("properties") or {}).get("distress_score", 0),
+        key=lambda r: (
+            1 if r.get("priority_callback") else 0,
+            1 if r.get("escalated") else 0,
+            r.get("composite_score") or (r.get("properties") or {}).get("distress_score", 0),
+        ),
         reverse=True,
+    )
+    logger.info(
+        "outbound_queue total={} priority_callback={} escalated={}",
+        len(results),
+        sum(1 for r in results if r.get("priority_callback")),
+        sum(1 for r in results if r.get("escalated")),
     )
     return results
 

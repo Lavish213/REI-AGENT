@@ -33,6 +33,22 @@ def _run_daily_drip_triggers() -> None:
         logger.exception("run_daily_drip_triggers failed error={}", str(e))
 
 
+def _run_court_scrape() -> None:
+    try:
+        from backend.scout.court_scraper import run_weekly_scrape
+        logger.info("court_scrape result={}", run_weekly_scrape())
+    except Exception as e:
+        logger.exception("court_scrape failed error={}", str(e))
+
+
+def _run_buyer_discovery() -> None:
+    try:
+        from backend.scout.cash_buyer_scraper import run_buyer_discovery
+        logger.info("buyer_discovery result={}", run_buyer_discovery())
+    except Exception as e:
+        logger.exception("buyer_discovery failed error={}", str(e))
+
+
 def _run_scout() -> None:
     try:
         from backend.scout.cron import run_scout_cycle
@@ -213,6 +229,28 @@ async def _application_lifespan(app: FastAPI):
         hour="7,12,17",
         minute="0",
         id="scout_run",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    outbound_scheduler.add_job(
+        _run_court_scrape,
+        "cron",
+        day_of_week="mon",
+        hour="6",
+        minute="30",
+        id="court_scrape",
+        replace_existing=True,
+        max_instances=1,
+    )
+
+    outbound_scheduler.add_job(
+        _run_buyer_discovery,
+        "cron",
+        day_of_week="mon",
+        hour="5",
+        minute="30",
+        id="buyer_discovery",
         replace_existing=True,
         max_instances=1,
     )
