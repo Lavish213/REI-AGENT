@@ -562,7 +562,7 @@ def _honor_stop_request(inp: dict, resolved, call_ctx=None) -> str:
         logger.info("stop_request_honored lead_id={} call_sid={} channel={}",
                     resolved.lead_id, resolved.call_sid, channel)
 
-    if not results["dnc"] or not results["lead_flag"]:
+    if not results["dnc"]:
         return "Understood. I am ending this call. I could not confirm that your number was removed from the contact list."
     return "Understood — your number has been removed from our contact list. Take care."
 
