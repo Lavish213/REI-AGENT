@@ -19,8 +19,10 @@ def valid_signalwire_signature(key: str, signature: str, url: str, body: bytes) 
     if not key or not signature or not signature.isascii():
         return False
     raw = url.encode() + body
-    raw_signature = hmac.new(key.encode(), raw, hashlib.sha1).hexdigest()
-    if hmac.compare_digest(raw_signature, signature):
+    raw_digest = hmac.new(key.encode(), raw, hashlib.sha1)
+    if hmac.compare_digest(raw_digest.hexdigest(), signature) or hmac.compare_digest(
+        base64.b64encode(raw_digest.digest()).decode(), signature
+    ):
         return True
     try:
         params = parse_qs(body.decode(), keep_blank_values=True)
@@ -34,8 +36,10 @@ def valid_signalwire_signature(key: str, signature: str, url: str, body: bytes) 
 def valid_signalwire_sha256_signature(key: str, signature: str, url: str, body: bytes) -> bool:
     if not key or not signature or not signature.isascii():
         return False
-    expected = hmac.new(key.encode(), url.encode() + body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
+    digest = hmac.new(key.encode(), url.encode() + body, hashlib.sha256)
+    return hmac.compare_digest(digest.hexdigest(), signature) or hmac.compare_digest(
+        base64.b64encode(digest.digest()).decode(), signature
+    )
 
 
 class OperatorAuthentication(BaseHTTPMiddleware):
