@@ -213,7 +213,7 @@ Measured against Part 17's ten required components.
 | 3 | Hidden Gem Score 0–100 | 🔴 Absent |
 | 4 | Evidence classification (VERIFIED/REPORTED/ESTIMATED/ASSUMED/UNKNOWN) | 🟡 Partial. `evidence_verification` and `review_reasons` exist on valuation output; no per-fact classification |
 | 7 | 70% rule MAO | 🟢 `screening_mao(arv, repairs, multiplier_bps=7000)` — in basis points, integer cents |
-| 7 | Cost-based MAO | 🟡 `flip_analysis` takes `target_profit_cents` but there is no cost-based MAO solver |
+| 7 | Cost-based MAO | 🟢 **Corrected 2026-11-07.** `flip_analysis` returns `purchase_limit_cents` and `target_profit_feasible_at_limit` — it solves for the purchase price meeting the target profit. Part 7 is substantially satisfied; what is missing is the `repairs_cents` input. See `BOB_EXPERIMENT_LOG_CYCLE2.md` E-10 |
 | 8 | Deal grading A–F by acquisition ratio | 🔴 **Absent.** The A–F in the benchmark grades *valuation error*, not deals — easy to confuse |
 | 9 | Seller Motivation Score 0–100 | 🔴 Absent. `brief_generator` reads `seller_mood` with source and freshness gating, but produces no score |
 | 11 | Lockout classifications | 🔴 Absent |

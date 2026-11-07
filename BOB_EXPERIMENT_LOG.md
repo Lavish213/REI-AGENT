@@ -268,11 +268,14 @@ It is honest. The problem is that a 50–67%-coverage span presented beside a
 single-digit MdAPE invites a reader to treat it as a confidence interval, and
 Part 5 asks for "a supported valuation range and confidence assessment."
 
-**Why real Ames measured 61.9%, below the 66.7% ceiling:** comps are chosen by
-`rank_candidates` for similarity to the subject, which makes them more similar
-to *each other* than to the subject. That breaks exchangeability in the
-direction that narrows the span. The ranking that improves the point estimate
-is the same mechanism that degrades the interval.
+**Why real Ames measured 61.9%, below the 66.7% ceiling:** *(Hypothesis
+**retracted 2026-11-07.** I argued that `rank_candidates` makes comps more
+similar to each other than to the subject, breaking exchangeability downward.
+Experiment E-11 tested it directly and found ranking **raises** coverage at
+every comp count. The current hypothesis is unmodelled subject-level variance —
+condition or distress the feature set does not carry — consistent with the
+artifact's $62,383-actual / $127,178-estimate worst case. That is **NOT
+MEASURED**. See `BOB_EXPERIMENT_LOG_CYCLE2.md` E-11.)*
 
 ---
 
@@ -286,7 +289,7 @@ is the same mechanism that degrades the interval.
 | **B-4** | `purpose='after_repair'` differs from `as_is` in the label only; no renovation input is accepted | High | E-3 |
 | **B-7** | Rejection reasons collapse to `malformed_or_unsupported_evidence` for `ValueError`/`KeyError` cases, losing triage specificity | Low | E-2 |
 
-Register total across all documents: **86**.
+Register total across all documents: **86** at cycle 1; **89** after cycle 2.
 
 ---
 
