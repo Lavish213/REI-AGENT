@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from loguru import logger
-from pipecat.frames.frames import Frame, LLMContextFrame, TTSSpeakFrame, EndFrame
+from pipecat.frames.frames import Frame, LLMContextFrame, TTSSpeakFrame, EndFrame, InterruptionFrame
 from pipecat.frames.frames import TranscriptionFrame, UserStartedSpeakingFrame
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.processors.frame_processor import FrameProcessor
@@ -467,7 +467,7 @@ class ContextTrackerProcessor(FrameProcessor):
                     stop_receipt = await asyncio.to_thread(execute_tool, "honor_stop_request", {"verbatim": text}, self._ctx)
                     self._ctx.call_should_end = True
                     if self._ctx._task_ref:
-                        await self._ctx._task_ref.queue_frames([TTSSpeakFrame(stop_receipt), EndFrame()])
+                        await self._ctx._task_ref.queue_frames([InterruptionFrame(), TTSSpeakFrame(stop_receipt), EndFrame()])
                     return
 
                 if self._objective_engine is not None:

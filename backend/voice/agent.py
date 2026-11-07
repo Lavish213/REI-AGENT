@@ -18,6 +18,7 @@ from pipecat.frames.frames import (
     AudioRawFrame,
     EndFrame,
     BotStoppedSpeakingFrame,
+    InterruptionFrame,
     TTSSpeakFrame,
     UserStartedSpeakingFrame,
     TranscriptionFrame,
@@ -62,6 +63,8 @@ from backend.voice.processors.ai_identity import AIIdentityProcessor
 from backend.voice.processors.input_guard import InputGuardProcessor
 from backend.voice.processors.sentence_streamer import SentenceStreamProcessor
 from backend.voice.processors.speech_output import SpeechOutputProcessor
+from backend.voice.processors.latency_tracker import LatencyTracker, LatencyTrackerProcessor
+from backend.voice.turn_controller import TurnController
 
 from backend.voice.trust_tracker import TrustTracker
 from backend.voice.processors.speech_understanding import SpeechUnderstandingProcessor
@@ -228,7 +231,7 @@ def _make_tool_handler(tool_name: str, call_ctx: CallContext | None = None, lf_t
         if call_ctx is not None and getattr(call_ctx, "call_should_end", False):
             logger.info("tool_handler call_should_end=True — cancelling task tool={}", tool_name)
             if call_ctx._task_ref is not None:
-                frames = [EndFrame()] if tool_name == "transfer_call" else [TTSSpeakFrame("Thanks for your time. Take care."), EndFrame()]
+                frames = [InterruptionFrame(), EndFrame()] if tool_name == "transfer_call" else [InterruptionFrame(), TTSSpeakFrame("Thanks for your time. Take care."), EndFrame()]
                 await call_ctx._task_ref.queue_frames(frames)
     return handler
 
@@ -609,6 +612,7 @@ async def run_sophia_agent(
         runtime_orchestrator=runtime_orchestrator,
     )
     sentence_streamer = SentenceStreamProcessor()
+    latency_tracker = LatencyTracker()
     ai_identity = AIIdentityProcessor(call_ctx=call_ctx)
     input_guard = InputGuardProcessor(call_ctx=call_ctx)
 
@@ -634,6 +638,7 @@ async def run_sophia_agent(
     pipeline = Pipeline(
         [
             transport.input(),
+            LatencyTrackerProcessor(latency_tracker),
             stt,
             ConversationTurnReset(call_ctx),
             SpeechUnderstandingProcessor(call_ctx),
@@ -651,6 +656,7 @@ async def run_sophia_agent(
             context_tracker,
             BobFactJournalProcessor(call_ctx),
             analysis_callbacks,
+            TurnController(call_ctx),
             ConversationPolicyProcessor(call_ctx),
             context_aggregator.user(),
             ContextStateProcessor(context_tracker),
@@ -661,6 +667,7 @@ async def run_sophia_agent(
             ComplianceOutputFilter(call_ctx=call_ctx),
             TranscriptJournal(call_ctx, "assistant"),
             tts,
+            LatencyTrackerProcessor(latency_tracker),
             TTSFrameProbe(),
             transport.output(),
             bot_speaking_monitor,

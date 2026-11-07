@@ -37,6 +37,8 @@ from backend.voice.session import issue_stream_token, read_media_session, valida
 D = FrameDirection.DOWNSTREAM
 
 
+
+
 @pytest.mark.asyncio
 async def test_sentence_is_spoken_before_response_finishes():
     processor = SentenceStreamProcessor(enable_direct_mode=True)
@@ -162,7 +164,9 @@ async def test_first_outbound_opt_out_is_persisted_and_ends():
         await tracker.process_frame(TranscriptionFrame("Stop calling me", "seller", "now"), D)
     persist.assert_called_once_with("honor_stop_request", {"verbatim": "Stop calling me"}, ctx)
     assert ctx.call_should_end
-    assert isinstance(task.queue_frames.call_args.args[0][-1], EndFrame)
+    queued = task.queue_frames.call_args.args[0]
+    assert isinstance(queued[0], InterruptionFrame)
+    assert isinstance(queued[-1], EndFrame)
     tracker.push_frame.assert_not_awaited()
 
 
@@ -283,6 +287,8 @@ async def test_live_pipeline_can_construct_without_network(monkeypatch):
     assert "PhoneEQProcessor" not in names
     assert names.index("SentenceStreamProcessor") < names.index("ComplianceOutputFilter") < names.index("DeepgramTTSService")
     assert names.index("ConversationTurnReset") < names.index("SpeechUnderstandingProcessor") < names.index("InputGuardProcessor")
+    assert names.index("AnalysisCallbackProcessor") < names.index("TurnController") < names.index("ConversationPolicyProcessor")
+    assert names.count("LatencyTrackerProcessor") == 2
     assert names.index("ContextTrackerProcessor") < names.index("ConversationPolicyProcessor") < names.index("ContextStateProcessor") < names.index("AnthropicLLMService")
 
 
