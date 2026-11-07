@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 37203)
-Total output lines: 2986
-
 import os
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -840,9 +837,9 @@ def update_lead_intel_scores(lead_id: str, scores: dict) -> None:
         logger.info("update_lead_intel_scores lead_id={} hot={}", lead_id, scores.get("is_hot_lead"))
 
 
-# ──────────────────────────────────────────────────────────────────
-# Batch D — Workflow + Followup runtime
-# ──────────────────────────────────────────────────────────────────
+# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Batch D â Workflow + Followup runtime
+# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def insert_workflow_transition(
     lead_id: str,
@@ -876,7 +873,7 @@ def insert_workflow_transition(
     }).eq("id", lead_id).execute()
 
     logger.info(
-        "workflow_transition lead_id={} {}→{} source={}",
+        "workflow_transition lead_id={} {}â{} source={}",
         lead_id, previous_state, state, trigger_source,
     )
     return state_changed
@@ -1038,9 +1035,9 @@ def update_operator_notes(lead_id: str, notes: str) -> None:
     logger.info("update_operator_notes lead_id={}", lead_id)
 
 
-# ──────────────────────────────────────────────────────────────────
-# Batch E — Offers + Walkthroughs + Analytics
-# ──────────────────────────────────────────────────────────────────
+# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Batch E â Offers + Walkthroughs + Analytics
+# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def create_offer(
     lead_id: str,
@@ -1215,7 +1212,7 @@ def get_workflow_analytics() -> dict:
         if s in ("sent", "countered", "accepted"):
             offer_pipeline_value += o.get("offer_amount") or 0
 
-    # Conversion: active → appointment
+    # Conversion: active â appointment
     active = sum(workflow_pipeline.get(s, 0) for s in ("active_contact", "followup_required"))
     appt = workflow_pipeline.get("appointment_pending", 0) + workflow_pipeline.get("appointment_confirmed", 0)
     conversion_rate = round(appt / max(1, active + appt) * 100, 1)
@@ -1554,7 +1551,535 @@ def add_walkthrough_availability(starts_at: str, ends_at: str) -> None:
 
 
 def update_sms_contact_time(lead_id: str, sent_at: str) -> None:
-    _get_client().table("leads").update({"last_sms_at": sent_at}).eq("id…7203 tokens truncated…-0000-0000-0000-000000000001')
+    _get_client().table("leads").update({"last_sms_at": sent_at}).eq("id", lead_id).execute()
+
+
+def record_suppression_event(
+    tenant_id: str,
+    lead_id: str | None,
+    contact_point: str,
+    method: str,
+    source: str,
+    contact_type: str = "phone",
+    channel: str = "all",
+    reason: str | None = None,
+    call_sid: str | None = None,
+    verbatim: str | None = None,
+    actor: str = "system",
+) -> str | None:
+    client = _get_client()
+    row = {
+        "tenant_id": tenant_id,
+        "lead_id": lead_id or None,
+        "contact_point": contact_point,
+        "contact_type": contact_type,
+        "channel": channel,
+        "action": "suppressed",
+        "reason": reason,
+        "method": method,
+        "source": source,
+        "call_sid": call_sid,
+        "verbatim": (verbatim or "")[:2000] or None,
+        "actor": actor,
+    }
+    result = client.table("suppression_events").insert(row).execute()
+    event_id = result.data[0]["id"] if result.data else None
+    logger.info(
+        "suppression_recorded event_id={} lead_id={} method={} channel={}",
+        event_id, lead_id, method, channel,
+    )
+    return event_id
+
+
+def add_to_dnc(tenant_id: str, phone: str, reason: str = "seller_request") -> None:
+    client = _get_client()
+    client.table("dnc_list").upsert(
+        {"tenant_id": tenant_id, "phone": phone, "reason": reason},
+        on_conflict="phone",
+    ).execute()
+    logger.info("dnc_added phone_suffix={} reason={}", phone[-4:], reason)
+
+
+def is_contact_suppressed(tenant_id: str, contact_point: str) -> bool:
+    client = _get_client()
+    result = (
+        client.table("suppression_events")
+        .select("action")
+        .eq("tenant_id", tenant_id)
+        .eq("contact_point", contact_point)
+        .order("occurred_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        return False
+    return result.data[0].get("action") == "suppressed"
+
+
+def try_write(label: str, fn, *args, **kwargs) -> bool:
+    try:
+        fn(*args, **kwargs)
+        return True
+    except Exception as error:
+        logger.exception("write_failed op={} error={}", label, str(error))
+        return False
+
+
+def record_bob_call_facts(lead_id, call_sid, facts):
+    import os
+    if not lead_id or not call_sid or not isinstance(facts, dict) or not facts:
+        return False
+    response = _get_client().rpc("bob_record_call_facts", {
+        "p_tenant_id": os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001"),
+        "p_lead_id": lead_id, "p_call_sid": call_sid, "p_facts": facts,
+    }).execute()
+    if response.data is not True:
+        raise RuntimeError("Bob call facts were not persisted")
+    return True
+
+
+def _bob_fact_outbox():
+    from pathlib import Path
+    path = Path(os.environ.get("VOICE_FACT_OUTBOX_PATH", "/data/sophia/bob-facts.sqlite3"))
+    return _private_journal_connection(path, ("CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, lead_id TEXT NOT NULL, call_sid TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, due REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, leased_until REAL, state TEXT NOT NULL DEFAULT 'pending', error TEXT)",))
+
+
+def stage_bob_call_facts(lead_id, call_sid, facts):
+    import json
+    import time
+    from uuid import UUID, uuid5, NAMESPACE_URL
+    if not lead_id or not call_sid or not isinstance(facts, dict) or not facts:
+        return None
+    UUID(lead_id)
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    UUID(tenant)
+    if not isinstance(call_sid, str) or not 1 <= len(call_sid) <= 200:
+        raise ValueError("Invalid call binding")
+    if len(facts) > 7:
+        raise ValueError("Too many checklist facts")
+    now = datetime.now(timezone.utc)
+    for box, fact in facts.items():
+        if box not in {"right_person", "property_confirmed", "occupancy", "condition", "timeline", "motivation", "next_step"} or not isinstance(fact, dict) or type(fact.get("confirmed")) is not bool or fact.get("source") != "transcript_verified" or fact.get("call_sid") != call_sid:
+            raise ValueError("Invalid fact provenance")
+        observed = datetime.fromisoformat(fact["verified_at"].replace("Z", "+00:00"))
+        if observed.tzinfo is None or not -60 <= (now - observed).total_seconds() <= 86400:
+            raise ValueError("Invalid fact timestamp")
+    payload = json.dumps(facts, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    if len(payload) > 8192:
+        raise ValueError("Fact payload too large")
+    event_id = str(uuid5(NAMESPACE_URL, tenant + ":" + lead_id + ":" + call_sid + ":" + payload))
+    connection = _bob_fact_outbox()
+    try:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if connection.execute("SELECT 1 FROM facts WHERE id=?", (event_id,)).fetchone():
+                return event_id
+            if connection.execute("SELECT count(*) FROM facts").fetchone()[0] >= 10000:
+                raise RuntimeError("Fact journal full; operator recovery required")
+            connection.execute("INSERT INTO facts(id,tenant_id,lead_id,call_sid,payload,created,due) VALUES(?,?,?,?,?,?,?)", (event_id, tenant, lead_id, call_sid, payload, time.time(), time.time()))
+    finally:
+        connection.close()
+    return event_id
+
+
+def flush_bob_call_fact_outbox(limit=20):
+    import json
+    import time
+    from uuid import uuid4
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("Invalid fact flush limit")
+    result = {"delivered": 0, "failed": 0, "expired": 0}
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    for _ in range(limit):
+        connection = _bob_fact_outbox()
+        try:
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute("SELECT id,lead_id,call_sid,payload,attempts FROM facts WHERE tenant_id=? AND state='pending' AND due<=? AND (leased_until IS NULL OR leased_until<=?) ORDER BY created,id LIMIT 1", (tenant, time.time(), time.time())).fetchone()
+                if row is None:
+                    break
+                event_id, lead_id, call_sid, payload, attempts = row
+                lease = str(uuid4())
+                connection.execute("UPDATE facts SET lease=?,leased_until=?,attempts=attempts+1 WHERE id=?", (lease, time.time()+120, event_id))
+            facts = json.loads(payload)
+            expired = any((datetime.now(timezone.utc)-datetime.fromisoformat(fact["verified_at"].replace("Z", "+00:00"))).total_seconds() > 86400 for fact in facts.values())
+            try:
+                if expired:
+                    raise ValueError("fact_expired_before_delivery")
+                response = _get_client().rpc("bob_accept_call_facts", {"p_tenant_id": tenant, "p_lead_id": lead_id, "p_call_sid": call_sid, "p_event_id": event_id, "p_facts": facts}).execute()
+                if response.data is not True:
+                    raise RuntimeError("fact_receipt_not_confirmed")
+            except Exception as error:
+                with connection:
+                    connection.execute("UPDATE facts SET state=?,due=?,lease=NULL,leased_until=NULL,error=? WHERE id=? AND lease=?", ("dead" if expired else "pending", time.time()+min(300, 2**min(attempts+1,8)), type(error).__name__, event_id, lease))
+                result["expired" if expired else "failed"] += 1
+                logger.warning("bob_fact_delivery_failed event_id={} type={}", event_id, type(error).__name__)
+            else:
+                with connection:
+                    deleted = connection.execute("DELETE FROM facts WHERE id=? AND lease=?", (event_id, lease)).rowcount
+                if deleted:
+                    result["delivered"] += 1
+        finally:
+            connection.close()
+    return result
+
+
+def bob_fact_journal_health():
+    import time
+    connection = _bob_fact_outbox()
+    try:
+        tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+        rows = connection.execute("SELECT state,count(*),min(created) FROM facts WHERE tenant_id=? GROUP BY state", (tenant,)).fetchall()
+        result = {"pending": 0, "dead": 0, "oldest_pending_seconds": 0}
+        for state, count, created in rows:
+            result[state] = count
+            if state == "pending":
+                result["oldest_pending_seconds"] = max(0, time.time()-created)
+        return result
+    finally:
+        connection.close()
+
+
+def bob_integration_health():
+    response = _get_client().rpc("bob_integration_health", {"p_tenant_id": os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")}).execute()
+    if not isinstance(response.data, dict) or response.data.get("contract_version") != "2.1" or response.data.get("backend") != "REI-AGENT":
+        raise RuntimeError("Bob schema contract missing or incompatible")
+    return response.data
+
+
+def accept_bob_brief_event(event_id, payload):
+    response = _get_client().rpc("bob_accept_brief_event", {"p_tenant_id": os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001"), "p_event_id": event_id, "p_payload": payload}).execute()
+    return response.data is True
+
+
+def _dashboard_event_outbox():
+    from pathlib import Path
+    configured = os.environ.get("KARPATHYS_OUTBOX_PATH", "")
+    if not configured:
+        raise RuntimeError("Dashboard event journal requires an absolute non-symlink persistent path")
+    return _private_journal_connection(Path(configured), (
+        "CREATE TABLE IF NOT EXISTS dashboard_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, target TEXT NOT NULL, call_sid TEXT NOT NULL, endpoint TEXT NOT NULL, fingerprint TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, due REAL NOT NULL, expires REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, leased_until REAL, state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','delivered','dead')), error TEXT, receipt TEXT, delivered_at REAL)",
+        "CREATE INDEX IF NOT EXISTS dashboard_events_due ON dashboard_events(state,due,leased_until)",
+        "CREATE INDEX IF NOT EXISTS dashboard_events_call ON dashboard_events(target,call_sid,seq)",
+    ))
+
+
+def stage_dashboard_event(endpoint, payload, target):
+    import hashlib
+    import json
+    import time
+    from uuid import uuid5, NAMESPACE_URL
+    allowed = {"call", "turn", "complete", "ended", "transcript", "failed", "business", "sophia/disposition-action"}
+    if endpoint not in allowed or not isinstance(payload, dict) or not isinstance(target, str) or len(target) != 64:
+        raise ValueError("Invalid dashboard event")
+    sid = payload.get("call_sid")
+    if not isinstance(sid, str) or not sid.strip() or len(sid) > 255:
+        raise ValueError("Dashboard event requires a provider call identity")
+    suffix = ""
+    if endpoint == "turn":
+        if payload.get("speaker") not in {"user", "seller", "sophia", "assistant", "system"} or type(payload.get("turn_index")) is not int or not 0 <= payload["turn_index"] <= 10000:
+            raise ValueError("Invalid dashboard turn identity")
+        suffix = f":{payload['speaker']}:{payload['turn_index']}"
+    if endpoint == "business":
+        revision = payload.get("revision")
+        if not isinstance(revision, str) or len(revision) != 64 or any(c not in "0123456789abcdef" for c in revision):
+            raise ValueError("Invalid business snapshot revision")
+        suffix = ":" + revision
+    stable = json.dumps({key: value for key, value in payload.items() if key != "occurred_at"}, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    fingerprint = hashlib.sha256(stable.encode()).hexdigest()
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    if len(serialized.encode()) > 1024 * 1024:
+        raise ValueError("Dashboard event exceeds journal payload budget")
+    event_id = str(uuid5(NAMESPACE_URL, target + ":" + sid + ":" + endpoint + suffix))
+    now = time.time()
+    connection = _dashboard_event_outbox()
+    try:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute("SELECT fingerprint FROM dashboard_events WHERE event_id=?", (event_id,)).fetchone()
+            if existing:
+                if existing["fingerprint"] != fingerprint:
+                    raise ValueError("Conflicting dashboard event replay")
+                return event_id
+            connection.execute("DELETE FROM dashboard_events WHERE state='delivered' AND delivered_at<?", (now - 7 * 86400,))
+            count, size = connection.execute("SELECT count(*),coalesce(sum(length(CAST(payload AS BLOB))),0) FROM dashboard_events").fetchone()
+            if count >= 100000 or size + len(serialized.encode()) > 64 * 1024 * 1024:
+                raise RuntimeError("Dashboard event journal full; operator recovery required")
+            connection.execute("INSERT INTO dashboard_events(event_id,target,call_sid,endpoint,fingerprint,payload,created,due,expires) VALUES(?,?,?,?,?,?,?,?,?)", (event_id, target, sid, endpoint, fingerprint, serialized, now, now, now + 7 * 86400))
+        return event_id
+    finally:
+        connection.close()
+
+
+def claim_dashboard_event(target):
+    import json
+    import time
+    from uuid import uuid4
+    now = time.time()
+    connection = _dashboard_event_outbox()
+    try:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("UPDATE dashboard_events SET state='dead',error='delivery_expired',lease=NULL,leased_until=NULL WHERE state='pending' AND expires<=? AND (leased_until IS NULL OR leased_until<=?)", (now, now))
+            connection.execute("UPDATE dashboard_events SET state='dead',error='destination_changed',lease=NULL,leased_until=NULL WHERE state='pending' AND target<>? AND (leased_until IS NULL OR leased_until<=?)", (target, now))
+            connection.execute("UPDATE dashboard_events SET state='dead',error='call_creation_failed' WHERE state='pending' AND endpoint<>'call' AND (leased_until IS NULL OR leased_until<=?) AND EXISTS (SELECT 1 FROM dashboard_events root WHERE root.target=dashboard_events.target AND root.call_sid=dashboard_events.call_sid AND root.endpoint='call' AND root.state='dead')", (now,))
+            row = connection.execute("SELECT e.* FROM dashboard_events e WHERE e.target=? AND e.state='pending' AND e.due<=? AND (e.leased_until IS NULL OR e.leased_until<=?) AND NOT EXISTS (SELECT 1 FROM dashboard_events active WHERE active.target=e.target AND active.call_sid=e.call_sid AND active.leased_until>? AND active.state='pending') AND (e.endpoint IN ('call','business') OR EXISTS (SELECT 1 FROM dashboard_events root WHERE root.target=e.target AND root.call_sid=e.call_sid AND root.endpoint='call' AND root.state='delivered')) AND (e.endpoint='call' OR NOT EXISTS (SELECT 1 FROM dashboard_events prior WHERE prior.target=e.target AND prior.call_sid=e.call_sid AND prior.endpoint<>'call' AND prior.state='pending' AND prior.seq<e.seq)) ORDER BY e.seq LIMIT 1", (target, now, now, now)).fetchone()
+            if row is None:
+                return None
+            token = str(uuid4())
+            connection.execute("UPDATE dashboard_events SET lease=?,leased_until=?,attempts=attempts+1 WHERE event_id=?", (token, now + 60, row["event_id"]))
+            return {**dict(row), "lease": token, "attempts": row["attempts"] + 1, "payload": json.loads(row["payload"])}
+    finally:
+        connection.close()
+
+
+def finish_dashboard_event(event_id, lease, receipt=None, error="transport_unavailable", permanent=False):
+    import json
+    import time
+    now = time.time()
+    connection = _dashboard_event_outbox()
+    try:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute("SELECT * FROM dashboard_events WHERE event_id=? AND state='pending' AND lease=? AND leased_until>?", (event_id, lease, now)).fetchone()
+            if row is None:
+                return False
+            if receipt is not None:
+                if not isinstance(receipt, dict) or receipt.get("persisted") is not True or type(receipt.get("schema_version")) is not int or receipt.get("schema_version") != 1 or receipt.get("call_sid") != row["call_sid"] or not isinstance(receipt.get("receipt_id"), str) or not 1 <= len(receipt["receipt_id"]) <= 1024:
+                    raise ValueError("Unconfirmed dashboard delivery receipt")
+                safe_receipt = {key: receipt[key] for key in ("schema_version", "persisted", "receipt_id", "call_sid", "call_id", "session_id", "transcript_id", "turn_id") if key in receipt}
+                serialized = json.dumps(safe_receipt, allow_nan=False)
+                if len(serialized) > 8192:
+                    raise ValueError("Invalid dashboard receipt budget")
+                connection.execute("UPDATE dashboard_events SET state='delivered',receipt=?,payload='{}',error=NULL,delivered_at=?,lease=NULL,leased_until=NULL WHERE event_id=? AND lease=?", (serialized, now, event_id, lease))
+            else:
+                allowed_errors = {"transport_unavailable", "invalid_receipt", "authentication_rejected", "payload_rejected", "destination_changed", "worker_failed"}
+                safe_error = error if error in allowed_errors else "worker_failed"
+                delay = min(300, 2 ** min(row["attempts"], 8))
+                connection.execute("UPDATE dashboard_events SET state=?,error=?,due=?,lease=NULL,leased_until=NULL WHERE event_id=? AND lease=?", ("dead" if permanent else "pending", safe_error, now + delay, event_id, lease))
+            return True
+    finally:
+        connection.close()
+
+
+def dashboard_event_journal_health():
+    import time
+    connection = _dashboard_event_outbox()
+    try:
+        result = {"pending": 0, "delivered": 0, "dead": 0, "leased": 0, "oldest_pending_seconds": 0, "errors": {}, "failed_events": []}
+        for row in connection.execute("SELECT state,count(*) AS n,min(created) AS oldest FROM dashboard_events GROUP BY state"):
+            result[row["state"]] = row["n"]
+            if row["state"] == "pending":
+                result["oldest_pending_seconds"] = max(0, time.time() - row["oldest"])
+        result["leased"] = connection.execute("SELECT count(*) FROM dashboard_events WHERE state='pending' AND leased_until>?", (time.time(),)).fetchone()[0]
+        result["errors"] = {row["error"]: row["n"] for row in connection.execute("SELECT error,count(*) AS n FROM dashboard_events WHERE state<>'delivered' AND error IS NOT NULL GROUP BY error")}
+        result["failed_events"] = [dict(row) for row in connection.execute("SELECT event_id,endpoint,error,attempts FROM dashboard_events WHERE state='dead' ORDER BY seq DESC LIMIT 50")]
+        return result
+    finally:
+        connection.close()
+
+
+def retry_dashboard_event(event_id, target):
+    import time
+    from uuid import UUID
+    UUID(event_id)
+    now = time.time()
+    connection = _dashboard_event_outbox()
+    try:
+        with connection:
+            changed = connection.execute("UPDATE dashboard_events SET state='pending',error=NULL,due=?,expires=?,lease=NULL,leased_until=NULL WHERE event_id=? AND target=? AND state='dead'", (now, now + 7 * 86400, event_id, target)).rowcount
+            return changed == 1
+    finally:
+        connection.close()
+
+
+
+def _suppression_journal():
+    from pathlib import Path
+    configured = os.environ.get("CONTACT_SUPPRESSION_PATH", "")
+    if not configured:
+        raise RuntimeError("Contact suppression requires a persistent path")
+    return _private_journal_connection(Path(configured), (
+        "CREATE TABLE IF NOT EXISTS contact_suppression (phone TEXT PRIMARY KEY, event_id TEXT NOT NULL UNIQUE, tenant_id TEXT NOT NULL, lead_id TEXT, method TEXT NOT NULL, call_sid TEXT, created REAL NOT NULL, due REAL NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, lease TEXT, leased_until REAL, recovered INTEGER NOT NULL DEFAULT 0)",
+    ))
+
+
+def _suppression_phone(phone):
+    import re
+    if not isinstance(phone, str) or len(phone) > 64:
+        raise ValueError("Invalid suppression phone")
+    if re.search(r"[^0-9+(). -]", phone):
+        raise ValueError("Invalid suppression phone")
+    digits = re.sub(r"\D", "", phone)
+    if len(digits) == 10:
+        digits = "1" + digits
+    if not 8 <= len(digits) <= 15 or (len(digits) != 11 and not phone.strip().startswith("+")):
+        raise ValueError("Invalid suppression phone")
+    return "+" + digits
+
+
+def stage_contact_suppression(tenant_id, phone, lead_id=None, method="seller_request", call_sid=None):
+    import time
+    from uuid import uuid4
+    if not os.environ.get("CONTACT_SUPPRESSION_PATH"):
+        return False
+    phone = _suppression_phone(phone)
+    if not isinstance(tenant_id, str) or not tenant_id.strip() or len(tenant_id) > 128:
+        raise ValueError("Suppression tenant is required")
+    if not isinstance(method, str) or not method or len(method) > 128:
+        raise ValueError("Invalid suppression method")
+    connection = _suppression_journal()
+    try:
+        with connection:
+            connection.execute("INSERT INTO contact_suppression(phone,event_id,tenant_id,lead_id,method,call_sid,created,due) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(phone) DO NOTHING", (phone, str(uuid4()), tenant_id, lead_id or None, method, call_sid, time.time(), time.time()))
+        return True
+    finally:
+        connection.close()
+
+
+def local_phone_suppressed(phone):
+    if not os.environ.get("CONTACT_SUPPRESSION_PATH"):
+        return False
+    phone = _suppression_phone(phone)
+    connection = _suppression_journal()
+    try:
+        return connection.execute("SELECT 1 FROM contact_suppression WHERE phone=?", (phone,)).fetchone() is not None
+    finally:
+        connection.close()
+
+
+def suppression_journal_health():
+    connection = _suppression_journal()
+    try:
+        row = connection.execute("SELECT count(*) AS total,coalesce(sum(recovered=0),0) AS pending FROM contact_suppression").fetchone()
+        return dict(row)
+    finally:
+        connection.close()
+
+
+def recover_contact_suppressions(limit=20):
+    import time
+    from uuid import uuid4
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("Invalid suppression recovery batch")
+    tenant = os.environ.get("TENANT_ID") or "00000000-0000-0000-0000-000000000001"
+    result = {"recovered": 0, "retrying": 0, "unowned": 0}
+    for _ in range(limit):
+        connection = _suppression_journal()
+        try:
+            now = time.time()
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute("SELECT * FROM contact_suppression WHERE tenant_id=? AND recovered=0 AND due<=? AND (leased_until IS NULL OR leased_until<=?) ORDER BY created LIMIT 1", (tenant, now, now)).fetchone()
+            if row is None:
+                connection.commit()
+                break
+            event = dict(row)
+            lease = str(uuid4())
+            connection.execute("UPDATE contact_suppression SET lease=?,leased_until=?,attempts=attempts+1 WHERE phone=?", (lease, now + 60, event["phone"]))
+            connection.commit()
+        finally:
+            connection.close()
+        saved = False
+        try:
+            client = _get_client()
+            client.table("dnc_list").upsert({"tenant_id": event["tenant_id"], "phone": event["phone"], "reason": "seller_request"}, on_conflict="phone").execute()
+            receipt = client.table("suppression_events").select("id,action,contact_point,tenant_id").eq("id", event["event_id"]).limit(1).execute()
+            if not receipt.data:
+                receipt = client.table("suppression_events").insert({"id": event["event_id"], "tenant_id": event["tenant_id"], "lead_id": event["lead_id"], "contact_point": event["phone"], "contact_type": "phone", "channel": "all", "action": "suppressed", "method": event["method"], "source": "durable_recovery", "call_sid": event["call_sid"], "actor": "system", "occurred_at": datetime.fromtimestamp(event["created"], timezone.utc).isoformat()}).execute()
+            saved = any(item.get("id") == event["event_id"] and item.get("action") == "suppressed" and item.get("contact_point") == event["phone"] and item.get("tenant_id") == event["tenant_id"] for item in (receipt.data or []))
+            dnc = client.table("dnc_list").select("phone").eq("phone", event["phone"]).limit(1).execute()
+            saved = saved and any(item.get("phone") == event["phone"] for item in (dnc.data or []))
+        except Exception as error:
+            logger.warning("suppression_recovery_failed type={}", type(error).__name__)
+        connection = _suppression_journal()
+        try:
+            with connection:
+                changed = connection.execute("UPDATE contact_suppression SET recovered=?,due=?,lease=NULL,leased_until=NULL WHERE phone=? AND lease=? AND leased_until>?", (int(saved), time.time() + min(3600, 5 * 2 ** min(event["attempts"], 9)), event["phone"], lease, time.time())).rowcount
+            result["unowned" if not changed else "recovered" if saved else "retrying"] += 1
+        finally:
+            connection.close()
+    return result
+
+
+def _private_journal_connection(path, statements):
+    import fcntl
+    import sqlite3
+    import stat
+    import time
+    if not path.is_absolute() or any(parent.is_symlink() for parent in (path, *path.parents)):
+        raise RuntimeError("Event journal requires an absolute non-symlink persistent path")
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    parent = path.parent.stat()
+    if parent.st_uid != os.getuid() or parent.st_mode & 0o022:
+        raise RuntimeError("Event journal directory must be owned and private")
+    lock = os.open(str(path) + ".init.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    connection = None
+    try:
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Event journal initialization busy")
+                time.sleep(0.01)
+        if not path.exists():
+            descriptor = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+            os.close(descriptor)
+        if not stat.S_ISREG(path.lstat().st_mode) or path.is_symlink():
+            raise RuntimeError("Event journal must be a regular non-symlink file")
+        os.chmod(path, 0o600)
+        connection = sqlite3.connect(str(path), timeout=5)
+        connection.row_factory = sqlite3.Row
+        if connection.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal":
+            connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=FULL")
+        for statement in statements:
+            connection.execute(statement)
+        connection.commit()
+        return connection
+    except BaseException:
+        if connection is not None:
+            connection.close()
+        raise
+    finally:
+        os.close(lock)
+
+
+def upsert_listing_candidate(data: dict):
+    client = _get_client()
+    existing = client.table("properties").select("id").eq("apn", data["apn"]).limit(1).execute()
+    if existing.data:
+        update = {key: data[key] for key in ("days_on_market", "last_list_price", "price_reduced")}
+        client.table("properties").update(update).eq("id", existing.data[0]["id"]).execute()
+        return existing.data[0]["id"]
+    return upsert_property(data)
+
+
+def persist_mls_candidate(candidate):
+    import re
+    apn = candidate.get("apn")
+    if not isinstance(apn, str) or not re.fullmatch(r"[0-9]{8}", apn) or apn == "00000000" or candidate.get("county") != "San Joaquin" or candidate.get("state") != "CA" or not candidate.get("address"):
+        return None
+    payload = {key: candidate[key] for key in ("apn", "address", "city", "state", "county", "beds", "baths", "sqft", "year_built", "distress_type", "distress_score", "deal_viable", "last_list_price") if key in candidate}
+    payload["days_on_market"] = candidate.get("days_on_market", 0)
+    payload["price_reduced"] = candidate.get("distress_type") == "price_reduction"
+    from uuid import UUID
+    tenant = str(UUID(os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")))
+    payload["tenant_id"] = tenant
+    property_id = upsert_listing_candidate(payload)
+    existing = get_lead_by_property(property_id)
+    if existing:
+        return existing['id']
+    return insert_lead(property_id)
+
+
+def dashboard_business_source(lead_id):
+    lead = get_lead_with_property(lead_id)
+    if not lead:
+        raise ValueError("Missing canonical lead")
+    tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001')
     prop = lead.get('properties') or {}
     if lead.get('tenant_id') != tenant or not isinstance(prop, dict) or prop.get('tenant_id') != tenant:
         raise ValueError('Business evidence tenant binding required')
