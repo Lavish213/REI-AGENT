@@ -39,6 +39,7 @@ def save_snapshot(call_sid: str, call_ctx: Any) -> None:
             "intent_locked": getattr(call_ctx, "intent_locked", False),
             "resistance_level": getattr(call_ctx, "resistance_level", "NONE"),
             "motivation_signals": getattr(call_ctx, "motivation_signals", []),
+            "motivation_known": getattr(call_ctx, "motivation_known", False),
             "objections_raised": getattr(call_ctx, "objections_raised", []),
             "timeline_mentioned": getattr(call_ctx, "timeline_mentioned", None),
             "last_price_mentioned": getattr(call_ctx, "last_price_mentioned", None),
