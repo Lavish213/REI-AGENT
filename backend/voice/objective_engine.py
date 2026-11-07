@@ -20,6 +20,7 @@ class ObjectiveEngine:
         if getattr(call_ctx, "pre_close_done", False):
             return "STAGE_4_CLOSE"
         condition = getattr(call_ctx, "condition_known", False) or bool(getattr(call_ctx, "property_issues", []))
-        if not getattr(call_ctx, "motivation_signals", []) or not condition or not getattr(call_ctx, "timeline_mentioned", None):
+        motivation = getattr(call_ctx, "motivation_known", False) or bool(getattr(call_ctx, "motivation_signals", []))
+        if not motivation or not condition or not getattr(call_ctx, "timeline_mentioned", None):
             return "STAGE_2_DISCOVER"
         return "STAGE_3_PRECLOSE"

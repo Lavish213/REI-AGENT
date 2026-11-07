@@ -175,6 +175,7 @@ class CallContext:
     awaiting_owner_confirmation: bool = False
     property_issues: list[str] = field(default_factory=list)
     motivation_signals: list[str] = field(default_factory=list)
+    motivation_known: bool = False
     objections_raised: list[str] = field(default_factory=list)
     last_price_mentioned: int | None = None
     timeline_mentioned: str | None = None
@@ -338,6 +339,21 @@ class CallContext:
 
         if self.property_address:
             tag += f"\nProperty address confirmed in this call: {self.property_address}"
+
+        known_facts = []
+        if self.motivation_signals:
+            known_facts.append("seller reason category: " + ", ".join(self.motivation_signals[-3:]))
+        elif self.motivation_known:
+            known_facts.append("seller gave a reason but no urgent motivation was identified")
+        if self.timeline_mentioned:
+            known_facts.append("preferred timing: " + self.timeline_mentioned)
+        if self.property_issues:
+            known_facts.append("condition topics: " + ", ".join(self.property_issues[-3:]))
+        elif self.condition_known:
+            known_facts.append("property condition was answered with no tracked repair issue")
+        if known_facts:
+            tag += "\nKnown seller facts: " + "; ".join(known_facts)
+            tag += "\nUse one relevant fact naturally when it helps. Do not recite this list or repeat a fact mechanically."
 
         if self.objections_raised:
             tag += f"\nLast objection raised: {self.objections_raised[-1]}"
@@ -630,6 +646,13 @@ class ContextTrackerProcessor(FrameProcessor):
                 if label not in self._ctx.motivation_signals:
                     self._ctx.motivation_signals.append(label)
         self._ctx.motivation_signals = self._ctx.motivation_signals[-6:]
+        if observed_motivation:
+            self._ctx.motivation_known = True
+        elif self._ctx.last_question_topic == "motivation" and not re.fullmatch(
+            r"\s*(?:no|nothing|whatever|i don'?t know|idk|not sure|maybe|hmm+)\s*[.!]?\s*",
+            lower,
+        ) and not re.search(r"\?", text):
+            self._ctx.motivation_known = True
         if observed_motivation and re.search(r"\b(?:i|we|my|our|i.m|we.re)\b", lower):
             remember_fact("motivation")
         elif negated_relocation:
