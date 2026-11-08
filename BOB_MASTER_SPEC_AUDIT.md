@@ -9,6 +9,11 @@ present unless it was read in the source.
 Per Section 42 this document contains **no implementation code** and requests
 approval before further changes. Section 39's Gate 1 is identified in PART G.
 
+**Update 2026-11-08.** Work authorised after this audit has closed part of it.
+Section 22 is now implemented, `backend/scoring/` is no longer empty, and Bob's
+grading is wired through to the Karpathys dashboard. The table in PART C and the
+`scoring/` finding in A.5 are corrected in place below; everything else stands.
+
 ---
 
 ## PART A — Existing System Audit
@@ -78,8 +83,15 @@ backend/
 
 ### A.5 What is absent
 
-Two package directories are **empty files**: `backend/scoring/` and `backend/intel/`.
-They are declared namespaces with zero implementation.
+`backend/intel/` is an **empty file** — a declared namespace with zero
+implementation.
+
+`backend/scoring/` was the same when this audit was written. It now contains
+`opportunity.py`, implementing Section 22: a deterministic, versioned grade with
+economics and evidence confidence held as independent axes, readiness derived from
+both, explicit unknown states instead of zero substitution, and a lockout class.
+It is reached through `brief.evidence.opportunity` and surfaced by the
+`bob_opportunity_overview` RPC.
 
 More consequentially: Bob has **no data acquisition layer at all**. No provider
 client, no ingestion, no property identity resolution. `compare_sales` consumes
@@ -171,8 +183,8 @@ All 42 sections. Status is from source inspection.
 | 19 | Strategy matrix | **ABSENT** | none of the 14 strategies modelled |
 | 20 | Negotiation intelligence | **PARTIAL** | `call_planner/` produces objectives/avoidances, not negotiation plans |
 | 21 | Multi-scenario simulation | **ABSENT** | no conservative/base/optimistic, no stress tests |
-| 22 | Opportunity scoring & grading | **ABSENT** | `backend/scoring/` is an empty file. No A–F grade, no HOT BUY |
-| 23 | Lockout / early rejection | **PARTIAL** | engine rejects *comps*; no deal-level lockout |
+| 22 | Opportunity scoring & grading | **IMPLEMENTED** | `scoring/opportunity.py`; A–F grade, HOT BUY / WATCH LIST / ARCHIVED, evidence-capped |
+| 23 | Lockout / early rejection | **PARTIAL** | engine rejects comps; deal-level `lockout_class` now distinguishes blocked, permanent, research-required and price-dependent; no reopen trigger yet |
 | 24 | Opportunity cost engine | **ABSENT** | no research prioritisation |
 | 25 | Speed / staged funnel | **ABSENT** | no stages, no caching, no latency budget |
 | 26 | Provider & source intelligence | **ABSENT** | no provider layer to evaluate |
@@ -184,15 +196,16 @@ All 42 sections. Status is from source inspection.
 | 32 | Sophia integration | **GOOD** | `call_brief` contract + brief generator + suppression override |
 | 33 | Due diligence & closing | **ABSENT** | no deadline tracking |
 | 34 | Compliance & governance | **PARTIAL** | `quote/offer_authorized: False` everywhere; no licensing/fair-housing/DNC layer in Bob |
-| 35 | Observability & reliability | **MINIMAL** | logging in 3 of 31 modules; no tracing, circuit breakers, idempotency |
+| 35 | Observability & reliability | **MINIMAL** | grade freshness now exposed so a stalled worker is visible; still no tracing, circuit breakers or idempotency |
 | 36 | Testing requirements | **STRONG** | 3,482 tests; drift gate; exact oracles |
-| 37 | Property intelligence report | **ABSENT** | ~60 required fields; Bob produces a fraction |
+| 37 | Property intelligence report | **PARTIAL** | the deal row now carries identity, ARV, asking, purchase limit, headroom, evidence confidence, signals, contradictions, risks and next action; rehab, market and strategy sections remain absent |
 | 38 | 30 research deliverables | **THIS DOC** | |
 | 39 | Implementation priority | **PART F** | |
 | 40 | Absolute engineering rules | **OBSERVED** | see D.1/D.3 for the two conflicts |
 | 41 | Intelligence doctrine | **PARTIAL** | the engine embodies the skepticism; no deal-level loop |
 
-**Summary: 5 strong/good, 10 partial, 1 elsewhere, 20 absent.**
+**Summary at audit time: 5 strong/good, 10 partial, 1 elsewhere, 20 absent.**
+**After the authorised follow-up work: 6 strong/good/implemented, 11 partial, 1 elsewhere, 18 absent.**
 
 ---
 
@@ -226,6 +239,22 @@ Bob's actual layout:
 | `contracts/*` | `backend/contracts/` | **already exists** |
 
 This needs your approval because it declines a literal reading of Section 4.
+
+### D.1b What the follow-up work actually landed
+
+So this document is not read as describing the current tree:
+
+- `backend/scoring/opportunity.py` — Section 22 grading, 57 tests including a
+  seeded fuzz of 3,000 hostile inputs.
+- `supabase/migrations/20261108_bob_opportunity_overview.sql` — tenant-scoped,
+  service-role-only RPC with a covering index, 77 PGlite checks.
+- REI-AGENT `db.bob_opportunity_overview` + `GET /api/bob/insights`, and
+  `validated_opportunity` carrying the grade into the per-lead snapshot.
+- Dashboard `GET /api/v1/bob/insights`, the deals-page panel and the per-lead
+  screening block.
+
+A field-name contract is asserted on both sides, so renaming a field in Bob fails
+a test naming the consumer rather than silently emptying a column.
 
 ### D.2 Boundaries to hold
 
@@ -409,6 +438,6 @@ approve. Three decisions unblock the most:
 3. **Where to spend effort while data is procured** — Gate 1 engineering against a
    stub provider, or Gate 3 mathematics, which needs nothing external.
 
-Work completed this session under your prior approval, already pushed: the four
-comparability gates, IAAO ratio-study metrics, and the output drift gate. 3,482
-tests passing, ruff clean.
+Work completed under your prior approval, already pushed: the four comparability
+gates, IAAO ratio-study metrics, the output drift gate, Section 22 grading, and the
+full Bob-to-dashboard path. 3,539 Bob tests, 77 database checks, ruff clean.
