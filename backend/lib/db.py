@@ -1781,6 +1781,26 @@ def bob_integration_health():
     return response.data
 
 
+_OPPORTUNITY_DEAL_LIMIT = 25
+_OPPORTUNITY_REQUIRED = ("graded_leads", "blocked_leads", "economics_unknown_leads", "by_readiness", "by_grade", "by_evidence_confidence", "by_lockout_class", "deals", "authority")
+
+
+def bob_opportunity_overview(limit: int = _OPPORTUNITY_DEAL_LIMIT) -> dict:
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        raise TypeError("Opportunity deal limit must be an integer")
+    if not 1 <= limit <= 100:
+        raise ValueError("Opportunity deal limit must be between 1 and 100")
+    tenant = os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001")
+    response = _get_client().rpc("bob_opportunity_overview", {"p_tenant_id": tenant, "p_limit": limit}).execute()
+    data = response.data
+    if not isinstance(data, dict) or data.get("schema_version") != 1 or any(key not in data for key in _OPPORTUNITY_REQUIRED) or not isinstance(data["deals"], list) or not isinstance(data["authority"], dict):
+        raise RuntimeError("Bob opportunity contract missing or incompatible")
+    if data["authority"].get("quote_authorized") is not False or data["authority"].get("offer_authorized") is not False:
+        raise RuntimeError("Bob opportunity overview must not carry quote or offer authority")
+    logger.info("bob_opportunity_overview graded={} deals={}", data["graded_leads"], len(data["deals"]))
+    return data
+
+
 def accept_bob_brief_event(event_id, payload):
     response = _get_client().rpc("bob_accept_brief_event", {"p_tenant_id": os.environ.get("TENANT_ID", "00000000-0000-0000-0000-000000000001"), "p_event_id": event_id, "p_payload": payload}).execute()
     return response.data is True

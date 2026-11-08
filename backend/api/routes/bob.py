@@ -45,6 +45,18 @@ async def health():
     return {'status': integration_status(shared, local), 'shared': shared, 'facts': local}
 
 
+@router.get('/bob/insights')
+async def insights(limit: int = 25):
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=422, detail='Deal limit out of range')
+    try:
+        return await asyncio.to_thread(db.bob_opportunity_overview, limit)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail='Deal limit out of range')
+    except Exception as error:
+        raise HTTPException(status_code=503, detail='Bob opportunity evidence unavailable') from error
+
+
 @router.get('/operations/delivery')
 async def provider_delivery_overview():
     import asyncio
