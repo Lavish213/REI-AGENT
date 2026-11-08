@@ -613,7 +613,7 @@ async def run_sophia_agent(
         runtime_orchestrator=runtime_orchestrator,
     )
     sentence_streamer = SentenceStreamProcessor()
-    ai_softener = AISoftenerProcessor()
+    ai_softener = AISoftenerProcessor(call_ctx=call_ctx)
     latency_tracker = LatencyTracker()
     ai_identity = AIIdentityProcessor(call_ctx=call_ctx)
     input_guard = InputGuardProcessor(call_ctx=call_ctx)
