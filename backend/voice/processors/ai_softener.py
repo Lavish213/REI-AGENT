@@ -114,7 +114,6 @@ _QUESTION_TOPICS = [
     ("motivation", re.compile(r"\b(?:why .*sell|what.*prompting|considering selling)\b", re.I)),
     ("price", re.compile(r"\b(?:asking price|price|number in mind|looking to get)\b", re.I)),
 ]
-
 _LEAKAGE_SAFE = "Hey, this is Sophia with San Joaquin House Buyers. Did I catch you at an okay time?"
 
 
