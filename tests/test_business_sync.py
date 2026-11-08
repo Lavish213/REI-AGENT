@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -127,3 +128,69 @@ def test_snapshot_uses_real_reservation_not_missing_lead_status():
     value['appointment']['lead_id'] = 'other'
     with pytest.raises(ValueError):
         business.build_snapshot('lead-1',value)
+
+
+def _brief_with_opportunity(**changes):
+    opportunity = {
+        'schema_version': '1.0', 'grade': 'A', 'readiness': 'HOT_BUY', 'evidence_confidence': 'verified',
+        'quote_authorized': False, 'offer_authorized': False, 'missing_facts': [], 'opportunity_signals': ['asking_price_below_screening_purchase_limit'],
+        'contradictory_evidence': [], 'lockout_class': None, 'next_action': 'prepare_offer_for_human_approval',
+        'economics': {'state': 'known', 'arv_point_cents': 46000000, 'repair_estimate_cents': 2000000, 'asking_price_cents': 20000000, 'purchase_limit_cents': 30200000, 'headroom_cents': 10200000, 'headroom_bps': 2217},
+    }
+    opportunity.update(changes)
+    now = datetime.now(timezone.utc)
+    return {
+        'schema_version': '2.0', 'lead_id': 'lead-1', 'phase': 'VERIFY', 'objective': 'Confirm the right person',
+        'missing_box': 'right_person', 'mood': 'guarded', 'avoid': [], 'escalation_rules': [],
+        'confidence': 0.5, 'ready_for_call': False, 'blocked_reasons': [],
+        'created_at': (now - timedelta(minutes=5)).isoformat(), 'expires_at': (now + timedelta(hours=12)).isoformat(),
+        'evidence': {'opportunity': opportunity},
+    }
+
+
+def _source_with_brief(**changes):
+    value = source()
+    value['lead']['call_brief'] = _brief_with_opportunity(**changes)
+    return value
+
+
+def test_snapshot_carries_the_per_lead_opportunity_grade():
+    result = business.build_snapshot('lead-1', _source_with_brief())
+    opportunity = result['opportunity']
+    assert opportunity['grade'] == 'A'
+    assert opportunity['readiness'] == 'HOT_BUY'
+    assert opportunity['arv_point_cents'] == 46000000
+    assert opportunity['headroom_cents'] == 10200000
+    assert opportunity['quote_authorized'] is False and opportunity['offer_authorized'] is False
+
+
+def test_snapshot_opportunity_lists_are_lists_not_booleans():
+    result = business.build_snapshot('lead-1', _source_with_brief())
+    assert result['opportunity']['opportunity_signals'] == ['asking_price_below_screening_purchase_limit']
+    assert isinstance(result['opportunity']['missing_facts'], list)
+
+
+def test_snapshot_keeps_a_known_arv_when_economics_are_incomplete():
+    economics = {'state': 'unknown', 'arv_point_cents': 46000000, 'repair_estimate_cents': None, 'asking_price_cents': 20000000, 'purchase_limit_cents': None, 'headroom_cents': None, 'headroom_bps': None}
+    result = business.build_snapshot('lead-1', _source_with_brief(grade=None, economics=economics, missing_facts=['repair_estimate'], next_action='obtain_repair_estimate'))
+    assert result['opportunity']['arv_point_cents'] == 46000000
+    assert result['opportunity']['purchase_limit_cents'] is None
+    assert result['opportunity']['missing_facts'] == ['repair_estimate']
+
+
+@pytest.mark.parametrize('change', [
+    {'quote_authorized': True},
+    {'offer_authorized': True},
+    {'readiness': 'APPROVED_TO_OFFER'},
+    {'grade': 'Z'},
+    {'evidence_confidence': 'excellent'},
+    {'schema_version': '2.0'},
+    {'economics': {'state': 'known', 'arv_point_cents': 1.5, 'repair_estimate_cents': 1, 'asking_price_cents': 1, 'purchase_limit_cents': 1, 'headroom_cents': 1, 'headroom_bps': 1}},
+    {'economics': {'state': 'bogus'}},
+])
+def test_snapshot_withholds_a_malformed_or_authorized_opportunity(change):
+    assert business.build_snapshot('lead-1', _source_with_brief(**change))['opportunity'] is None
+
+
+def test_snapshot_without_a_brief_reports_no_opportunity():
+    assert business.build_snapshot('lead-1', source())['opportunity'] is None

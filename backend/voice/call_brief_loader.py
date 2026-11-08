@@ -126,6 +126,66 @@ def validated_valuation(report, lead_id):
     return {key: report[key] for key in ('schema_version', 'lead_id', 'status', 'method', 'purpose', 'as_of', 'comparable_count', 'supported_low_cents', 'point_cents', 'supported_high_cents', 'quote_authorized', 'offer_authorized')}
 
 
+_OPPORTUNITY_READINESS = {'HOT_BUY', 'WATCH_LIST', 'ARCHIVED'}
+_OPPORTUNITY_GRADES = {'A', 'B', 'C', 'D', 'F'}
+_OPPORTUNITY_LEVELS = {'verified', 'supported', 'thin', 'unusable'}
+_OPPORTUNITY_MONEY = ('arv_point_cents', 'repair_estimate_cents', 'asking_price_cents', 'purchase_limit_cents', 'headroom_cents')
+
+
+def _string_list(value):
+    return list(value) if _strings(value) else []
+
+
+def _opportunity_money(value, signed=False):
+    if value is None:
+        return None
+    if type(value) is not int or abs(value) > 10**14 or (not signed and value < 0):
+        raise ValueError('Bounded opportunity money required')
+    return value
+
+
+def validated_opportunity(report):
+    if not isinstance(report, dict) or report.get('schema_version') != '1.0':
+        return {}
+    if report.get('quote_authorized') is not False or report.get('offer_authorized') is not False:
+        return {}
+    if report.get('readiness') not in _OPPORTUNITY_READINESS:
+        return {}
+    grade = report.get('grade')
+    if grade is not None and grade not in _OPPORTUNITY_GRADES:
+        return {}
+    if report.get('evidence_confidence') not in _OPPORTUNITY_LEVELS:
+        return {}
+    economics = report.get('economics')
+    if not isinstance(economics, dict) or economics.get('state') not in {'known', 'unknown'}:
+        return {}
+    try:
+        money = {key: _opportunity_money(economics.get(key), signed=key == 'headroom_cents') for key in _OPPORTUNITY_MONEY}
+    except ValueError:
+        return {}
+    bps = economics.get('headroom_bps')
+    if bps is not None and (type(bps) is not int or abs(bps) > 10**6):
+        return {}
+    if economics.get('state') == 'known' and any(money[key] is None for key in ('arv_point_cents', 'asking_price_cents', 'purchase_limit_cents')):
+        return {}
+    return {
+        'schema_version': report['schema_version'],
+        'grade': grade,
+        'readiness': report['readiness'],
+        'evidence_confidence': report['evidence_confidence'],
+        'economics_state': economics['state'],
+        'missing_facts': _string_list(report.get('missing_facts')),
+        'opportunity_signals': _string_list(report.get('opportunity_signals')),
+        'contradictory_evidence': _string_list(report.get('contradictory_evidence')),
+        'lockout_class': report.get('lockout_class') if isinstance(report.get('lockout_class'), str) else None,
+        'next_action': report.get('next_action') if isinstance(report.get('next_action'), str) else None,
+        'headroom_bps': bps,
+        'quote_authorized': False,
+        'offer_authorized': False,
+        **money,
+    }
+
+
 def valuation_guidance(report, lead_id, identity_confirmed=False, property_confirmed=False):
     safe = validated_valuation(report, lead_id)
     if not safe:

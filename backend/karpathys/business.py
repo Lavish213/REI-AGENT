@@ -7,7 +7,7 @@ from backend.karpathys import client
 from backend.karpathys.outbox import enqueue_event
 from backend.lib import db
 from loguru import logger
-from backend.voice.call_brief_loader import _valid_brief, validated_valuation
+from backend.voice.call_brief_loader import _valid_brief, validated_opportunity, validated_valuation
 
 
 def amount(value):
@@ -27,7 +27,9 @@ def build_snapshot(lead_id, source):
         raise ValueError('Canonical lead/property binding required')
     brief = lead.get('call_brief') or {}
     raw = (brief.get('evidence') or {}).get('valuation') or {}
-    valid = validated_valuation(raw, lead_id) if _valid_brief(brief, lead_id) and raw.get('subject_id') == prop['id'] else {}
+    brief_is_valid = _valid_brief(brief, lead_id)
+    valid = validated_valuation(raw, lead_id) if brief_is_valid and raw.get('subject_id') == prop['id'] else {}
+    opportunity = validated_opportunity((brief.get('evidence') or {}).get('opportunity')) if brief_is_valid else {}
     comps = []
     if valid:
         for row in raw.get('accepted_comparables', [])[:50]:
@@ -47,7 +49,7 @@ def build_snapshot(lead_id, source):
         if reservation and reservation.get('lead_id') != lead_id:
             raise ValueError('Canonical reservation identity required')
         appointment = {'at': label(reservation.get('starts_at'), 40), 'status': label(reservation.get('status'), 40)}
-    return {'schema_version': 1, 'observation_hour': datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0).isoformat(), 'source_updated_at': label(lead.get('updated_at'), 40), 'tenant_id': label(lead.get('tenant_id'), 40), 'property_id': prop['id'], 'address': label(prop.get('address')), 'city': label(prop.get('city'), 100), 'state': label(prop.get('state'), 2), 'apn': label(prop.get('apn'), 30), 'valuation': valid or None, 'comparables': comps, 'offers': offers, 'appointment': appointment, 'callback_at': label(lead.get('callback_scheduled_at'), 40), 'disposition': label(lead.get('disposition'), 40), 'followups': [{'id': label(row.get('id')), 'state': label(row.get('state'), 40), 'at': label(row.get('scheduled_at'), 40), 'kind': label(row.get('followup_type'), 40)} for row in source.get('followups', [])[:20]], 'email_replies': [{'id': label(row.get('id')), 'text': label(row.get('body'), 10000), 'at': label(row.get('created_at'), 40)} for row in source.get('email_replies', [])[:20]], 'quote_authorized': False, 'offer_authorized': False}
+    return {'schema_version': 1, 'observation_hour': datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0).isoformat(), 'source_updated_at': label(lead.get('updated_at'), 40), 'tenant_id': label(lead.get('tenant_id'), 40), 'property_id': prop['id'], 'address': label(prop.get('address')), 'city': label(prop.get('city'), 100), 'state': label(prop.get('state'), 2), 'apn': label(prop.get('apn'), 30), 'valuation': valid or None, 'opportunity': opportunity or None, 'comparables': comps, 'offers': offers, 'appointment': appointment, 'callback_at': label(lead.get('callback_scheduled_at'), 40), 'disposition': label(lead.get('disposition'), 40), 'followups': [{'id': label(row.get('id')), 'state': label(row.get('state'), 40), 'at': label(row.get('scheduled_at'), 40), 'kind': label(row.get('followup_type'), 40)} for row in source.get('followups', [])[:20]], 'email_replies': [{'id': label(row.get('id')), 'text': label(row.get('body'), 10000), 'at': label(row.get('created_at'), 40)} for row in source.get('email_replies', [])[:20]], 'quote_authorized': False, 'offer_authorized': False}
 
 
 async def publish_business(call_sid, lead_id):
