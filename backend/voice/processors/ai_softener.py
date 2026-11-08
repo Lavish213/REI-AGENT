@@ -95,6 +95,26 @@ _INTERNAL_PROPERTY_LABEL = re.compile(
     re.I,
 )
 
+_NO_QUESTION_GOALS = {
+    "answer",
+    "decline",
+    "empathy",
+    "goodbye",
+    "human",
+    "identity",
+    "repair",
+    "stop",
+    "wait",
+}
+
+_QUESTION_TOPICS = [
+    ("address", re.compile(r"\b(?:what(?:'s| is) the address|property address|where is the property)\b", re.I)),
+    ("timeline", re.compile(r"\b(?:how soon|timeline|when .*sell|timing)\b", re.I)),
+    ("condition", re.compile(r"\b(?:condition|repairs|shape)\b", re.I)),
+    ("motivation", re.compile(r"\b(?:why .*sell|what.*prompting|considering selling)\b", re.I)),
+    ("price", re.compile(r"\b(?:asking price|price|number in mind|looking to get)\b", re.I)),
+]
+
 _LEAKAGE_SAFE = "Hey, this is Sophia with San Joaquin House Buyers. Did I catch you at an okay time?"
 
 
@@ -126,10 +146,41 @@ class AISoftenerProcessor(FrameProcessor):
     Tracks recent openers to prevent repetition across turns.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, call_ctx=None, **kwargs):
         super().__init__(**kwargs)
+        self._call_ctx = call_ctx
         self._recent_starters: deque[str] = deque(maxlen=_MAX_REPEAT_WINDOW)
+        self._question_turns: dict[str, int] = {}
         self._turn_count = 0
+
+    def _normalize_spoken_text(self, text: str) -> str:
+        text = re.sub(r"(?:\s*[—–-]\s*){2,}", " — ", text)
+        text = re.sub(r"([!?.,])\1+", r"\1", text)
+        text = re.sub(r"\s+([!?.,])", r"\1", text)
+        text = re.sub(r"[ \t]{2,}", " ", text)
+        return text.strip()
+
+    def _question_topic(self, text: str) -> str | None:
+        for topic, pattern in _QUESTION_TOPICS:
+            if pattern.search(text):
+                return topic
+        return None
+
+    def _enforce_turn_contract(self, text: str) -> str:
+        if self._call_ctx is None or "?" not in text:
+            return text
+        goal = getattr(self._call_ctx, "response_goal", "")
+        if goal in _NO_QUESTION_GOALS:
+            return re.sub(r"(?:^|(?<=[.!]))\s*[^.!?]*\?", "", text).strip()
+        topic = self._question_topic(text)
+        if topic is None:
+            return text
+        turn = int(getattr(self._call_ctx, "turn_count", 0))
+        previous = self._question_turns.get(topic)
+        if previous is not None and turn - previous <= 2:
+            return re.sub(r"(?:^|(?<=[.!]))\s*[^.!?]*\?", "", text).strip()
+        self._question_turns[topic] = turn
+        return text
 
     def _soften(self, text: str) -> str:
         if not text or not text.strip():
@@ -151,6 +202,8 @@ class AISoftenerProcessor(FrameProcessor):
         text = _apply_openers(text)
         # Apply contractions
         text = _apply_contractions(text)
+        text = self._normalize_spoken_text(text)
+        text = self._enforce_turn_contract(text)
 
         # Check for repeated starters
         starter = _extract_starter(text)

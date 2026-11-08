@@ -41,17 +41,17 @@ def plan_turn(ctx, text: str) -> TurnPlan:
         return TurnPlan("clarify_audio", "The transcript is uncertain. Say you did not catch that clearly and ask them to repeat only the missing part. Do not guess, update facts, infer consent, or execute booking/message/price actions." + alternative)
     if re.search(r"\b(wrong number|wrong person|no one (?:here )?(?:by|with) that name|you have the wrong)\b", lower):
         return TurnPlan("wrong_person", "Apologize briefly and end. Do not ask for the correct number or pitch this person.", 0)
-    if re.search(r"\b(speak to (?:a human|a real person)|talk to (?:a person|someone|a human|a real person)|transfer me)\b", lower):
+    if re.search(r"\b(speak to (?:a human|a real person)|talk to (?:a person|someone|a human|a real person)|transfer me|want (?:a|to speak to a) real person)\b", lower):
         return TurnPlan("human", "Attempt the permitted transfer now. Explain a failed transfer honestly; offer a human callback without restarting discovery.", 0)
     if re.search(r"\b(hold on|hang on|one (?:second|sec|moment)|give me (?:a|one|two|\d+) (?:second|minute)s?|let me finish|don't interrupt|espera|un momento)\b", lower):
         return TurnPlan("wait", "Acknowledge briefly, then let the caller continue. Do not ask a question, offer a time, or advance a sales stage.", 0)
     conditional_sale = bool(re.search(r"\bnot selling\s+(?:until|before|unless|yet)\b", lower))
-    partial_refusal = bool(re.search(r"\bnot interested in (?:a |the )?(?:walkthrough|visit|appointment)\b", lower))
+    partial_refusal = bool(re.search(r"\b(?:not interested in (?:a |an |the )?(?:walkthrough|visit|appointment)|no (?:walkthrough|visit|appointment)|do not want (?:a |an |the )?(?:walkthrough|visit|appointment))\b", lower))
     if partial_refusal:
         return TurnPlan("alternative", "Respect that they do not want a visit. Answer or explore only the alternative they requested; do not end as if they refused everything, or pitch the same visit again.", 0)
-    if not conditional_sale and re.search(r"\b(not interested|not selling|don't want to sell|never selling|no quiero vender|no me interesa)\b", lower):
+    if not conditional_sale and re.search(r"\b(not interested|not selling|don't want to sell|do not want to sell|never selling|no quiero vender|no me interesa)\b", lower):
         return TurnPlan("decline", "Respect the decision and close briefly. Do not treat it as an objection to overcome or ask for referrals.", 0)
-    if re.search(r"\b(can't talk|cannot talk|at work|i'm driving|busy right now|call me (?:back|later|tomorrow|next|on|at|in)|not a good time|no puedo hablar)\b", lower):
+    if re.search(r"\b(can't talk|cannot talk|at work|i'm driving|i am driving|busy right now|call me (?:back|later|tomorrow|next|on|at|in)|not a good time|no puedo hablar)\b", lower):
         return TurnPlan("callback", "Respect their time. Ask only for a specific callback date/time if they want another call. Do not continue qualification or pretend a callback was saved.")
     if re.search(r"\b(goodbye|gotta go|have to go|bye|take care|adios|adi[oó]s)\b", lower):
         return TurnPlan("goodbye", "Respect the goodbye. End warmly without another question or an invented next step.", 0)
@@ -65,7 +65,7 @@ def plan_turn(ctx, text: str) -> TurnPlan:
         )
     if re.search(r"\b(slow down|speak (?:slower|slowly|louder|up)|talk (?:slower|slowly|louder)|say that again|say it again|repeat (?:that|yourself)|didn't (?:hear|catch|understand)|can't (?:hear|understand)|cannot (?:hear|understand)|don't understand|hard of hearing|hearing aid|muffled|breaking up|bad connection|background noise|too quiet|missed the last bit|can't make (?:that|it) out|what did you say|pardon|come again|huh|ain't (?:hear|heard|catch|understand)|no te escucho|no entiendo|m[aá]s despacio)\b", lower):
         return TurnPlan("repair", "Use short clear phrases and explain or repeat only the last relevant point. For hearing difficulty, use deliberate phrasing and one detail at a time; never shout, blame their accent, or claim to have changed volume. No new sales question." + (" Offer a human connection or an authorized text alternative instead of another identical repeat." if getattr(ctx, "clarification_failures", 0) >= 3 else ""), 0)
-    if re.search(r"\b(actually|correction|i meant|not .{0,25}but|that's (?:not right|wrong)|no,? (?:it's|i said)|en realidad)\b", lower):
+    if re.search(r"\b(actually|correction|i meant|not .{0,25}but|that(?:'s| is) (?:not right|wrong)|no,? (?:it's|i said)|en realidad)\b", lower):
         return TurnPlan("correction", "Acknowledge the correction once. Use the latest stated value, not old memory. Clarify only if the replacement is ambiguous; do not confirm a changed appointment before a successful tool result.")
     if "?" in text or re.search(r"^(?:wait[, ]+)?(?:tell me|explain|help me understand|why|how|what|who|where|can you|do you|are you|is there|is this|will you|would you|cu[aá]nto|c[oó]mo|por qu[eé])\b", lower):
         return TurnPlan("answer", "Answer the caller's actual question first using verified facts. No invented price, timeline, company history, or data-source explanation. If unknown, say so. Do not append an unrelated discovery or booking question.", 0)

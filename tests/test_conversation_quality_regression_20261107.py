@@ -97,3 +97,33 @@ def test_internal_qa_property_label_is_never_spoken():
     assert "QA TEST" not in spoken
     assert "DO NOT CONTACT" not in spoken
     assert "the property in Stockton" in spoken
+
+
+def test_spoken_punctuation_cannot_produce_double_pause_artifacts():
+    processor = AISoftenerProcessor()
+
+    spoken = processor._soften("Yeah that makes sense — —repairs can be a hassle..")
+
+    assert spoken == "Yeah that makes sense — repairs can be a hassle."
+
+
+def test_answer_first_turn_cannot_append_an_unrelated_question():
+    ctx = CallContext(response_goal="answer", turn_count=4)
+    processor = AISoftenerProcessor(call_ctx=ctx)
+
+    spoken = processor._soften(
+        "Once I have the address, I can review the numbers with you. What's the address?"
+    )
+
+    assert spoken == "Once I have the address, I can review the numbers with you."
+
+
+def test_same_missing_fact_is_not_reasked_on_consecutive_turns():
+    ctx = CallContext(response_goal="contact", turn_count=4)
+    processor = AISoftenerProcessor(call_ctx=ctx)
+
+    assert processor._soften("What's the address?") == "What's the address?"
+    ctx.turn_count = 5
+    assert processor._soften("What's the property address?") == ""
+    ctx.turn_count = 7
+    assert processor._soften("What's the address?") == "What's the address?"
