@@ -4,6 +4,11 @@ Date: 2026-11-07
 Scope: how Bob compares to the best open-source work in the same problem space,
 and an end-to-end study of real-estate deal finding with benchmark numbers.
 
+**Status 2026-11-08:** items 1–4 of §7 are implemented and pushed to Bob on
+`claude/project-visibility-8cah98` (3,469 tests passing, up from 3,455). §5.1, §5.2
+and §5.3 are closed; §5.4 onward remain open. One claim in §5.3 was wrong when first
+written and is corrected in place below.
+
 Two sources could not be read from this session: `arxiv.org` and `www.zillow.com`
 do not resolve inside this container's network allowlist. Claims attributed to
 them below come from search-result summaries, not from the primary documents, and
@@ -250,8 +255,12 @@ An appraisal QC patent describes flagging **any single line-item adjustment abov
 per-category cap. A single 29% location adjustment passes today, and gross-only
 capping is exactly the hole that lets one heroic adjustment carry a bad comp.
 
-Fix: add `max_line_adjustment_bps` (start 1000) and reject with
-`single_adjustment_exceeds_line_policy`.
+Fixed: `max_line_adjustment_bps`, default **1000**, rejecting the comparable with
+`single_adjustment_exceeds_line_policy` rather than flagging the whole valuation —
+so one bad comp no longer poisons a valuation that has three good ones. Note Bob's
+own docs are careful that its distance, age and gross thresholds are "internal
+screening choices, not appraisal rules"; this cap is the same kind of choice, and the
+10% figure comes from an appraisal-QC patent, not from USPAP or Fannie Mae.
 
 ### 5.2 Comp selection is the "naive policy" the literature names
 
@@ -262,26 +271,48 @@ Fix: add `max_line_adjustment_bps` (start 1000) and reject with
 - `max_age_days` **365** matches Freddie Mac's 12-month expectation, so it is
   defensible — but in a moving market **180** with an explicit index adjustment is
   tighter.
-- No **area-divergence gate** at all. A 1,200 sqft comp for a 2,400 sqft subject
-  clears distance and age and is merely *adjusted*. Appraisal practice bounds
-  comparability itself: good selection keeps adjustments both fewer and smaller.
+- No **area-divergence gate** at all in `compare_sales`. A 1,200 sqft comp for a
+  2,400 sqft subject cleared distance and age and was merely *adjusted*. Note that
+  `rank_candidates` **already screened a 25% living-area band** and labels it
+  `same_type_market_365days_25percent_area_gap_not_appraisal_standard` — so a
+  candidate the ranker refused could still be accepted by the engine downstream.
 
-Fix: `max_area_divergence_bps` (±1000), tighten distance to 800 m, age to 180 d.
-These are policy-dict changes, already plumbed.
+Fixed: `max_area_divergence_bps` default **2500**, matching the shipped ranker band
+rather than tightening past it; distance 5000 → **800 m**; age 365 → **180 d**. All
+remain policy keys. The ±1000 originally recommended here would have made the engine
+stricter than the ranker, creating the same inconsistency in the opposite direction.
 
-### 5.3 ARV is computed from non-renovated comps (the biggest economic error)
+### 5.3 ARV was computed from non-renovated comps — CLOSED
 
 ARV means *after repair* value. Deriving it from ordinary closed sales — most of
 which are not renovated — biases it low, and because MAO is a fraction of ARV, the
 error propagates straight into every offer. The practitioner literature's phrasing
 is blunt: cost is not value, and an optimistic ARV "inflates the offer twice."
 
-Bob's engine has no notion of comp condition, and Cook County **explicitly excludes
-condition** from its feature set — so there is no open-source precedent to copy here.
-This has to be built.
+**Correction to the first version of this document.** It claimed Bob's engine "has
+no notion of comp condition." That was wrong. `condition` is one of the eight
+mandatory `FEATURES`, with its own adjustment category, and
+`test_condition_difference_requires_market_evidence_not_renovation_cost` already
+asserted that a condition difference cannot pass without evidence. More importantly,
+`docs/AUTONOMOUS-READINESS-RESEARCH-20261015.md` already stated the rule outright —
+*"A sale of an unrenovated house cannot validate a renovated prediction"* — and
+`local_benchmark.py` already carried the `unchanged_as_is` / `completed_renovation`
+vocabulary for ground truth.
 
-Fix: for `purpose == 'after_repair'`, require comps carrying a renovated-condition
-attestation, and reject with `after_repair_requires_renovated_comp_evidence`.
+So the gap was never conceptual. It was that the engine let a `condition` adjustment
+*bridge* the difference: an unrenovated comp with an evidenced condition adjustment
+was accepted as ARV support, which prices the renovation at cost rather than at value.
+
+Fixed: for `purpose == 'after_repair'`, a comp whose condition differs from the
+subject's is rejected with `after_repair_requires_renovated_comp_evidence`,
+regardless of whether an adjustment was supplied. `as_is` still allows an evidenced
+condition adjustment. This enforces Bob's own documented intent rather than importing
+an outside rule — and Cook County is no precedent either way, since it **excludes
+condition** from its feature set entirely.
+
+Residual: `after_repair` still computes when the caller declares the *subject* in
+unrenovated condition, because comps are only checked for agreement with the subject.
+Closing that needs a canonical condition vocabulary — a schema decision.
 
 ### 5.4 No accuracy metric an assessor would accept
 
@@ -455,10 +486,10 @@ inside the existing architecture — no new dependencies, no new data.
 
 | # | Change | Why | Cost |
 |---|---|---|---|
-| 1 | `max_line_adjustment_bps` = 1000 | Industry QC flags any line >10% of comp price; gross-only capping lets one heroic adjustment carry a bad comp | hours |
-| 2 | `max_area_divergence_bps` = ±1000 | No size-comparability bound exists today | hours |
-| 3 | distance 5000 → **800 m**, age 365 → **180 d** | 5 km spans non-competing Stockton submarkets | hours |
-| 4 | Renovated-comp requirement for `after_repair` | Largest economic error in the system; ARV bias flows into every MAO | 1–2 days |
+| 1 | ~~`max_line_adjustment_bps` = 1000~~ **DONE** | Industry QC flags any line >10% of comp price; gross-only capping lets one heroic adjustment carry a bad comp | hours |
+| 2 | ~~`max_area_divergence_bps`~~ **DONE** (2500, matching ranker) | No size-comparability bound exists today | hours |
+| 3 | ~~distance → 800 m, age → 180 d~~ **DONE** | 5 km spans non-competing Stockton submarkets | hours |
+| 4 | ~~Renovated-comp requirement for `after_repair`~~ **DONE** | Largest economic error in the system; ARV bias flows into every MAO | 1–2 days |
 | 5 | COD / PRD / PRB on a holdout + CI drift gate | Cook County's practice; without it "better" is unmeasurable | 2–3 days |
 | 6 | Auto-derive `market_time` from `index_ratio` + FHFA `ATNHPIUS06077A` | Closes a gap *and* strengthens the evidence chain | 2–3 days |
 | 7 | Locally-normalized conformal intervals; demote span to diagnostic | Current interval caps at 50% coverage at 3 comps | blocked on calibration set |
@@ -474,8 +505,14 @@ Owner decisions, not engineering ones:
   percentage with repairs as a separate variable term — but that is Angelo's call.
 - **Scraping posture.** Licensed CRMLS vs. scrapers that 403 from cloud IPs and
   carry ToS exposure. The open-source landscape has no answer here; it just scrapes.
-- **Items 1–4 touch Bob**, which the standing directive placed under read-only.
-  They need that lifted before implementation.
+- **Abstention impact of the tightened distance and age defaults: NOT MEASURED.**
+  Tightening both at once necessarily reduces comp supply, and Bob abstains below
+  three accepted comps. Whether that pushes real valuations into `needs_data` at an
+  acceptable rate needs a licensed San Joaquin sold-sale corpus. The Ames benchmark
+  cannot answer it — it has no San Joaquin distances — and its source host
+  (`jse.amstat.org`) is unreachable from this session. Both values are policy keys so
+  they can be retuned against real data rather than guessed at. No synthetic
+  abstention rate is reported here, because one would be invented, not measured.
 
 ---
 
