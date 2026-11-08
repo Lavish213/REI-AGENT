@@ -179,6 +179,8 @@ def validated_opportunity(report):
         'readiness': report['readiness'],
         'evidence_confidence': report['evidence_confidence'],
         'economics_state': economics['state'],
+        'limit_method': economics.get('limit_method') if isinstance(economics.get('limit_method'), str) else None,
+        'profit_at_asking_cents': _opportunity_money(economics.get('profit_at_asking_cents'), signed=True),
         'missing_facts': _string_list(report.get('missing_facts')),
         'opportunity_signals': _string_list(report.get('opportunity_signals')),
         'contradictory_evidence': _string_list(report.get('contradictory_evidence')),
