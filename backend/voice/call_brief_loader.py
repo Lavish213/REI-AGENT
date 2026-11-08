@@ -123,7 +123,12 @@ def validated_valuation(report, lead_id):
             return {}
     except (KeyError, TypeError, ValueError):
         return {}
-    return {key: report[key] for key in ('schema_version', 'lead_id', 'status', 'method', 'purpose', 'as_of', 'comparable_count', 'supported_low_cents', 'point_cents', 'supported_high_cents', 'quote_authorized', 'offer_authorized')}
+    verification = report.get('evidence_verification')
+    if verification is not None and verification not in {'independently_retrieved', 'operator_attested', 'no_accepted_evidence'}:
+        return {}
+    carried = {key: report[key] for key in ('schema_version', 'lead_id', 'status', 'method', 'purpose', 'as_of', 'comparable_count', 'supported_low_cents', 'point_cents', 'supported_high_cents', 'quote_authorized', 'offer_authorized')}
+    carried['evidence_verification'] = verification
+    return carried
 
 
 _OPPORTUNITY_READINESS = {'HOT_BUY', 'WATCH_LIST', 'ARCHIVED'}
