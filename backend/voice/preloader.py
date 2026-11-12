@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 
 from loguru import logger
 
+from backend.lib.log_safety import error_type, pii_ref
+
 from backend.lib.db import get_lead_by_owner_phone
 
 
@@ -180,14 +182,14 @@ def preload_call_context(caller_phone: str) -> dict:
                     lead = get_lead_with_property(lid)
     except Exception as e:
         logger.error(
-            "preload_call_context db_error phone={} error={}",
-            normalized_phone,
-            str(e),
+            "preload_call_context db_error contact={} error_type={}",
+            pii_ref(normalized_phone, "phone"),
+            error_type(e),
         )
         lead = None
 
     if not lead:
-        logger.info("preload_call_context lead_not_found phone={}", normalized_phone)
+        logger.info("preload_call_context lead_not_found contact={}", pii_ref(normalized_phone, "phone"))
         return {
             "lead": None,
             "is_outbound": False,
@@ -219,13 +221,13 @@ def preload_call_context(caller_phone: str) -> dict:
         seller_memory = SellerMemory.load(lead["id"])
         memory_context_str = seller_memory.to_prompt_context()
     except Exception as e:
-        logger.warning("preload seller_memory failed error={}", str(e))
+        logger.warning("preload seller_memory failed error_type={}", error_type(e))
 
     logger.info(
-        "preload_call_context lead_found lead_id={} phone={} "
+        "preload_call_context lead_found lead_id={} contact={} "
         "situation={} trust={:.1f}",
         lead.get("id"),
-        normalized_phone,
+        pii_ref(normalized_phone, "phone"),
         situation_label,
         initial_trust_score,
     )

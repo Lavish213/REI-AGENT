@@ -4,6 +4,7 @@ from typing import Any
 
 import httpx
 from loguru import logger
+from backend.lib.log_safety import error_type, pii_ref
 
 from backend.scout.scorer import calculate_distress_score
 
@@ -63,11 +64,11 @@ def lookup_property(address: str, city: str, state: str, zip_code: str) -> dict[
         data = _post(f"{_BASE_V1}/property/lookup/all-attributes", body)
         properties = data.get("results", {}).get("properties") or []
         if not properties:
-            logger.warning("lookup_property no result address={} city={}", address, city)
+            logger.warning("lookup_property no result property={}", pii_ref(f"{address}|{city}|{state}|{zip_code}", "property"))
             return {}
         return properties[0]
     except Exception as e:
-        logger.error("lookup_property failed address={} city={} error={}", address, city, str(e))
+        logger.error("lookup_property failed property={} error_type={}", pii_ref(f"{address}|{city}|{state}|{zip_code}", "property"), error_type(e))
         return {}
 
 
@@ -91,11 +92,11 @@ def skip_trace(address: str, city: str, state: str, zip_code: str) -> dict[str, 
         data = _post(f"{_BASE_V3}/property/skip-trace", body)
         results = data.get("result", {}).get("data") or []
         if not results:
-            logger.warning("skip_trace no result address={}", address)
+            logger.warning("skip_trace no result property={}", pii_ref(f"{address}|{city}|{state}|{zip_code}", "property"))
             return {}
         return results[0]
     except Exception as e:
-        logger.error("skip_trace failed address={} error={}", address, str(e))
+        logger.error("skip_trace failed property={} error_type={}", pii_ref(f"{address}|{city}|{state}|{zip_code}", "property"), error_type(e))
         return {}
 
 
@@ -115,10 +116,10 @@ def scrub_phone(phone: str) -> dict[str, Any]:
         if phone_rows:
             result["dnc"] = bool(phone_rows[0].get("dnc", False))
         if result["dnc"]:
-            logger.debug("scrub_phone dnc=True phone={}", phone)
+            logger.debug("scrub_phone dnc=True contact={}", pii_ref(phone, "phone"))
             return result
     except Exception as e:
-        logger.warning("scrub_phone dnc check failed phone={} error={}", phone, str(e))
+        logger.warning("scrub_phone dnc check failed contact={} error_type={}", pii_ref(phone, "phone"), error_type(e))
         return result
 
     try:
@@ -127,10 +128,10 @@ def scrub_phone(phone: str) -> dict[str, Any]:
         if phone_rows:
             result["tcpa"] = bool(phone_rows[0].get("tcpa", False))
         if result["tcpa"]:
-            logger.debug("scrub_phone tcpa=True phone={}", phone)
+            logger.debug("scrub_phone tcpa=True contact={}", pii_ref(phone, "phone"))
             return result
     except Exception as e:
-        logger.warning("scrub_phone tcpa check failed phone={} error={}", phone, str(e))
+        logger.warning("scrub_phone tcpa check failed contact={} error_type={}", pii_ref(phone, "phone"), error_type(e))
         return result
 
     try:
@@ -143,7 +144,7 @@ def scrub_phone(phone: str) -> dict[str, Any]:
             result["line_type"] = r.get("type") or "unknown"
             result["callable"] = bool(r.get("reachable", False)) and not not_found
     except Exception as e:
-        logger.warning("scrub_phone verify failed phone={} error={}", phone, str(e))
+        logger.warning("scrub_phone verify failed contact={} error_type={}", pii_ref(phone, "phone"), error_type(e))
 
     return result
 
@@ -336,7 +337,7 @@ def enrich_lead(lead: dict[str, Any], prop: dict[str, Any]) -> dict[str, Any]:
 
     owner_email = None
     if not phones:
-        logger.info("enrich_lead no phones from lookup, trying skip_trace address={}", address)
+        logger.info("enrich_lead no phones from lookup, trying skip_trace property={}", pii_ref(address, "address"))
         st_data = skip_trace(address, city, state, zip_code)
         phones = _extract_phones_from_skip_trace(st_data)
         owner_email = _extract_email_from_skip_trace(st_data)
@@ -375,8 +376,8 @@ def enrich_lead(lead: dict[str, Any], prop: dict[str, Any]) -> dict[str, Any]:
     prop["distress_score"] = calculate_distress_score(prop)
 
     logger.info(
-        "enrich_lead address={} score_before={} score_after={} callable={} dnc_blocked={}",
-        address,
+        "enrich_lead property={} score_before={} score_after={} callable={} dnc_blocked={}",
+        pii_ref(address, "address"),
         old_score,
         prop["distress_score"],
         len(callable_phones),

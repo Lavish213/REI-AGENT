@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Response, Query
 from fastapi.responses import HTMLResponse
 from loguru import logger
+from backend.lib.log_safety import error_type, pii_ref
 
 router = APIRouter()
 
@@ -40,7 +41,7 @@ async def sendgrid_webhook(request: Request) -> Response:
         import json
         events = json.loads(body)
     except Exception as e:
-        logger.error("sendgrid_webhook json parse failed error={}", str(e))
+        logger.error("sendgrid_webhook json parse failed error_type={}", error_type(e))
         return Response(status_code=400)
 
     import asyncio
@@ -73,7 +74,7 @@ def _handle_unsubscribe(lead_id: str, email: str, method: str = "email_link") ->
                 "opted_out_method": method,
             }).eq("id", lead_id).execute()
     except Exception as e:
-        logger.error("handle_unsubscribe failed lead_id={} error={}", lead_id, str(e))
+        logger.error("handle_unsubscribe failed lead_id={} error_type={}", lead_id, error_type(e))
 
 
 
@@ -85,7 +86,7 @@ async def unsubscribe_page(token: str = Query(...)) -> str:
         return _unsubscribe_html("Invalid or expired link.", success=False)
     lead_id, email = result
     _handle_unsubscribe(lead_id, email, method="email_link_click")
-    logger.info("email_unsubscribe_link lead_id={} email={}", lead_id, email)
+    logger.info("email_unsubscribe_link lead_id={} contact={}", lead_id, pii_ref(email, "email"))
     return _unsubscribe_html("You've been unsubscribed successfully.", success=True)
 
 

@@ -5,6 +5,8 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from loguru import logger
 
+from backend.lib.log_safety import error_type, pii_ref
+
 from backend.lib.db import (
     get_active_email_leads,
     update_lead_email_progress,
@@ -95,11 +97,11 @@ def send_email(to: str, subject: str, body: str, lead_id: str = "") -> bool:
         if db.email_address_is_suppressed(to) or (lead_id and db.local_lead_reply_hold(lead_id)["opted_out"]):
             return False
     except Exception as error:
-        logger.error("email_suppression_unavailable error={}", str(error))
+        logger.error("email_suppression_unavailable error_type={}", error_type(error))
         return False
     sendgrid_key = os.environ.get("SENDGRID_API_KEY", "")
     if not sendgrid_key or sendgrid_key.startswith("placeholder"):
-        logger.warning("SendGrid not configured skipping email to={}", to)
+        logger.warning("SendGrid not configured skipping email recipient={}", pii_ref(to, "email"))
         return False
 
     try:
@@ -139,10 +141,10 @@ def send_email(to: str, subject: str, body: str, lead_id: str = "") -> bool:
         if response.status_code != 202:
             return False
         db.accept_message_intent(identity, response.headers.get("x-message-id"))
-        logger.info("email accepted to={} subject={}", to, subject)
+        logger.info("email accepted recipient={} subject_ref={}", pii_ref(to, "email"), pii_ref(subject, "subject"))
         return True
     except Exception as e:
-        logger.error("email failed to={} error={}", to, str(e))
+        logger.error("email failed recipient={} error_type={}", pii_ref(to, "email"), error_type(e))
         return False
 
 
@@ -152,11 +154,11 @@ def send_drip_email(to: str, subject: str, body: str, lead_id: str) -> bool:
         if db.local_lead_reply_hold(lead_id)["email_paused"]:
             return False
     except Exception as error:
-        logger.error("email_reply_hold_unavailable error={}", str(error))
+        logger.error("email_reply_hold_unavailable error_type={}", error_type(error))
         return False
     sent = send_email(to, subject, body, lead_id)
     if sent:
-        logger.info("drip_email sent to={} lead_id={} subject={}", to, lead_id, subject)
+        logger.info("drip_email sent recipient={} lead_id={} subject_ref={}", pii_ref(to, "email"), lead_id, pii_ref(subject, "subject"))
     return sent
 
 
@@ -236,7 +238,7 @@ def handle_email_reply(lead_id: str, from_email: str, body: str) -> None:
         f"'{body[:300]}'"
     )
     send_alert_to_owner(alert)
-    logger.info("email_reply_handled lead_id={} from={}", lead_id, from_email)
+    logger.info("email_reply_handled lead_id={} sender={}", lead_id, pii_ref(from_email, "email"))
 
 
 def _email_tick() -> None:

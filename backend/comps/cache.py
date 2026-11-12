@@ -1,6 +1,8 @@
 import hashlib
 from loguru import logger
 
+from backend.lib.log_safety import pii_ref
+
 
 _cache: dict = {}
 
@@ -14,16 +16,16 @@ def get_cached_comps(address: str, city: str, state: str) -> list[dict] | None:
     key = _cache_key(address, city, state)
     result = _cache.get(key)
     if result:
-        logger.debug("cache hit for address={}", address)
+        logger.debug("cache hit for property={}", pii_ref(address, "address"))
         return result
-    logger.debug("cache miss for address={}", address)
+    logger.debug("cache miss for property={}", pii_ref(address, "address"))
     return None
 
 
 def set_cached_comps(address: str, city: str, state: str, comps: list[dict]) -> None:
     key = _cache_key(address, city, state)
     _cache[key] = comps
-    logger.debug("cache set for address={} comps={}", address, len(comps))
+    logger.debug("cache set for property={} comps={}", pii_ref(address, "address"), len(comps))
 
 
 def clear_cache() -> None:
