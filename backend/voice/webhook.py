@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request, Response, WebSocket
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 from loguru import logger
+from backend.lib.log_safety import error_type, pii_ref
 
 
 router = APIRouter()
@@ -86,20 +87,20 @@ async def _preload_and_store(
         logger.info(
             "voice_preload_complete "
             "call_sid={} "
-            "phone={} "
+            "contact={} "
             "boss_mode={}",
             call_sid,
-            caller_phone,
+            pii_ref(caller_phone, "phone"),
             boss_mode,
         )
 
     except Exception as e:
-        logger.exception(
+        logger.error(
             "voice_preload_failed "
             "call_sid={} "
-            "error={}",
+            "error_type={}",
             call_sid,
-            str(e),
+            error_type(e),
         )
 
         if not hasattr(app.state, "call_contexts"):

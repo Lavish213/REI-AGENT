@@ -6,6 +6,8 @@ from datetime import datetime
 
 from loguru import logger
 
+from backend.lib.log_safety import error_type, pii_ref
+
 
 @dataclass
 class ComplianceResult:
@@ -28,7 +30,7 @@ def _check_dnc(phone: str) -> bool:
         from backend.lib.db import phone_is_do_not_call
         return phone_is_do_not_call(phone)
     except Exception as e:
-        logger.warning("dnc_check failed phone={} error={}", phone, str(e))
+        logger.warning("dnc_check failed contact={} error_type={}", pii_ref(phone, "phone"), error_type(e))
         raise RuntimeError("DNC verification unavailable") from e
 
 
@@ -51,11 +53,11 @@ class ComplianceEngine:
             if isinstance(phones, list):
                 for phone in phones:
                     if phone and _check_dnc(str(phone)):
-                        logger.info("dnc_match lead_id={} phone={}", lead_id, phone)
+                        logger.info("dnc_match lead_id={} contact={}", lead_id, pii_ref(phone, "phone"))
                         return ComplianceResult(allowed=False, reason="dnc_list_match")
             return ComplianceResult(allowed=True, reason="ok")
         except Exception as e:
-            logger.exception("compliance_check failed lead_id={} error={}", lead_id, str(e))
+            logger.error("compliance_check failed lead_id={} error_type={}", lead_id, error_type(e))
             return ComplianceResult(allowed=False, reason="compliance_unavailable")
 
     def handle_opt_out(

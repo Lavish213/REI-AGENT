@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from loguru import logger
+from backend.lib.log_safety import pii_ref
 
 
 def blast_deal(property_id: str, operator_notes: str = "") -> dict:
@@ -59,7 +60,7 @@ def _send_buyer_email(to, first_name, address, city, mao, arv, beds, baths, sqft
         + f"\nReply or call/text {agent_ph} to move forward.\n\n— Sophia\n{from_name}"
     )
     sg_id = send_email(to=to, subject=subject, body=body_plain)
-    logger.info("deal_blast_email to={} sent={}", to, sg_id is not None)
+    logger.info("deal_blast_email recipient={} sent={}", pii_ref(to, "email"), sg_id is not None)
     return bool(sg_id)
 
 
@@ -69,7 +70,7 @@ def upsert_cash_buyer(data: dict) -> str | None:
     email = data.get("owner_email", "")
     name = data.get("owner_name", "")
     if not phone and not email:
-        logger.warning("upsert_cash_buyer no contact info name={}", name)
+        logger.warning("upsert_cash_buyer no contact info buyer={}", pii_ref(name, "owner"))
         return None
     client = _get_client()
     now = datetime.now(timezone.utc).isoformat()

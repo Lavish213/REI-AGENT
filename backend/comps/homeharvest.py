@@ -1,5 +1,7 @@
 from loguru import logger
 
+from backend.lib.log_safety import error_type, pii_ref
+
 try:
     from homeharvest import scrape_property
     _HH_AVAILABLE = True
@@ -27,11 +29,11 @@ def get_comps(
             radius=0.5,
         )
     except Exception as e:
-        logger.error("homeharvest scrape_property failed city={} error={}", city, str(e))
+        logger.error("homeharvest scrape_property failed market={} error_type={}", pii_ref(city, "city"), error_type(e))
         return _fallback(sqft)
 
     if df is None or df.empty:
-        logger.warning("homeharvest returned no results city={}", city)
+        logger.warning("homeharvest returned no results market={}", pii_ref(city, "city"))
         return _fallback(sqft)
 
     df = df.copy()
@@ -48,7 +50,7 @@ def get_comps(
         df = df[df["style"].str.upper().isin(sfr_styles) | df["style"].isna()]
 
     if df.empty:
-        logger.warning("homeharvest: all comps filtered out address={}", address)
+        logger.warning("homeharvest: all comps filtered out property={}", pii_ref(address, "address"))
         return _fallback(sqft)
 
     if "sold_price" not in df.columns:
@@ -87,8 +89,8 @@ def get_comps(
         return _fallback(sqft)
 
     logger.info(
-        "homeharvest comps address={} count={} ppsf={:.2f} arv={} confidence={}",
-        address,
+        "homeharvest comps property={} count={} ppsf={:.2f} arv={} confidence={}",
+        pii_ref(address, "address"),
         comp_count,
         avg_ppsf,
         arv_estimate,

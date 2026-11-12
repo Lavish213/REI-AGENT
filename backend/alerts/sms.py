@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 import pytz
 from loguru import logger
+from backend.lib.log_safety import error_type, pii_ref
 
 
 def _e164(raw: str) -> str:
@@ -55,7 +56,7 @@ def send_sms(to: str, body: str, lead_id: str = "", bypass_hours: bool = False) 
         if not ComplianceEngine().check_sms_allowed(lead_id).allowed:
             return False
     if not bypass_hours and not _is_tcpa_hours():
-        logger.warning("send_sms blocked outside TCPA hours to={}", to)
+        logger.warning("send_sms blocked outside TCPA hours recipient={}", pii_ref(to, "phone"))
         return False
     try:
         identity, claimed, receipt = db.claim_message_intent("sms", to, "", body, lead_id)
@@ -78,17 +79,17 @@ def send_sms(to: str, body: str, lead_id: str = "", bypass_hours: bool = False) 
             "sent_at": datetime.now(timezone.utc).isoformat(),
             })
         except Exception as error:
-            logger.error("sms_accepted_logging_pending sid={} error={}", message["sid"], str(error))
+            logger.error("sms_accepted_logging_pending sid={} error_type={}", message["sid"], error_type(error))
         if lead_id:
             try:
                 from backend.lib.db import update_sms_contact_time
                 update_sms_contact_time(lead_id, datetime.now(timezone.utc).isoformat())
             except Exception as error:
-                logger.warning("sms_contact_time_not_saved error={}", str(error))
-        logger.info("send_sms to={} sid={} lead_id={}", to, message["sid"], lead_id)
+                logger.warning("sms_contact_time_not_saved error_type={}", error_type(error))
+        logger.info("send_sms recipient={} sid={} lead_id={}", pii_ref(to, "phone"), message["sid"], lead_id)
         return True
     except Exception as e:
-        logger.error("send_sms failed to={} error={}", to, str(e))
+        logger.error("send_sms failed recipient={} error_type={}", pii_ref(to, "phone"), error_type(e))
         return False
 
 

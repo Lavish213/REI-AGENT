@@ -6,6 +6,8 @@ import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
 
+from backend.lib.log_safety import error_type, pii_ref
+
 from backend.lib.db import upsert_property, insert_lead, get_lead_by_property
 
 COURT_BASE = "https://www.sjcourts.org"
@@ -54,7 +56,7 @@ def _search_cases(case_type: str, client: httpx.Client) -> list[dict]:
 
         logger.info("court_scraper case_type={} found={}", case_type, len(results))
     except Exception as e:
-        logger.error("court_scraper search_cases case_type={} error={}", case_type, str(e))
+        logger.error("court_scraper search_cases case_type={} error_type={}", case_type, error_type(e))
 
     return results
 
@@ -95,7 +97,7 @@ def _lookup_property_by_owner(owner_name: str, client: httpx.Client) -> Optional
             "land_use": feat.get("LAND_USE", ""),
         }
     except Exception as e:
-        logger.error("court_scraper arcgis lookup owner={} error={}", owner_name, str(e))
+        logger.error("court_scraper arcgis lookup owner_ref={} error_type={}", pii_ref(owner_name, "owner"), error_type(e))
         return None
 
 
@@ -128,8 +130,8 @@ def scrape_new_filings() -> list[dict]:
                     case["resolved_property"] = prop_data
                     found.append(case)
                     logger.debug(
-                        "court_match case={} owner={} address={}",
-                        case["case_number"], owner_name, prop_data.get("address"),
+                        "court_match case={} owner_ref={} property={}",
+                        case["case_number"], pii_ref(owner_name, "owner"), pii_ref(prop_data.get("address"), "address"),
                     )
 
     logger.info("court_scraper scrape_complete matched={}", len(found))

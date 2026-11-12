@@ -5,6 +5,8 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from loguru import logger
 
+from backend.lib.log_safety import pii_ref
+
 from backend.lib.db import (
     get_active_drip_leads,
     update_lead_drip_progress,
@@ -311,7 +313,7 @@ def handle_inbound_reply(from_phone: str, body: str, message_sid: str) -> str:
     })
 
     if not lead:
-        logger.warning("inbound_sms no lead found phone={}", from_phone)
+        logger.warning("inbound_sms no lead found contact={}", pii_ref(from_phone, "phone"))
         return "logged"
 
     lead_id = lead["id"]
@@ -354,7 +356,7 @@ def handle_inbound_reply(from_phone: str, body: str, message_sid: str) -> str:
         )
         send_alert_to_owner(alert)
 
-        logger.info("hot_reply lead_id={} phone={}", lead_id, from_phone)
+        logger.info("hot_reply lead_id={} contact={}", lead_id, pii_ref(from_phone, "phone"))
         return "hot_reply"
 
     pause_lead_drip(lead_id)
@@ -373,7 +375,7 @@ def handle_inbound_reply(from_phone: str, body: str, message_sid: str) -> str:
     )
     send_alert_to_owner(alert)
 
-    logger.info("reply_paused_drip lead_id={} phone={}", lead_id, from_phone)
+    logger.info("reply_paused_drip lead_id={} contact={}", lead_id, pii_ref(from_phone, "phone"))
     return "paused"
 
 

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import re
 
 from loguru import logger
+from backend.lib.log_safety import pii_ref
 from supabase import create_client, Client, ClientOptions
 
 TABLES = frozenset({'leads', 'properties', 'calls', 'contacts', 'comps', 'offers', 'sms_messages', 'email_sends', 'email_events', 'followups', 'campaigns', 'deal_blast_sends', 'phone_pool_health', 'dnc_list', 'cash_buyers', 'intel_packets', 'packet_events', 'decision_records', 'bob_feedback_events', 'transcript_chunks', 'call_events', 'approval_requests', 'operator_queries', 'tool_gate_log', 'workflows', 'traces', 'eval_runs', 'latency_benchmarks', 'compliance_log', 'suppression_events', 'source_candidates', 'email_suppressions', 'email_reply_events', 'provider_delivery_messages', 'provider_delivery_events'})
@@ -235,7 +236,7 @@ def get_property_by_phone(phone: str) -> dict | None:
         .execute()
     )
     result = response.data[0] if response.data else None
-    logger.debug("get_property_by_phone phone={} found={}", phone, result is not None)
+    logger.debug("get_property_by_phone contact={} found={}", pii_ref(phone, "phone"), result is not None)
     return result
 
 
@@ -363,7 +364,7 @@ def get_lead_by_owner_phone(phone: str) -> dict | None:
         .execute()
     )
     result = response.data[0] if response.data else None
-    logger.debug("get_lead_by_owner_phone phone={} found={}", phone, result is not None)
+    logger.debug("get_lead_by_owner_phone contact={} found={}", pii_ref(phone, "phone"), result is not None)
     return result
 
 

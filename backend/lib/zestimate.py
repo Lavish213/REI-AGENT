@@ -3,6 +3,7 @@ from urllib.parse import quote
 
 import httpx
 from loguru import logger
+from backend.lib.log_safety import error_type, pii_ref
 
 
 _cache: dict[str, int | None] = {}
@@ -52,7 +53,7 @@ def _try_zillow(address: str, city: str, state: str, zip_code: str) -> int | Non
             if zestimate:
                 return int(zestimate * 100)
     except Exception as e:
-        logger.debug("zillow failed address={} error={}", address, str(e))
+        logger.debug("zillow failed property={} error_type={}", pii_ref(address, "address"), error_type(e))
     return None
 
 
@@ -100,7 +101,7 @@ def _try_redfin(address: str, city: str, state: str, zip_code: str) -> int | Non
         if avm:
             return int(avm * 100)
     except Exception as e:
-        logger.debug("redfin failed address={} error={}", address, str(e))
+        logger.debug("redfin failed property={} error_type={}", pii_ref(address, "address"), error_type(e))
     return None
 
 
@@ -115,7 +116,7 @@ def get_zestimate(address: str, city: str, state: str, zip_code: str) -> int | N
 
     _cache[key] = result
     if result:
-        logger.debug("zestimate address={} value={}", address, result)
+        logger.debug("zestimate property={} value={}", pii_ref(address, "address"), result)
     else:
-        logger.debug("zestimate not found address={}", address)
+        logger.debug("zestimate not found property={}", pii_ref(address, "address"))
     return result

@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 import pytz
 from loguru import logger
+from backend.lib.log_safety import pii_ref
 
 from backend.lib.db import (
     get_lead_with_property,
@@ -141,7 +142,7 @@ def _make_call(to_phone: str, lead_id: str) -> dict[str, str]:
         "RecordingStatusCallbackMethod": "POST",
     }
 
-    logger.info("signalwire_call_request lead_id={} to={} callback_url={}", lead_id, to_phone, callback_url)
+    logger.info("signalwire_call_request lead_id={} recipient={} callback_configured={}", lead_id, pii_ref(to_phone, "phone"), bool(callback_url))
 
     with httpx.Client() as client:
         try:
@@ -408,7 +409,7 @@ def call_lead(
         first_name = _get_first_name(lead, prop)
         primary_phone = phones[0]
 
-        logger.info("call_lead_initiating lead_id={} phone={} score={}", lead_id, primary_phone, score)
+        logger.info("call_lead_initiating lead_id={} contact={} score={}", lead_id, pii_ref(primary_phone, "phone"), score)
 
         result = _make_call(primary_phone, lead_id)
 

@@ -1,6 +1,7 @@
 import math
 import httpx
 from loguru import logger
+from backend.lib.log_safety import error_type, pii_ref
 
 
 OSM_HEADERS = {
@@ -144,7 +145,7 @@ def geocode_address(address: str, city: str, state: str) -> dict:
             response.raise_for_status()
             results = response.json()
             if not results:
-                logger.warning("geocode_address no results address={}", query)
+                logger.warning("geocode_address no results property={}", pii_ref(query, "address"))
                 return {}
             result = results[0]
             addr = result.get("address", {})
@@ -156,7 +157,7 @@ def geocode_address(address: str, city: str, state: str) -> dict:
                 "display_name": result.get("display_name", ""),
             }
     except Exception as e:
-        logger.error("geocode_address failed address={} error={}", query, str(e))
+        logger.error("geocode_address failed property={} error_type={}", pii_ref(query, "address"), error_type(e))
         return {}
 
 
@@ -312,7 +313,7 @@ def get_neighborhood_profile(city: str, lat: float, lng: float) -> dict | None:
 
 
 def enrich_property_full(address: str, city: str, state: str) -> dict:
-    logger.info("enrich_property_full address={} {}, {}", address, city, state)
+    logger.info("enrich_property_full property={} state={}", pii_ref(f"{address}|{city}|{state}", "property"), state)
     result: dict = {
         "neighborhood": "",
         "cross_streets": [],

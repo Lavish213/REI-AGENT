@@ -1,6 +1,8 @@
 import httpx
 from loguru import logger
 
+from backend.lib.log_safety import error_type, pii_ref
+
 
 REDFIN_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -39,7 +41,7 @@ def _search_address(address: str, city: str, state: str) -> str | None:
                         return row.get("url")
             return None
     except Exception as e:
-        logger.error("redfin address search failed address={} error={}", address, str(e))
+        logger.error("redfin address search failed property={} error_type={}", pii_ref(address, "address"), error_type(e))
         return None
 
 
@@ -56,13 +58,13 @@ def get_comps(
     baths: float | None = None,
     sqft: int | None = None,
 ) -> list[dict]:
-    logger.info("get_comps address={} {}, {}", address, city, state)
+    logger.info("get_comps property={} state={}", pii_ref(f"{address}|{city}|{state}", "property"), state)
 
     region_url = _search_address(address, city, state)
     if not region_url:
-        logger.warning("get_comps could not find region for address={}", address)
+        logger.warning("get_comps could not find region for property={}", pii_ref(address, "address"))
         return []
 
     comps = _get_comps_from_region(region_url, beds, baths, sqft)
-    logger.info("get_comps found={} comps for address={}", len(comps), address)
+    logger.info("get_comps found={} comps for property={}", len(comps), pii_ref(address, "address"))
     return comps

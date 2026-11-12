@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timezone
 
 from loguru import logger
+from backend.lib.log_safety import pii_ref
 
 
 def _dollars(cents: int | None) -> str:
@@ -49,7 +50,7 @@ def format_lead_alert(prop: dict) -> str:
         f"Owner: {owner}"
     )
 
-    logger.debug("format_lead_alert address={}", address)
+    logger.debug("format_lead_alert property={}", pii_ref(address, "address"))
     return message
 
 
@@ -69,7 +70,7 @@ def format_walkthrough_confirmation(lead: dict, prop: dict, appointment_dt: date
         f"ARV: {arv} | MAO: {mao}"
     )
 
-    logger.debug("format_walkthrough_confirmation address={}", address)
+    logger.debug("format_walkthrough_confirmation property={}", pii_ref(address, "address"))
     return message
 
 
