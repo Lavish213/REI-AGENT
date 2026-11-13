@@ -137,6 +137,10 @@ async def handle_outbound_status(
             except Exception as slot_err:
                 logger.warning("release_slot_failed lead_id={} error={}", lead_id, str(slot_err))
 
+        from backend.lib.db import CALL_STATUSES, record_call_lifecycle
+        if call_status in CALL_STATUSES:
+            await run_in_threadpool(record_call_lifecycle, lead_id, call_sid, "outbound", call_status, duration)
+
         return PlainTextResponse(content="ok")
 
     except Exception as e:
@@ -382,7 +386,7 @@ async def handle_recording_status(request: Request, lead_id: str) -> Response:
 
         if recording_url and status == "completed":
             from backend.lib.db import save_recording_metadata
-            await run_in_threadpool(save_recording_metadata, call_sid, recording_url, recording_sid, recording_duration)
+            await run_in_threadpool(save_recording_metadata, lead_id, call_sid, recording_url, recording_sid, recording_duration)
             logger.info("recording_saved call_sid={}", call_sid)
 
         return Response(status_code=204)

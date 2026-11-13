@@ -35,8 +35,16 @@ def _check_dnc(phone: str) -> bool:
 class ComplianceEngine:
     def check_call_allowed(self, lead_id: str) -> ComplianceResult:
         try:
-            from backend.lib.db import get_lead_with_property, local_lead_reply_hold, provider_email_opted_out
+            from backend.lib.db import TenantConfigurationError, configured_tenant_id, get_lead_with_property, is_uuid, local_lead_reply_hold, provider_email_opted_out
 
+            if not is_uuid(lead_id):
+                logger.warning("compliance_check rejected malformed lead identifier")
+                return ComplianceResult(allowed=False, reason="invalid_lead_id")
+            try:
+                configured_tenant_id()
+            except TenantConfigurationError:
+                logger.error("compliance_check blocked tenant configuration invalid")
+                return ComplianceResult(allowed=False, reason="tenant_misconfigured")
             lead = get_lead_with_property(lead_id)
             if not lead:
                 return ComplianceResult(allowed=False, reason="lead_not_found")
@@ -112,8 +120,16 @@ class ComplianceEngine:
 
     def check_sms_allowed(self, lead_id: str) -> ComplianceResult:
         try:
-            from backend.lib.db import get_lead_with_property, local_lead_reply_hold, provider_email_opted_out
+            from backend.lib.db import TenantConfigurationError, configured_tenant_id, get_lead_with_property, is_uuid, local_lead_reply_hold, provider_email_opted_out
 
+            if not is_uuid(lead_id):
+                logger.warning("sms_compliance_check rejected malformed lead identifier")
+                return ComplianceResult(allowed=False, reason="invalid_lead_id")
+            try:
+                configured_tenant_id()
+            except TenantConfigurationError:
+                logger.error("sms_compliance_check blocked tenant configuration invalid")
+                return ComplianceResult(allowed=False, reason="tenant_misconfigured")
             lead = get_lead_with_property(lead_id)
             if not lead:
                 return ComplianceResult(allowed=False, reason="lead_not_found")

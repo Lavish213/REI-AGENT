@@ -99,19 +99,19 @@ def test_inbound_adapter_signature_covers_exact_body_and_fresh_timestamp(monkeyp
 def test_stop_holds_all_lead_channels_before_remote_write(journal, monkeypatch, text):
     from backend.compliance.compliance import ComplianceEngine
     from backend.alerts import email
-    lead = {'id':'lead', 'tenant_id':'00000000-0000-0000-0000-000000000001', 'owner_email':'seller@example.invalid'}
+    lead = {'id':'00000000-0000-0000-0000-0000000000b1', 'tenant_id':'00000000-0000-0000-0000-000000000001', 'owner_email':'seller@example.invalid'}
     monkeypatch.setattr(db, 'get_lead_with_property', lambda _: lead)
-    token = db.register_email_thread('lead', lead['owner_email'])
+    token = db.register_email_thread('00000000-0000-0000-0000-0000000000b1', lead['owner_email'])
     db.stage_inbound_email({'event_id':'stop', 'thread_token':token, 'sender':lead['owner_email'], 'sender_verified':True, 'text':text})
-    assert db.local_lead_reply_hold('lead') == {'email_paused':True, 'opted_out':True}
-    assert ComplianceEngine().check_call_allowed('lead').reason == 'opted_out'
-    assert ComplianceEngine().check_sms_allowed('lead').reason == 'opted_out'
+    assert db.local_lead_reply_hold('00000000-0000-0000-0000-0000000000b1') == {'email_paused':True, 'opted_out':True}
+    assert ComplianceEngine().check_call_allowed('00000000-0000-0000-0000-0000000000b1').reason == 'opted_out'
+    assert ComplianceEngine().check_sms_allowed('00000000-0000-0000-0000-0000000000b1').reason == 'opted_out'
     assert db.email_address_is_suppressed(lead['owner_email'])
     monkeypatch.setenv('OUTBOUND_ENABLED', 'true')
     provider = MagicMock()
     monkeypatch.setattr('httpx.post', provider)
-    assert not email.send_email(lead['owner_email'], 'subject', 'body', 'lead')
-    assert not email.send_email('other@example.invalid', 'subject', 'body', 'lead')
+    assert not email.send_email(lead['owner_email'], 'subject', 'body', '00000000-0000-0000-0000-0000000000b1')
+    assert not email.send_email('other@example.invalid', 'subject', 'body', '00000000-0000-0000-0000-0000000000b1')
     provider.assert_not_called()
 
 
@@ -155,11 +155,11 @@ def test_stop_hold_survives_crash_between_journals_and_recovery(journal, monkeyp
 def test_unavailable_hold_denies_calls_sms_and_drip(journal, monkeypatch):
     from backend.compliance.compliance import ComplianceEngine
     from backend.alerts import email
-    monkeypatch.setattr(db, 'get_lead_with_property', lambda _: {'id':'lead'})
+    monkeypatch.setattr(db, 'get_lead_with_property', lambda _: {'id':'00000000-0000-0000-0000-0000000000b1'})
     monkeypatch.setattr(db, 'local_lead_reply_hold', MagicMock(side_effect=OSError('journal unavailable')))
-    assert ComplianceEngine().check_call_allowed('lead').reason == 'compliance_unavailable'
-    assert ComplianceEngine().check_sms_allowed('lead').reason == 'compliance_unavailable'
+    assert ComplianceEngine().check_call_allowed('00000000-0000-0000-0000-0000000000b1').reason == 'compliance_unavailable'
+    assert ComplianceEngine().check_sms_allowed('00000000-0000-0000-0000-0000000000b1').reason == 'compliance_unavailable'
     sender = MagicMock()
     monkeypatch.setattr(email, 'send_email', sender)
-    assert not email.send_drip_email('seller@example.invalid', 'subject', 'body', 'lead')
+    assert not email.send_drip_email('seller@example.invalid', 'subject', 'body', '00000000-0000-0000-0000-0000000000b1')
     sender.assert_not_called()

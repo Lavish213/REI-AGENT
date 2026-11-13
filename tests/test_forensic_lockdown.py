@@ -49,12 +49,12 @@ def test_suppression_is_durable_and_normalized(tmp_path, monkeypatch):
 
 
 def test_tenant_query_rejects_cross_tenant_write(monkeypatch):
-    monkeypatch.setenv('TENANT_ID', 'mine')
+    monkeypatch.setenv('TENANT_ID', '00000000-0000-0000-0000-0000000000a1')
     class Query:
         def update(self, payload):
             return self
         def eq(self, key, value):
-            assert (key, value) == ('tenant_id', 'mine')
+            assert (key, value) == ('tenant_id', '00000000-0000-0000-0000-0000000000a1')
             return self
         def execute(self):
             return SimpleNamespace(data=[])

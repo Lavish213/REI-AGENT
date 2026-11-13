@@ -339,7 +339,12 @@ def call_lead(
         return {"success": False, "reason": "outbound_disabled"}
     try:
         from backend.lib.db import campaign_is_running
-        if not campaign_is_running():
+        try:
+            running = campaign_is_running()
+        except Exception as error:
+            logger.error("campaign_state_unavailable lead_id={} error_type={}", lead_id, type(error).__name__)
+            return {"success": False, "reason": "campaign_state_unavailable"}
+        if not running:
             return {"success": False, "reason": "campaign_paused"}
         from backend.compliance.compliance import ComplianceEngine
         engine = ComplianceEngine()
@@ -415,6 +420,11 @@ def call_lead(
         if not result["call_sid"]:
             raise RuntimeError("Phone provider did not return a call ID")
         provider_accepted = True
+        try:
+            from backend.lib.db import record_call_lifecycle
+            record_call_lifecycle(lead_id, result["call_sid"], "outbound", "initiated")
+        except Exception as error:
+            logger.error("accepted_call_row_not_persisted lead_id={} call_sid={} error_type={}", lead_id, result["call_sid"], type(error).__name__)
         if not _bind_call_slot(lead_id, attempt_token, result["call_sid"]):
             logger.error("provider_call_slot_unbound lead_id={} call_sid={}", lead_id, result["call_sid"])
         try:

@@ -297,6 +297,14 @@ async def handle_call_status(
             duration,
         )
 
+        contexts = getattr(
+            request.app.state,
+            "call_contexts",
+            {},
+        )
+
+        context_lead = getattr(contexts.get(call_sid), "lead_id", None)
+
         if call_status in {
             "completed",
             "failed",
@@ -304,11 +312,6 @@ async def handle_call_status(
             "no-answer",
             "canceled",
         }:
-            contexts = getattr(
-                request.app.state,
-                "call_contexts",
-                {},
-            )
 
             removed = contexts.pop(call_sid, None)
 
@@ -318,6 +321,17 @@ async def handle_call_status(
                 "removed={}",
                 call_sid,
                 bool(removed),
+            )
+
+        from backend.lib.db import CALL_STATUSES, is_uuid, record_call_lifecycle
+        if call_status in CALL_STATUSES and call_sid:
+            await run_in_threadpool(
+                record_call_lifecycle,
+                context_lead if is_uuid(context_lead) else None,
+                call_sid,
+                "inbound",
+                call_status,
+                int(duration) if duration.isdigit() else 0,
             )
 
         return PlainTextResponse(

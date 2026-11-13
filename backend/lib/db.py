@@ -69,13 +69,31 @@ class ScopedQuery:
         return response
 
 
+DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
+_UUID_PATTERN = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
+
+
+class TenantConfigurationError(ValueError):
+    pass
+
+
+def configured_tenant_id() -> str:
+    tenant = os.environ.get('TENANT_ID', '').strip() or DEFAULT_TENANT_ID
+    if not _UUID_PATTERN.fullmatch(tenant):
+        raise TenantConfigurationError('TENANT_ID must be a lowercase canonical UUID')
+    return tenant
+
+
+def is_uuid(value) -> bool:
+    return isinstance(value, str) and _UUID_PATTERN.fullmatch(value.strip().lower()) is not None
+
+
 class TenantClient:
     def __init__(self, raw):
         self.raw = raw
 
     def table(self, name):
-        tenant = os.environ.get('TENANT_ID', '00000000-0000-0000-0000-000000000001').strip()
-        return ScopedQuery(self.raw, name, tenant) if name in TABLES else self.raw.table(name)
+        return ScopedQuery(self.raw, name, configured_tenant_id()) if name in TABLES else self.raw.table(name)
 
     def __getattr__(self, name):
         return getattr(self.raw, name)
@@ -184,6 +202,14 @@ def update_lead_stage(lead_id: str, stage: str) -> None:
 
 def insert_call(data: dict) -> str | None:
     client = _get_client()
+    call_sid = data.get("signalwire_call_id")
+    if call_sid:
+        call_id = record_call_lifecycle(data.get("lead_id"), call_sid, data.get("direction"), None)
+        fields = {key: value for key, value in data.items() if key not in {"lead_id", "signalwire_call_id", "direction", "created_at", "tenant_id"}}
+        if fields:
+            client.table("calls").update(fields).eq("id", call_id).execute()
+        logger.info("insert_call lead_id={} call_id={} correlated=true", data.get("lead_id"), call_id)
+        return call_id
     response = client.table("calls").insert(data).execute()
     call_id = response.data[0]["id"] if response.data else None
     logger.info("insert_call lead_id={} call_id={}", data.get("lead_id"), call_id)
@@ -1517,14 +1543,53 @@ def warm_database() -> None:
     _get_client().table("leads").select("id").limit(1).execute()
 
 
-def save_recording_metadata(call_sid: str, recording_url: str, recording_sid: str, duration: int) -> None:
-    if not call_sid or not recording_url:
+CALL_STATUSES = frozenset({"queued", "initiated", "ringing", "in-progress", "answered", "completed", "busy", "no-answer", "failed", "canceled"})
+_CALL_SID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,128}")
+
+
+def _call_identity(lead_id: str | None, call_sid: str) -> tuple[str, str | None]:
+    if not isinstance(call_sid, str) or not _CALL_SID_PATTERN.fullmatch(call_sid):
+        raise ValueError("Invalid provider call ID")
+    if lead_id is not None and not is_uuid(lead_id):
+        raise ValueError("Lead ID must be a UUID")
+    return configured_tenant_id(), lead_id.strip().lower() if lead_id else None
+
+
+def record_call_lifecycle(lead_id: str | None, call_sid: str, direction: str | None, status: str | None, duration: int = 0) -> str:
+    tenant, lead = _call_identity(lead_id, call_sid)
+    if direction is not None and direction not in ("inbound", "outbound"):
+        raise ValueError("Invalid call direction")
+    if status is not None and status not in CALL_STATUSES:
+        raise ValueError("Invalid provider call status")
+    call_id = _get_client().rpc("record_call_lifecycle", {
+        "p_tenant_id": tenant,
+        "p_lead_id": lead,
+        "p_call_sid": call_sid,
+        "p_direction": direction,
+        "p_status": status,
+        "p_duration": max(0, int(duration or 0)),
+    }).execute().data
+    if not call_id:
+        raise RuntimeError("Call lifecycle persistence was not confirmed")
+    logger.info("call_lifecycle_recorded call_id={} status={}", call_id, status)
+    return call_id
+
+
+def save_recording_metadata(lead_id: str | None, call_sid: str, recording_url: str, recording_sid: str, duration: int) -> str:
+    if not recording_url:
         raise ValueError("Recording requires a provider call ID and URL")
-    _get_client().table("calls").update({
-        "recording_url": recording_url,
-        "recording_sid": recording_sid,
-        "recording_duration_seconds": max(0, duration),
-    }).eq("signalwire_call_id", call_sid).execute()
+    tenant, lead = _call_identity(lead_id, call_sid)
+    call_id = _get_client().rpc("record_call_recording", {
+        "p_tenant_id": tenant,
+        "p_lead_id": lead,
+        "p_call_sid": call_sid,
+        "p_recording_url": recording_url,
+        "p_recording_sid": recording_sid,
+        "p_duration": max(0, int(duration or 0)),
+    }).execute().data
+    if not call_id:
+        raise RuntimeError("Recording persistence was not confirmed")
+    return call_id
 
 
 def save_call_grade(call_sid: str, values: dict) -> None:
